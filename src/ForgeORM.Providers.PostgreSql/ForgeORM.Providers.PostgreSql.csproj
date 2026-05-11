@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\ForgeORM.Abstractions\ForgeORM.Abstractions.csproj" />
+    <PackageReference Include="Dapper" Version="2.1.66" />
+    <PackageReference Include="Npgsql" Version="8.0.5" />
+  </ItemGroup>
+</Project>

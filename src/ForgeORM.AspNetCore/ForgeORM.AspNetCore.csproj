@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\ForgeORM.Abstractions\ForgeORM.Abstractions.csproj" />
+    <ProjectReference Include="..\ForgeORM.Core\ForgeORM.Core.csproj" />
+    <ProjectReference Include="..\ForgeORM.Analytics\ForgeORM.Analytics.csproj" />
+    <ProjectReference Include="..\ForgeORM.QueryBuilder\ForgeORM.QueryBuilder.csproj" />
+    <ProjectReference Include="..\ForgeORM.Mapping\ForgeORM.Mapping.csproj" />
+    <ProjectReference Include="..\ForgeORM.Intelligence\ForgeORM.Intelligence.csproj" />
+    <ProjectReference Include="..\ForgeORM.Providers.SqlServer\ForgeORM.Providers.SqlServer.csproj" />
+    <ProjectReference Include="..\ForgeORM.Providers.PostgreSql\ForgeORM.Providers.PostgreSql.csproj" />
+    <ProjectReference Include="..\ForgeORM.Providers.MySql\ForgeORM.Providers.MySql.csproj" />
+    <ProjectReference Include="..\ForgeORM.Providers.Oracle\ForgeORM.Providers.Oracle.csproj" />
+    <ProjectReference Include="..\ForgeORM.Providers.Sqlite\ForgeORM.Providers.Sqlite.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+  </ItemGroup>
+</Project>

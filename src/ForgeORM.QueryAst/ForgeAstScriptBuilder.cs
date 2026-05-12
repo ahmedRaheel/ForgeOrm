@@ -1,5 +1,5 @@
-using System.Text;
 using ForgeORM.Abstractions;
+using System.Text;
 
 namespace ForgeORM.QueryAst;
 
@@ -52,9 +52,7 @@ internal sealed class ForgeAstScriptBuilder : IForgeAstScriptBuilder
         }
 
         foreach (var statement in _statements)
-        {
             sql.AppendLine(statement.TrimEnd(';') + ";");
-        }
 
         return new ForgeRenderedSql(sql.ToString());
     }

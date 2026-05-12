@@ -16,6 +16,11 @@ public interface IForgeAstSelectBuilder<T>
     IForgeAstSelectBuilder<T> AndSql(string condition, object? parameters = null);
     IForgeAstSelectBuilder<T> Or(Expression<Func<T, bool>> predicate);
     IForgeAstSelectBuilder<T> OrSql(string condition, object? parameters = null);
+    IForgeAstSelectBuilder<T> Join<TJoin>(Expression<Func<T, TJoin, bool>> on);
+    IForgeAstSelectBuilder<T> InnerJoin<TJoin>(Expression<Func<T, TJoin, bool>> on);
+    IForgeAstSelectBuilder<T> LeftJoin<TJoin>(Expression<Func<T, TJoin, bool>> on);
+    IForgeAstSelectBuilder<T> RightJoin<TJoin>(Expression<Func<T, TJoin, bool>> on);
+    IForgeAstSelectBuilder<T> FullJoin<TJoin>(Expression<Func<T, TJoin, bool>> on);
     IForgeAstSelectBuilder<T> Join(string table, string on);
     IForgeAstSelectBuilder<T> InnerJoin(string table, string on);
     IForgeAstSelectBuilder<T> LeftJoin(string table, string on);

@@ -5,7 +5,7 @@ using System.Text;
 
 namespace ForgeORM.QueryAst;
 
-internal sealed class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<T>
+internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<T>
 {
     private readonly List<string> _columns = [];
     private readonly List<string> _joins = [];
@@ -282,7 +282,47 @@ internal sealed class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<T>
         var attr = type.GetCustomAttributes(typeof(ForgeTableAttribute), false).Cast<ForgeTableAttribute>().FirstOrDefault();
         return attr?.Name ?? type.Name;
     }
+    public IForgeAstSelectBuilder<T> Join<TJoin>(
+    Expression<Func<T, TJoin, bool>> on)
+    {
+        return InnerJoin(on);
+    }
 
+    public IForgeAstSelectBuilder<T> InnerJoin<TJoin>(
+        Expression<Func<T, TJoin, bool>> on)
+    {
+        return AddTypedJoin<TJoin>("INNER JOIN", on);
+    }
+
+    public IForgeAstSelectBuilder<T> LeftJoin<TJoin>(
+        Expression<Func<T, TJoin, bool>> on)
+    {
+        return AddTypedJoin<TJoin>("LEFT JOIN", on);
+    }
+
+    public IForgeAstSelectBuilder<T> RightJoin<TJoin>(
+        Expression<Func<T, TJoin, bool>> on)
+    {
+        return AddTypedJoin<TJoin>("RIGHT JOIN", on);
+    }
+
+    public IForgeAstSelectBuilder<T> FullJoin<TJoin>(
+        Expression<Func<T, TJoin, bool>> on)
+    {
+        return AddTypedJoin<TJoin>("FULL OUTER JOIN", on);
+    }
+
+    private IForgeAstSelectBuilder<T> AddTypedJoin<TJoin>(
+        string joinType,
+        Expression<Func<T, TJoin, bool>> on)
+    {
+        var table = ResolveTableName(typeof(TJoin));
+        var joinCondition = ForgeJoinExpression.Translate<T, TJoin>(on);
+
+        _joins.Add($"{joinType} {table} ON {joinCondition}");
+
+        return this;
+    }
     internal static class ParameterObjectReader
     {
         public static IReadOnlyDictionary<string, object?> Read(object parameters)

@@ -15,5 +15,6 @@
     <ProjectReference Include="..\ForgeORM.Providers.Sqlite\ForgeORM.Providers.Sqlite.csproj" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.1" />
+      <ProjectReference Include="..\ForgeORM.Relationships\ForgeORM.Relationships.csproj" />
   </ItemGroup>
 </Project>

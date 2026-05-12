@@ -21,7 +21,7 @@ public sealed partial class ForgeDb
     public ForgePagedResult<T> Page<T>(ForgePageRequest request)
     {
         var count = Provider.BuildCount(request.Sql, request.Parameters);
-        var total = ExecuteScalar<int>(count.CommandText, count.Parameters) ?? 0;
+        var total = ExecuteScalar<int>(count.CommandText, count.Parameters);
         var page = Provider.BuildPage(request);
         var rows = Query<T>(page.CommandText, page.Parameters).ToList();
         return new ForgePagedResult<T> { Items = rows, Page = request.Page, PageSize = request.PageSize, TotalRecords = total };
@@ -30,7 +30,7 @@ public sealed partial class ForgeDb
     public async Task<ForgePagedResult<T>> PageAsync<T>(ForgePageRequest request, CancellationToken cancellationToken = default)
     {
         var count = Provider.BuildCount(request.Sql, request.Parameters);
-        var total = await ExecuteScalarAsync<int>(count.CommandText, count.Parameters, cancellationToken: cancellationToken) ?? 0;
+        var total = await ExecuteScalarAsync<int>(count.CommandText, count.Parameters, cancellationToken: cancellationToken);
         var page = Provider.BuildPage(request);
         var rows = await QueryAsync<T>(page.CommandText, page.Parameters, cancellationToken: cancellationToken);
         return new ForgePagedResult<T> { Items = rows, Page = request.Page, PageSize = request.PageSize, TotalRecords = total };

@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="..\ForgeORM.Abstractions\ForgeORM.Abstractions.csproj" />
+    <ProjectReference Include="..\ForgeORM.QueryAst\ForgeORM.QueryAst.csproj" />
   </ItemGroup>
 </Project>

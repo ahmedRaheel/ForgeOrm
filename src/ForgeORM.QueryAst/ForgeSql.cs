@@ -1,3 +1,7 @@
+using System.Linq.Expressions;
+using System.Text;
+using ForgeORM.Abstractions;
+
 namespace ForgeORM.QueryAst;
 
 public static class ForgeSql
@@ -6,9 +10,4 @@ public static class ForgeSql
     public static IForgeAstScriptBuilder Script() => new ForgeAstScriptBuilder();
     public static IForgeAstTempTableBuilder TempTable(string name) => new ForgeAstTempTableBuilder(name);
     public static ForgeCte Cte(string name, string sql) => new(name, sql);
-}
-
-public static class ForgeQuery
-{
-    public static IForgeDynamicQueryBuilder Dynamic() => new ForgeDynamicQueryBuilder();
 }

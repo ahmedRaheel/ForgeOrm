@@ -1,96 +1,95 @@
-# ForgeORM Complete All Features
+# ForgeORM Complete Solution Final
 
-ForgeORM is a SQL-first, provider-based ORM for .NET designed to combine:
+ForgeORM is a SQL-first, provider-based .NET ORM designed to combine Dapper-style speed, EF-like productivity, dynamic query building, strongly typed AST query building, relationship split queries, bulk operations, stored procedures/functions, transactions, SQL intelligence, and database artifact lifecycle management.
 
-- Dapper-style raw SQL performance
+## Included Features
+
+- Dapper-style sync/async raw SQL methods
+- Stored procedure execution/query methods
+- Function/scalar query methods
+- `QueryMultiple` / grid reader
 - EF-like object query API
-- dynamic query builder
-- object mapping
-- split query loading for parent/child graphs
-- stored procedures
-- database functions
-- sync and async methods
-- transactions and unit of work
-- bulk insert/update/delete/merge
-- query analytics
-- query suggestions and autocomplete/intelligence
-- SQL Server, SQL Express, PostgreSQL, MySQL, Oracle, SQLite providers
-- ASP.NET Core dependency injection
+- Dynamic string-builder query builder
+- Strongly typed AST builder:
+  - `ForgeSql.Select<T>()`
+  - `.Columns(x => x.Id, ...)`
+  - `.Where(x => x.Price > minPrice)`
+  - `.Render(db.Provider)`
+- All major joins:
+  - inner
+  - left
+  - right
+  - full
+  - cross
+  - cross apply
+  - outer apply
+- CTE support
+- Temp-table script support
+- Split-query relationship loading:
+  - one-to-one
+  - one-to-many
+  - many-to-many
+- Bulk operations:
+  - insert
+  - update
+  - delete
+  - merge/upsert hook
+- Transactions / unit of work style API
+- Query analyzer
+- SQL intelligence/autocomplete contracts
+- Object mapping project
+- Providers:
+  - SQL Server / SQL Express
+  - PostgreSQL
+  - MySQL
+  - Oracle
+  - SQLite
+- ASP.NET Core DI package
+- Sample API with Swagger support
+- Database artifact lifecycle:
+  - create/update views from AST
+  - create/update stored procedures from AST
+  - automatic `ForgeOrmArtifactHistory` table
+  - hash comparison
+  - skip unchanged artifacts
+  - version history records
 
-## Solution Projects
-
-```text
-src/
-  ForgeORM.Abstractions
-  ForgeORM.Core
-  ForgeORM.QueryBuilder
-  ForgeORM.Mapping
-  ForgeORM.Intelligence
-  ForgeORM.Analytics
-  ForgeORM.Providers.SqlServer
-  ForgeORM.Providers.PostgreSql
-  ForgeORM.Providers.MySql
-  ForgeORM.Providers.Oracle
-  ForgeORM.Providers.Sqlite
-  ForgeORM.AspNetCore
-samples/
-  ForgeORM.Sample.Api
-database/
-  sqlserver
-docs/
-```
-
-## Main API Examples
-
-```csharp
-var products = await db.QueryAsync<Product>(
-    "SELECT * FROM Products WHERE Price > @Price",
-    new { Price = 100 });
-
-var product = await db.GetByIdAsync<Product>(1);
-
-var page = await db.PageAsync<Product>(new ForgePageRequest
-{
-    Sql = "SELECT * FROM Products",
-    OrderBy = "Id DESC",
-    Page = 1,
-    PageSize = 20
-});
-
-var objectQuery = await db.Set<Product>()
-    .Where(x => x.Price > 100)
-    .OrderByDescending(x => x.Id)
-    .Skip(0)
-    .Take(20)
-    .ToListAsync();
-
-await db.BulkInsertAsync(products);
-
-await using var tx = await db.BeginTransactionAsync();
-await tx.ExecuteAsync("UPDATE Products SET Price = Price + 1");
-await tx.CommitAsync();
-```
-
-## Note
-
-This is a complete architectural foundation. Bulk engines are provider hooks with safe default implementations. Production-grade provider-specific TVP/COPY/array-binding engines can be evolved inside each provider without changing Core.
-
-
-## NextGen Dream APIs Added
+## Example: Strongly Typed Query
 
 ```csharp
-var rows = await db.SmartSql<Product>($"SELECT Id, Code, Name, Price FROM Products WHERE Price > {minPrice}")
-    .WhereSql($"Name <> {""}")
-    .AsCached(TimeSpan.FromMinutes(5))
-    .WithPolicy(new ForgeResiliencePolicy { RetryCount = 2 })
-    .ToShapeAsync<ProductDto>();
+var query = ForgeSql
+    .Select<Product>()
+    .Columns(x => x.Id, x => x.Name, x => x.Price)
+    .Where(x => x.Price > minPrice)
+    .Render(db.Provider);
 
-var json = await db.SmartSql<Product>("SELECT * FROM Products").IntoJsonAsync();
-var plan = db.SmartSql<Product>("SELECT * FROM Products").Explain();
-await foreach (var item in db.SmartSql<Product>("SELECT * FROM Products").StreamAllAsync()) { }
+var rows = await db.QueryAsync<Product>(query.Sql, query.Parameters);
 ```
 
+## Example: Create View from AST
 
-## Sample API Swagger
+```csharp
+var query = ForgeSql
+    .Select<Product>()
+    .Columns(x => x.Id, x => x.Name, x => x.Price)
+    .Where(x => x.Price > minPrice);
 
-Run the sample API and open `/swagger` to test raw SQL, object query, query builder, stored procedure, NextGen schema-aware SQL, trace visualizer, semantic search, API request reflection and bulk endpoints.
+var view = query
+    .AsView("vw_ExpensiveProducts", "dbo")
+    .WithReason("Create view from ForgeSql AST")
+    .Render(db.Provider);
+
+await artifactManager.CreateOrUpdateAsync(view.Artifact);
+```
+
+## Example: Create Stored Procedure from AST
+
+```csharp
+var proc = query
+    .AsProcedure("sp_GetExpensiveProducts", "dbo")
+    .WithParameter("@MinPrice", "DECIMAL(18,2)")
+    .WithReason("Create procedure from ForgeSql AST")
+    .Render(db.Provider);
+
+await artifactManager.CreateOrUpdateAsync(proc.Artifact);
+```

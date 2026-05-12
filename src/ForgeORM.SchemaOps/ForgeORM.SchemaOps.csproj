@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="..\ForgeORM.Abstractions\ForgeORM.Abstractions.csproj" />
+    <ProjectReference Include="..\ForgeORM.QueryAst.Artifacts\ForgeORM.QueryAst.Artifacts.csproj" />
+    <PackageReference Include="Dapper" Version="2.1.66" />
   </ItemGroup>
 </Project>

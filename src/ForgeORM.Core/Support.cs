@@ -154,7 +154,7 @@ internal sealed class ForgeTransaction : IForgeTransaction
     public static async Task<ForgeTransaction> BeginAsync(DbConnection connection, CancellationToken ct) => new(connection, await connection.BeginTransactionAsync(ct));
 
     public IEnumerable<T> Query<T>(string sql, object? parameters = null, int? timeoutSeconds = null) => _connection.Query<T>(sql, parameters, _transaction, false, timeoutSeconds).ToList();
-    public async Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default) => (await _connection.QueryAsync<T>(new CommandDefinition(sql, parameters, _transaction, timeoutSeconds, cancellationToken: cancellationToken))).ToList();
+    public async Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken  = default) => (await _connection.QueryAsync<T>(new CommandDefinition(sql, parameters, _transaction, timeoutSeconds, cancellationToken: cancellationToken))).ToList();
     public int Execute(string sql, object? parameters = null, int? timeoutSeconds = null) => _connection.Execute(sql, parameters, _transaction, timeoutSeconds);
     public Task<int> ExecuteAsync(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default) => _connection.ExecuteAsync(new CommandDefinition(sql, parameters, _transaction, timeoutSeconds, cancellationToken: cancellationToken));
     public T? ExecuteScalar<T>(string sql, object? parameters = null, int? timeoutSeconds = null) => _connection.ExecuteScalar<T>(sql, parameters, _transaction, timeoutSeconds);

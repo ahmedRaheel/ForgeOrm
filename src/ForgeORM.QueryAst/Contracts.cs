@@ -10,14 +10,12 @@ public interface IForgeAstSelectBuilder<T>
     IForgeAstSelectBuilder<T> Distinct();
     IForgeAstSelectBuilder<T> From(string? tableName = null);
     IForgeAstSelectBuilder<T> As(string alias);
-
     IForgeAstSelectBuilder<T> Where(Expression<Func<T, bool>> predicate);
     IForgeAstSelectBuilder<T> WhereSql(string condition, object? parameters = null);
     IForgeAstSelectBuilder<T> And(Expression<Func<T, bool>> predicate);
     IForgeAstSelectBuilder<T> AndSql(string condition, object? parameters = null);
     IForgeAstSelectBuilder<T> Or(Expression<Func<T, bool>> predicate);
     IForgeAstSelectBuilder<T> OrSql(string condition, object? parameters = null);
-
     IForgeAstSelectBuilder<T> Join(string table, string on);
     IForgeAstSelectBuilder<T> InnerJoin(string table, string on);
     IForgeAstSelectBuilder<T> LeftJoin(string table, string on);
@@ -26,21 +24,16 @@ public interface IForgeAstSelectBuilder<T>
     IForgeAstSelectBuilder<T> CrossJoin(string table);
     IForgeAstSelectBuilder<T> CrossApply(string tableExpression, string alias);
     IForgeAstSelectBuilder<T> OuterApply(string tableExpression, string alias);
-
     IForgeAstSelectBuilder<T> WithCte(string name, string sql);
     IForgeAstSelectBuilder<T> WithCte(ForgeCte cte);
-
     IForgeAstSelectBuilder<T> GroupBy(params Expression<Func<T, object>>[] columns);
     IForgeAstSelectBuilder<T> GroupBy(params string[] columns);
     IForgeAstSelectBuilder<T> HavingSql(string condition);
-
     IForgeAstSelectBuilder<T> OrderBy(Expression<Func<T, object>> column);
     IForgeAstSelectBuilder<T> OrderByDescending(Expression<Func<T, object>> column);
     IForgeAstSelectBuilder<T> OrderBySql(string orderBy);
-
     IForgeAstSelectBuilder<T> Skip(int rows);
     IForgeAstSelectBuilder<T> Take(int rows);
-
     ForgeRenderedSql Render(IForgeDatabaseProvider provider);
 }
 

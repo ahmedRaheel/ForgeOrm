@@ -1,1 +1,26 @@
-<Project Sdk="Microsoft.NET.Sdk" />
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>ForgeORM.Abstractions</PackageId>
+    <Version>1.0.0-preview.1</Version>
+    <Authors>Raheel Ahmed</Authors>
+    <Company>Forge Ecosystem</Company>
+    <RepositoryUrl>https://github.com/raaheelahmed/ForgeORM</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/raaheelahmed/ForgeORM</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>forgeorm-icon.png</PackageIcon>
+    <PackageTags>orm;micro-orm;dapper;efcore;sql;database;query-builder;bulk;dotnet;forgeorm</PackageTags>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <Title>ForgeORM.Abstractions</Title>
+    <Description>Core contracts, interfaces, attributes, models and provider abstractions for ForgeORM.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\assets\forgeorm-icon.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

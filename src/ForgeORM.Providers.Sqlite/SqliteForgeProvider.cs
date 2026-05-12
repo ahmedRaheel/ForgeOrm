@@ -9,7 +9,7 @@ namespace ForgeORM.Providers.Sqlite;
 public sealed class SqliteForgeProvider : IForgeDatabaseProvider
 {
     public string ProviderName => "Sqlite";
-    public ForgeSqlDialect Dialect { get; set; } = new() { Name = "Sqlite", ParameterPrefix = "@", OpenIdentifier = " ", CloseIdentifier = " " };
+    public ForgeSqlDialect Dialect { get; } = new() { Name = "Sqlite", ParameterPrefix = "@", OpenIdentifier = "\"", CloseIdentifier = "\"" };
     public ForgeProviderCapabilities Capabilities { get; } = new()
     {
         SupportsBulkInsert = true,

@@ -9,7 +9,7 @@ namespace ForgeORM.Providers.PostgreSql;
 public sealed class PostgreSqlForgeProvider : IForgeDatabaseProvider
 {
     public string ProviderName => "PostgreSql";
-    public ForgeSqlDialect Dialect { get; } = new() { Name = "PostgreSql", ParameterPrefix = "@", OpenIdentifier = " ", CloseIdentifier = " " };
+    public ForgeSqlDialect Dialect { get; } = new() { Name = "PostgreSql", ParameterPrefix = "@", OpenIdentifier = "\"", CloseIdentifier = "\"" };
     public ForgeProviderCapabilities Capabilities { get; } = new()
     {
         SupportsBulkInsert = true,

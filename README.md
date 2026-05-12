@@ -74,3 +74,18 @@ await tx.CommitAsync();
 ## Note
 
 This is a complete architectural foundation. Bulk engines are provider hooks with safe default implementations. Production-grade provider-specific TVP/COPY/array-binding engines can be evolved inside each provider without changing Core.
+
+
+## NextGen Dream APIs Added
+
+```csharp
+var rows = await db.SmartSql<Product>($"SELECT Id, Code, Name, Price FROM Products WHERE Price > {minPrice}")
+    .WhereSql($"Name <> {""}")
+    .AsCached(TimeSpan.FromMinutes(5))
+    .WithPolicy(new ForgeResiliencePolicy { RetryCount = 2 })
+    .ToShapeAsync<ProductDto>();
+
+var json = await db.SmartSql<Product>("SELECT * FROM Products").IntoJsonAsync();
+var plan = db.SmartSql<Product>("SELECT * FROM Products").Explain();
+await foreach (var item in db.SmartSql<Product>("SELECT * FROM Products").StreamAllAsync()) { }
+```

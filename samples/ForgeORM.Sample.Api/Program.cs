@@ -1,6 +1,7 @@
 using ForgeORM.Abstractions;
 using ForgeORM.AspNetCore;
 using ForgeORM.Intelligence;
+using ForgeORM.NextGen;
 using ForgeORM.QueryBuilder;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -51,6 +52,27 @@ app.MapPost("/sql/intelligence", (SqlRequest request, IForgeSqlIntelligence inte
             new ForgeTableSchema { Name = "Products", Columns = ["Id", "Code", "Name", "Price"] }
         ]
     });
+});
+
+
+app.MapGet("/products/nextgen", async (IForgeDb db) =>
+{
+    return await db.SmartSql<Product>($"SELECT Id, Code, Name, Price FROM Products WHERE Price > {10}")
+        .WhereSql($"Name <> {""}")
+        .AsCached(TimeSpan.FromMinutes(5))
+        .WithPolicy(new ForgeResiliencePolicy { RetryCount = 2, RetryDelay = TimeSpan.FromMilliseconds(100) })
+        .ToShapeAsync<Product>();
+});
+
+app.MapGet("/products/explain", (IForgeDb db) =>
+{
+    return db.SmartSql<Product>("SELECT Id, Code, Name, Price FROM Products")
+        .Explain();
+});
+
+app.MapGet("/schema/verify-products", (IForgeSchemaManager schema) =>
+{
+    return schema.VerifySchema<Product>();
 });
 
 app.MapPost("/products/bulk", async (List<Product> products, IForgeDb db) =>

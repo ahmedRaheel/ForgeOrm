@@ -3,6 +3,7 @@ using ForgeORM.Analytics;
 using ForgeORM.Core;
 using ForgeORM.Intelligence;
 using ForgeORM.Mapping;
+using ForgeORM.NextGen;
 using ForgeORM.Providers.MySql;
 using ForgeORM.Providers.Oracle;
 using ForgeORM.Providers.PostgreSql;
@@ -10,6 +11,7 @@ using ForgeORM.Providers.Sqlite;
 using ForgeORM.Providers.SqlServer;
 using ForgeORM.QueryBuilder;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace ForgeORM.AspNetCore;
 
@@ -41,6 +43,8 @@ public static class ForgeOrmServiceCollectionExtensions
         services.AddSingleton<IForgeDynamicQueryBuilder, ForgeDynamicQueryBuilder>();
         services.AddSingleton<IForgeObjectMapper, ReflectionForgeObjectMapper>();
         services.AddSingleton<IForgeSqlIntelligence, BasicForgeSqlIntelligence>();
+        services.AddMemoryCache();
+        services.AddScoped<IForgeSchemaManager, ForgeSchemaManager>();
         services.AddScoped<IForgeDb>(sp => new ForgeDb(options.ConnectionString, sp.GetRequiredService<IForgeDatabaseProvider>(), sp.GetRequiredService<IForgeEntityMetadataResolver>(), sp.GetRequiredService<IForgeQueryAnalyzer>()));
         return services;
     }

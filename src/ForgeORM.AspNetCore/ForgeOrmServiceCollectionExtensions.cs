@@ -40,7 +40,7 @@ public static class ForgeOrmServiceCollectionExtensions
         services.AddSingleton(options.Provider);
         services.AddSingleton<IForgeEntityMetadataResolver, ReflectionForgeEntityMetadataResolver>();
         services.AddSingleton<IForgeQueryAnalyzer, BasicForgeQueryAnalyzer>();
-        services.AddSingleton<IForgeDynamicQueryBuilder, ForgeDynamicQueryBuilder>();
+        services.AddSingleton<IForgeSelectQueryBuilder, ForgeDynamicQueryBuilder>();
         services.AddSingleton<IForgeObjectMapper, ReflectionForgeObjectMapper>();
         services.AddSingleton<IForgeSqlIntelligence, BasicForgeSqlIntelligence>();
         services.AddMemoryCache();

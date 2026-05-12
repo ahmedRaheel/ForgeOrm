@@ -41,7 +41,7 @@ app.MapGet("/products/{id:int}", async (int id, IForgeDb db) =>
 app.MapGet("/products/procedure", async (IForgeDb db) =>
     await db.QueryProcedureAsync<Product>("dbo.GetProducts"));
 
-app.MapGet("/query-builder", async (IForgeDynamicQueryBuilder qb, IForgeDb db) =>
+app.MapGet("/query-builder", async (IForgeSelectQueryBuilder qb, IForgeDb db) =>
 {
     var q = qb.Select("Id", "Code", "Name", "Price")
         .From("Products")

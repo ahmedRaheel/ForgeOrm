@@ -3,7 +3,7 @@ using ForgeORM.Abstractions;
 
 namespace ForgeORM.QueryBuilder;
 
-public interface IForgeDynamicQueryBuilder
+public interface IForgeSelectQueryBuilder
 {
     IForgeSelectBuilder Select(params string[] columns);
     IForgeSelectBuilder SelectAll();
@@ -25,7 +25,7 @@ public interface IForgeSelectBuilder
     ForgeBuiltQuery Build();
 }
 
-public sealed class ForgeDynamicQueryBuilder : IForgeDynamicQueryBuilder
+public sealed class ForgeDynamicQueryBuilder : IForgeSelectQueryBuilder
 {
     public IForgeSelectBuilder Select(params string[] columns) => new ForgeSelectBuilder(columns.Length == 0 ? ["*"] : columns);
     public IForgeSelectBuilder SelectAll() => new ForgeSelectBuilder(["*"]);

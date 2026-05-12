@@ -1,3 +1,4 @@
+using ForgeORM.QueryAst;
 using ForgeORM.Abstractions;
 using ForgeORM.AspNetCore;
 using ForgeORM.Intelligence;
@@ -127,6 +128,55 @@ app.MapPost("/products/bulk", async (List<Product> products, IForgeDb db) =>
     await db.BulkInsertAsync(products);
     return Results.Ok();
 });
+
+
+app.MapGet("/query-ast", async (IForgeDb db) =>
+{
+    var minPrice = 10m;
+
+    var query = ForgeSql
+        .Select<Product>()
+        .Columns(x => x.Id, x => x.Name, x => x.Price)
+        .Where(x => x.Price > minPrice)
+        .OrderByDescending(x => x.Id)
+        .Take(20)
+        .Render(db.Provider);
+
+    return await db.QueryAsync<Product>(query.Sql, query.Parameters);
+});
+
+app.MapGet("/query-cte", async (IForgeDb db) =>
+{
+    var query = ForgeSql
+        .Select<Product>()
+        .WithCte("LatestProducts", """
+            SELECT *, ROW_NUMBER() OVER(PARTITION BY Code ORDER BY Id DESC) rn
+            FROM Products
+        """)
+        .From("LatestProducts")
+        .WhereSql("rn = 1")
+        .Render(db.Provider);
+
+    return await db.QueryAsync<Product>(query.Sql, query.Parameters);
+});
+
+app.MapGet("/query-temp-table-script", (IForgeDb db) =>
+{
+    var script = ForgeSql.Script()
+        .CreateTempTable("#ProductIds", t => t
+            .Column("Id", "INT", nullable: false)
+            .PrimaryKey("Id"))
+        .InsertIntoTemp("#ProductIds", "SELECT Id FROM Products WHERE Price > @Price")
+        .Statement("""
+            SELECT p.*
+            FROM Products p
+            INNER JOIN #ProductIds ids ON ids.Id = p.Id
+        """)
+        .Render(db.Provider);
+
+    return Results.Ok(script.Sql);
+});
+
 
 app.Run();
 

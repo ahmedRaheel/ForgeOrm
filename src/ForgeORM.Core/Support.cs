@@ -73,8 +73,8 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     public Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default) => _db.QueryAsync<T>(BuildSql(), _parameters, cancellationToken: cancellationToken);
     public T? FirstOrDefault() { Take(1); return _db.QueryFirstOrDefault<T>(BuildSql(), _parameters); }
     public Task<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default) { Take(1); return _db.QueryFirstOrDefaultAsync<T>(BuildSql(), _parameters, cancellationToken: cancellationToken); }
-    public int Count() => _db.ExecuteScalar<int>("SELECT COUNT(1) FROM (" + BuildBaseSql() + ") ForgeCount");
-    public async Task<int> CountAsync(CancellationToken cancellationToken = default) => await _db.ExecuteScalarAsync<int>("SELECT COUNT(1) FROM (" + BuildBaseSql() + ") ForgeCount", cancellationToken: cancellationToken);
+    public int Count() => _db.ExecuteScalar<int>("SELECT COUNT(1) FROM (" + BuildBaseSql() + ") ForgeCount") ?? 0;
+    public async Task<int> CountAsync(CancellationToken cancellationToken = default) => await _db.ExecuteScalarAsync<int>("SELECT COUNT(1) FROM (" + BuildBaseSql() + ") ForgeCount", cancellationToken: cancellationToken) ?? 0;
 
     private string BuildSql()
     {
@@ -153,7 +153,7 @@ internal sealed class ForgeTransaction : IForgeTransaction
     public static ForgeTransaction Begin(DbConnection connection) => new(connection, connection.BeginTransaction());
     public static async Task<ForgeTransaction> BeginAsync(DbConnection connection, CancellationToken ct) => new(connection, await connection.BeginTransactionAsync(ct));
 
-    public IEnumerable<T> Query<T>(string sql, object? parameters = null, int? timeoutSeconds = null) => _connection.Query<T>(sql, parameters, _transaction, false, timeoutSeconds).ToList();
+    public IEnumerable<T> Query<T>(string sql, object? parameters = null, int? timeoutSeconds = null) => _connection.Query<T>(sql, parameters, _transaction, timeoutSeconds).ToList();
     public async Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default) => (await _connection.QueryAsync<T>(new CommandDefinition(sql, parameters, _transaction, timeoutSeconds, cancellationToken: cancellationToken))).ToList();
     public int Execute(string sql, object? parameters = null, int? timeoutSeconds = null) => _connection.Execute(sql, parameters, _transaction, timeoutSeconds);
     public Task<int> ExecuteAsync(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default) => _connection.ExecuteAsync(new CommandDefinition(sql, parameters, _transaction, timeoutSeconds, cancellationToken: cancellationToken));

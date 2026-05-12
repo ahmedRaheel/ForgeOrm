@@ -30,6 +30,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ForgeORM.Sample.Api", "samp
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ForgeORM.NextGen", "src\ForgeORM.NextGen\ForgeORM.NextGen.csproj", "{18BA354B-4296-47B1-A04F-C670E39224A4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ForgeORM.QueryAst", "src\ForgeORM.QueryAst\ForgeORM.QueryAst.csproj", "{C0C7AC33-FE40-4391-A575-6FF479DA0EFB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -92,6 +94,10 @@ Global
 		{18BA354B-4296-47B1-A04F-C670E39224A4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{18BA354B-4296-47B1-A04F-C670E39224A4}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{18BA354B-4296-47B1-A04F-C670E39224A4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C0C7AC33-FE40-4391-A575-6FF479DA0EFB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C0C7AC33-FE40-4391-A575-6FF479DA0EFB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C0C7AC33-FE40-4391-A575-6FF479DA0EFB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C0C7AC33-FE40-4391-A575-6FF479DA0EFB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -4,6 +4,7 @@
     <ProjectReference Include="..\ForgeORM.Core\ForgeORM.Core.csproj" />
     <ProjectReference Include="..\ForgeORM.Analytics\ForgeORM.Analytics.csproj" />
     <ProjectReference Include="..\ForgeORM.QueryBuilder\ForgeORM.QueryBuilder.csproj" />
+    <ProjectReference Include="..\ForgeORM.QueryAst\ForgeORM.QueryAst.csproj" />
     <ProjectReference Include="..\ForgeORM.Mapping\ForgeORM.Mapping.csproj" />
     <ProjectReference Include="..\ForgeORM.Intelligence\ForgeORM.Intelligence.csproj" />
     <ProjectReference Include="..\ForgeORM.NextGen\ForgeORM.NextGen.csproj" />

@@ -250,6 +250,85 @@ app.MapPost("/artifacts/procedure/product-list", async (ForgeDb db, ForgeArtifac
 })
 .WithTags("13 Artifacts");
 
+
+app.MapGet("/search/products/text", async (
+    string? code,
+    string? name,
+    decimal? minPrice,
+    decimal? maxPrice,
+    int page,
+    int pageSize,
+    ForgeDb db) =>
+{
+    return await db.Search<Product>()
+        .FromSql("SELECT Id, Code, Name, Price FROM dbo.Products")
+        .WhereIf(!string.IsNullOrWhiteSpace(code), "Code = @Code", new { Code = code })
+        .WhereIf(!string.IsNullOrWhiteSpace(name), "Name LIKE @Name", new { Name = $"%{name}%" })
+        .WhereIf(minPrice.HasValue, "Price >= @MinPrice", new { MinPrice = minPrice })
+        .WhereIf(maxPrice.HasValue, "Price <= @MaxPrice", new { MaxPrice = maxPrice })
+        .OrderBy("Id DESC")
+        .Page(page, pageSize)
+        .ToPagedAsync();
+})
+.WithTags("14 Universal Search");
+
+app.MapGet("/search/products/expression", async (
+    decimal? minPrice,
+    decimal? maxPrice,
+    int page,
+    int pageSize,
+    ForgeDb db) =>
+{
+    return await db.Search<Product>()
+        .From("dbo.Products")
+        .WhereIf(minPrice.HasValue, x => x.Price >= minPrice!.Value)
+        .WhereIf(maxPrice.HasValue, x => x.Price <= maxPrice!.Value)
+        .OrderBy("Id DESC")
+        .Page(page, pageSize)
+        .ToPagedAsync();
+})
+.WithTags("14 Universal Search");
+
+app.MapGet("/search/products/builder", async (
+    string? code,
+    string? name,
+    decimal? minPrice,
+    decimal? maxPrice,
+    int page,
+    int pageSize,
+    ForgeDb db) =>
+{
+    return await db.Search<Product>()
+        .Select("Id", "Code", "Name", "Price")
+        .From("dbo.Products")
+        .Optional("Code", code)
+        .OptionalLike("Name", name)
+        .OptionalBetween("Price", minPrice, maxPrice)
+        .OrderBy("Id DESC")
+        .Page(page, pageSize)
+        .ToPagedAsync();
+})
+.WithTags("14 Universal Search");
+
+app.MapGet("/search/products/procedure", async (
+    string? code,
+    string? name,
+    decimal? minPrice,
+    decimal? maxPrice,
+    int page,
+    int pageSize,
+    ForgeDb db) =>
+{
+    return await db.SearchProcedure<Product>("dbo.SearchProducts")
+        .WithOptional("Code", code)
+        .WithOptional("Name", name)
+        .WithOptional("MinPrice", minPrice)
+        .WithOptional("MaxPrice", maxPrice)
+        .Page(page, pageSize)
+        .ToListAsync();
+})
+.WithTags("14 Universal Search");
+
 app.Run();
 
 public sealed class ForgeDb

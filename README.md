@@ -93,3 +93,29 @@ var proc = query
 
 await artifactManager.CreateOrUpdateAsync(proc.Artifact);
 ```
+
+
+## Universal Search API
+
+Added non-breaking optional-search support for raw SQL, expressions, builder-style filters, and stored procedures.
+
+Sample endpoints:
+
+```text
+GET /search/products/text
+GET /search/products/expression
+GET /search/products/builder
+GET /search/products/procedure
+```
+
+Example:
+
+```csharp
+var result = await db.Search<Product>()
+    .FromSql("SELECT Id, Code, Name, Price FROM dbo.Products")
+    .WhereIf(!string.IsNullOrWhiteSpace(name), "Name LIKE @Name", new { Name = $"%{name}%" })
+    .OptionalBetween("Price", minPrice, maxPrice)
+    .OrderBy("Id DESC")
+    .Page(page, pageSize)
+    .ToPagedAsync();
+```

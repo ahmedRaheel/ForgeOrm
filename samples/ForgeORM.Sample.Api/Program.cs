@@ -6,12 +6,22 @@ using ForgeORM.QueryBuilder;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
 builder.Services.AddForgeOrm(options =>
 {
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")!);
 });
 
 var app = builder.Build();
+
+app.UseSwagger();
+app.UseSwaggerUI(options =>
+{
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "ForgeORM Sample API v1");
+    options.RoutePrefix = "swagger";
+});
 
 app.MapGet("/", () => "ForgeORM Complete All Features");
 
@@ -73,6 +83,43 @@ app.MapGet("/products/explain", (IForgeDb db) =>
 app.MapGet("/schema/verify-products", (IForgeSchemaManager schema) =>
 {
     return schema.VerifySchema<Product>();
+});
+
+
+app.MapGet("/nextgen/schema-aware", (IForgeDb db) =>
+{
+    var command = db.SchemaSql<Product>($"SELECT Id, Code, Name, Price FROM Products WHERE Price > {10}")
+        .ExecuteTransparent();
+
+    return Results.Ok(command);
+});
+
+app.MapGet("/nextgen/autojoin", async (IForgeDb db) =>
+{
+    return await db.SmartSql<Product>("SELECT Id, Code, Name, Price FROM Products")
+        .AutoJoin()
+        .SelectAutomatic()
+        .ToListAsync();
+});
+
+app.MapGet("/nextgen/trace", (IForgeDb db, IForgeTraceVisualizer visualizer) =>
+{
+    var trace = db.SmartSql<Product>("SELECT Id, Code, Name, Price FROM Products")
+        .TraceVisualizer(visualizer);
+
+    return Results.Ok(trace);
+});
+
+app.MapGet("/nextgen/semantic-search", async (IForgeDb db, IForgeSemanticSearch semanticSearch) =>
+{
+    var query = semanticSearch.SearchSemantic<Product>("Name", "keyboard", top: 10);
+    return await db.QueryAsync<Product>(query.Sql, query.Parameters);
+});
+
+app.MapGet("/nextgen/reflect-request", async (HttpContext http, IForgeRequestReflector reflector, IForgeDb db) =>
+{
+    var query = reflector.ReflectRequest<Product>(http);
+    return await db.QueryAsync<Product>(query.Sql, query.Parameters);
 });
 
 app.MapPost("/products/bulk", async (List<Product> products, IForgeDb db) =>

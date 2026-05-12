@@ -26,3 +26,50 @@ var rows = await db.SmartSql<Product>($"SELECT Id, Code, Name, Price FROM Produc
     .WithPolicy(new ForgeResiliencePolicy { RetryCount = 2 })
     .ToShapeAsync<ProductDto>();
 ```
+
+
+# IDE and Compiler Integration Layer
+
+## Schema-aware SQL
+
+```csharp
+var users = await db.SchemaSql<User>($"SELECT Id, Name FROM Users WHERE Id = {userId}")
+    .ToListAsync();
+```
+
+The `ForgeSqlInterpolatedStringHandler` captures parameters safely and prepares the API for Roslyn analyzer validation.
+
+## Ghost Projections
+
+```csharp
+var users = await db.SmartSql<User>("SELECT * FROM Users")
+    .SelectAutomatic()
+    .ToListAsync();
+```
+
+The runtime method is a no-op today; the intended analyzer/source-generator tracks property usage and rewrites SELECT columns.
+
+## Trace Visualizer
+
+```csharp
+var trace = db.SmartSql<User>("SELECT * FROM Users")
+    .TraceVisualizer(visualizer);
+```
+
+Returns a local trace URL contract containing SQL, parameters, provider name and hot-path warnings.
+
+## API-to-DB Reflection
+
+```csharp
+var query = reflector.ReflectRequest<User>(httpContext);
+```
+
+Converts query string filters into parameterized SQL. Production version should validate against indexed columns.
+
+## Semantic Search
+
+```csharp
+var query = semantic.SearchSemantic<User>("Bio", "experienced coder");
+```
+
+Provider-specific implementations can use pgvector, SQL Server vector search, Azure AI Search or other embedding backends.

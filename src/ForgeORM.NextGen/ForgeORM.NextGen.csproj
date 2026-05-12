@@ -3,5 +3,6 @@
     <ProjectReference Include="..\ForgeORM.Abstractions\ForgeORM.Abstractions.csproj" />
     <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
   </ItemGroup>
 </Project>

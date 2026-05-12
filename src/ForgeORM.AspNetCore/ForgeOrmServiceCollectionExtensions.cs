@@ -45,6 +45,9 @@ public static class ForgeOrmServiceCollectionExtensions
         services.AddSingleton<IForgeSqlIntelligence, BasicForgeSqlIntelligence>();
         services.AddMemoryCache();
         services.AddScoped<IForgeSchemaManager, ForgeSchemaManager>();
+        services.AddSingleton<IForgeTraceVisualizer, LocalForgeTraceVisualizer>();
+        services.AddSingleton<IForgeRequestReflector, ForgeRequestReflector>();
+        services.AddSingleton<IForgeSemanticSearch, ForgeSemanticSearch>();
         services.AddScoped<IForgeDb>(sp => new ForgeDb(options.ConnectionString, sp.GetRequiredService<IForgeDatabaseProvider>(), sp.GetRequiredService<IForgeEntityMetadataResolver>(), sp.GetRequiredService<IForgeQueryAnalyzer>()));
         return services;
     }

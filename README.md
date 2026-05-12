@@ -89,3 +89,8 @@ var json = await db.SmartSql<Product>("SELECT * FROM Products").IntoJsonAsync();
 var plan = db.SmartSql<Product>("SELECT * FROM Products").Explain();
 await foreach (var item in db.SmartSql<Product>("SELECT * FROM Products").StreamAllAsync()) { }
 ```
+
+
+## Sample API Swagger
+
+Run the sample API and open `/swagger` to test raw SQL, object query, query builder, stored procedure, NextGen schema-aware SQL, trace visualizer, semantic search, API request reflection and bulk endpoints.

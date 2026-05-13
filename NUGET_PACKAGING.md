@@ -21,4 +21,4 @@ dotnet nuget push "**/*.nupkg" --api-key YOUR_NUGET_API_KEY --source https://api
 - Source projects are packable.
 - Sample project is marked `IsPackable=false`.
 - Shared README and icon are included in every source package.
-- Version: `1.0.0-preview.1`.
+- Version: `1.0.1`.

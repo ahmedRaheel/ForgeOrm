@@ -4,6 +4,9 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\ForgeORM.AspNetCore\ForgeORM.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\ForgeORM.Analytics\ForgeORM.Analytics.csproj" />
+    <ProjectReference Include="..\..\src\ForgeORM.Abstractions\ForgeORM.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\ForgeORM.Core\ForgeORM.Core.csproj" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
     <ProjectReference Include="..\..\src\ForgeORM.NextGen\ForgeORM.NextGen.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.QueryBuilder\ForgeORM.QueryBuilder.csproj" />

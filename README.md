@@ -181,3 +181,53 @@ enterprise-grade
 future-ready
 Author
 Developed by Raheel Ahmed
+
+---
+
+# ForgeORM V1, V2, V3 Platform Update
+
+This solution now includes V1, V2 and V3 platform modules in the existing tested base code.
+
+## V1 Core
+
+- Hybrid ORM foundation
+- Advanced query builder
+- Provider-oriented SQL rendering
+- Compiled query cache
+- Sample endpoints:
+  - `/v1-v3/features`
+  - `/v1/advanced-query/products`
+  - `/v1/compiled-query-cache/demo`
+
+## V2 Enterprise
+
+- Multi-tenancy abstractions
+- Audit helpers
+- In-memory cache provider
+- In-memory outbox provider
+- Reporting SQL builder
+- Enterprise SQL analyzer
+- Sample endpoints:
+  - `/v2/reporting/products-by-category`
+  - `/v2/cache/demo`
+  - `/v2/outbox/demo`
+  - `/v2/analyze-sql`
+
+## V3 AI First
+
+- AI query generation abstraction
+- AI query diagnostics
+- AI CRUD API generation
+- AI migration plan generation
+- Schema scaffolding extension point
+- Sample endpoints:
+  - `/v3/ai/query`
+  - `/v3/ai/generate-api`
+  - `/v3/ai/migration-plan`
+
+## Extension Points
+
+- Replace `ForgeAiAssistant` with OpenAI, Azure OpenAI or Ollama implementation.
+- Replace `InMemoryForgeCacheProvider` with Redis.
+- Replace `InMemoryForgeOutboxStore` with SQL Server/PostgreSQL persistent outbox.
+- Extend `ForgeReportingEngine` for Excel/PDF export.

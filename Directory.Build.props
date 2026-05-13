@@ -1,11 +1,28 @@
-<Project>
+<Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    
+    <!-- Multi Target -->
+    <TargetFrameworks>net10.0;net8.0</TargetFrameworks>
+
+    <!-- Language -->
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- NuGet Metadata -->
     <Authors>Raheel Ahmed</Authors>
     <Company>Forge Ecosystem</Company>
+
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+
+    <!-- Recommended -->
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+
+    <!-- Optional but Recommended -->
+    <RepositoryUrl>https://github.com/DeveloperLabAI</RepositoryUrl>
+    <PackageProjectUrl>https://icy-island-0d6ce2710.7.azurestaticapps.net</PackageProjectUrl>
+
   </PropertyGroup>
+
 </Project>

@@ -25,4 +25,7 @@
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
     <None Include="..\..\assets\forgeorm-icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ForgeORM.EventSourcing\ForgeORM.EventSourcing.csproj" />
+  </ItemGroup>
 </Project>

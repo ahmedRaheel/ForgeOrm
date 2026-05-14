@@ -2,7 +2,11 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace ForgeORM.VectorSearch;
 
-public sealed record ForgeVectorDocument(string Id, string Text, float[] Embedding, IReadOnlyDictionary<string, string>? Metadata = null);
+public sealed record ForgeVectorDocument(
+    string Id,
+    float[] Vector,
+    string Text,
+    IReadOnlyDictionary<string, string> Metadata);
 public sealed record ForgeVectorSearchResult(string Id, string Text, double Score, IReadOnlyDictionary<string, string>? Metadata = null);
 
 public interface IForgeVectorStore
@@ -26,15 +30,25 @@ public sealed class ForgeInMemoryVectorStore : IForgeVectorStore
         return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyList<ForgeVectorSearchResult>> SearchAsync(float[] queryVector, int topK = 5, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<ForgeVectorSearchResult>> SearchAsync(
+     float[] queryVector,
+     int topK = 5,
+     CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(queryVector);
+
         lock (_gate)
         {
             var result = _documents
-                .Select(d => new ForgeVectorSearchResult(d.Id, d.Text, ForgeVectorMath.CosineSimilarity(queryVector, d.Embedding), d.Metadata))
+                .Select(d => new ForgeVectorSearchResult(
+                    d.Id,
+                    d.Text,
+                    ForgeVectorMath.CosineSimilarity(queryVector, d.Vector),
+                    d.Metadata))
                 .OrderByDescending(x => x.Score)
                 .Take(topK)
                 .ToList();
+
             return Task.FromResult<IReadOnlyList<ForgeVectorSearchResult>>(result);
         }
     }

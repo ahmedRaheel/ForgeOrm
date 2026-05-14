@@ -22,6 +22,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddForgeMemoryQueryCaching();
 builder.Services.AddForgeTelemetry();
@@ -44,6 +45,7 @@ builder.Services.AddForgeAiObservability();
 builder.Services.AddForgeAiMemory();
 
 var app = builder.Build();
+app.UseCors();
 app.UseSwagger();
 app.UseSwaggerUI();
 
@@ -107,11 +109,42 @@ app.MapPost("/studio/rag/context", async (RagQuestionRequest request, IForgeRagE
 app.MapPost("/studio/workflows/run", async (ForgeWorkflowDefinition workflow, IForgeWorkflowEngine engine) => Results.Ok(await engine.RunAsync(workflow)));
 app.MapPost("/studio/workflows/designer", (ForgeWorkflowDefinition workflow, IForgeWorkflowEngine engine) => Results.Ok(engine.ToDesignerModel(workflow)));
 
-app.MapPost("/studio/events/append", async (AppendEventRequest request, IForgeEventStore store) =>
-{
-    await store.AppendAsync(request.StreamId, [new StudioEvent(request.StreamId, request.Name, DateTimeOffset.UtcNow)]);
-    return Results.Ok(new { appended = true, request.StreamId });
-});
+app.MapPost("/studio/events/append",
+    async (
+        AppendEventRequest request,
+        IForgeEventStore store) =>
+    {
+        if (string.IsNullOrWhiteSpace(request.StreamId))
+            return Results.BadRequest("StreamId is required.");
+
+        if (string.IsNullOrWhiteSpace(request.EventType))
+            return Results.BadRequest("EventType is required.");
+
+        var studioEvent = new StudioEvent
+        {
+            Id = Guid.NewGuid(),
+            Type = request.EventType,
+            Title = request.EventType,
+            Description = $"Event appended to stream {request.StreamId}",
+            Payload = request.Data,
+            TenantId = request.TenantId,
+            UserId = request.UserId,
+            Severity = "Information",
+            CreatedAt = DateTimeOffset.UtcNow,
+            Metadata = request.Metadata
+        };
+
+        await store.AppendAsync(
+            request.StreamId,
+            new IForgeEvent[] { studioEvent });
+
+        return Results.Ok(new
+        {
+            appended = true,
+            request.StreamId,
+            eventId = studioEvent.Id
+        });
+    });
 app.MapGet("/studio/events/{streamId}", async (string streamId, IForgeEventStore store) => Results.Ok(await store.ReadStreamAsync(streamId)));
 
 app.MapPost("/studio/realtime/publish", async (ForgeRealtimeEvent evt, IForgeRealtimeHub hub) =>
@@ -121,13 +154,29 @@ app.MapPost("/studio/realtime/publish", async (ForgeRealtimeEvent evt, IForgeRea
 });
 
 app.MapPost("/studio/agents/run", async (ForgeAgentTask task, ForgeAgentRunner runner) => Results.Ok(await runner.RunAllAsync(task)));
-app.MapPost("/studio/lowcode/erp", (GenerateErpRequest request, IForgeLowCodeEngine lowCode) => Results.Ok(lowCode.GenerateErp(request.BusinessDomain, request.Modules)));
+app.MapPost("/studio/lowcode/erp", (GenerateErpRequest request, IForgeLowCodeEngine lowCode) =>
+{
+    var domain = string.IsNullOrWhiteSpace(request.CompanyName)
+        ? request.Industry
+        : $"{request.CompanyName} {request.Industry}";
+
+    return Results.Ok(lowCode.GenerateErp(domain, request.Modules));
+});
 app.MapPost("/studio/cloud/deployment", (CloudDeploymentRequest request, IForgeDeploymentGenerator generator) => Results.Ok(generator.Generate(request)));
-app.MapPost("/studio/identity/authorize", (AuthorizeRequest request, IForgePolicyEngine policies) => Results.Ok(policies.Authorize(request.Principal, request.Requirement)));
-app.MapPost("/studio/sync", async (SyncRequest request, IForgeSyncEngine sync) => Results.Ok(await sync.SynchronizeAsync(request.Local, request.Remote)));
+app.MapPost("/studio/identity/authorize", (ForgeORM.Identity.AuthorizeRequest request, IForgePolicyEngine policies) =>
+{
+    var decision = policies.Authorize(request.ToPrincipal(), request.ToRequirement());
+    return Results.Ok(new AuthorizationResult
+    {
+        IsAuthorized = decision.Allowed,
+        Policy = $"{request.Resource}:{request.Action}",
+        Reason = decision.Reason
+    });
+});
+app.MapPost("/studio/sync", async (SyncRequest request, IForgeSyncEngine sync) => Results.Ok(await sync.SynchronizeAsync(request)));
 app.MapPost("/studio/marketplace/publish", (ForgeMarketplaceItem item, IForgeMarketplaceCatalog catalog) => { catalog.Publish(item); return Results.Ok(item); });
 app.MapGet("/studio/marketplace", (string? q, string? category, IForgeMarketplaceCatalog catalog) => Results.Ok(catalog.Search(q, category)));
-app.MapPost("/studio/federated/plan", (FederatedPlanRequest request, IForgeFederatedQueryPlanner planner) => Results.Ok(planner.Plan(request.Query, request.Sources)));
+app.MapPost("/studio/federated/plan", (FederatedPlanRequest request, IForgeFederatedQueryPlanner planner) => Results.Ok(planner.Plan(request)));
 app.MapPost("/studio/time-travel/sql", (TimeTravelQuery request, IForgeTimeTravelSqlBuilder builder) => Results.Ok(builder.BuildSql(request)));
 app.MapGet("/studio/observability/ai", (IForgeTelemetry telemetry, IForgeAiObservabilityAnalyzer analyzer) => Results.Ok(analyzer.Analyze(telemetry.Snapshot())));
 app.MapPost("/studio/memory/remember", async (ForgeMemoryEntry entry, IForgeAiMemoryStore memory) => { await memory.RememberAsync(entry); return Results.Ok(entry); });

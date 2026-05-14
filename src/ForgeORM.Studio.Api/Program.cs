@@ -163,7 +163,7 @@ app.MapPost("/studio/lowcode/erp", (GenerateErpRequest request, IForgeLowCodeEng
     return Results.Ok(lowCode.GenerateErp(domain, request.Modules));
 });
 app.MapPost("/studio/cloud/deployment", (CloudDeploymentRequest request, IForgeDeploymentGenerator generator) => Results.Ok(generator.Generate(request)));
-app.MapPost("/studio/identity/authorize", (ForgeORM.Identity.  AuthorizeRequest request, IForgePolicyEngine policies) =>
+app.MapPost("/studio/identity/authorize", (ForgeORM.Identity. AuthorizeRequest request, IForgePolicyEngine policies) =>
 {
     var decision = policies.Authorize(request.ToPrincipal(), request.ToRequirement());
     return Results.Ok(new AuthorizationResult

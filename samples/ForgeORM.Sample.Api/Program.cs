@@ -95,8 +95,8 @@ app.MapGet("/builder/ast/products", async (decimal minPrice, ForgeDbContext db) 
         .From("dbo.Products p")
         .LeftJoin<Category>((p, c) => p.CategoryId == c.Id)
         .Columns("p.Id", "p.Code", "p.Name", "p.Price", "c.Name AS CategoryName")
-        .Where(x => x.Price > minPrice)
-        .OrderByDescending(x => x.Id)
+        .WhereSql("p.Price > @MinPrice", new { MinPrice = minPrice })
+        .OrderBySql("p.Id DESC")
         .Take(20)
         .Render(db.Provider);
 
@@ -348,6 +348,58 @@ app.MapGet("/search/products/procedure", async (
 .WithTags("14 Universal Search");
 
 
+
+app.MapGet("/orders/customer/{customerId:int}/summary-records", async (int customerId, ForgeDbContext db, CancellationToken ct) =>
+    Results.Ok(await db.QueryAsync<OrderSummaryRecord>(
+        """
+        SELECT Id, OrderNo, Status, GrandTotal, CreatedAt
+        FROM dbo.Orders
+        WHERE CustomerId = @customerId
+        ORDER BY CreatedAt DESC
+        """,
+        new { customerId },
+        cancellationToken: ct)))
+.WithTags("15 Record Mapping");
+
+app.MapPost("/orders/insert-dto", async (CreateOrderRequest request, ForgeDbContext db, CancellationToken ct) =>
+{
+    var inserted = await db.InsertAsync<Order, CreateOrderRequest>(request, ct);
+    return Results.Ok(new { Inserted = inserted });
+})
+.WithTags("16 DTO Insert");
+
+app.MapPost("/orders/insert-graph-tvp", async (CreateOrderRequest request, ForgeDbContext db, CancellationToken ct) =>
+{
+    request.GrandTotal = request.Items.Sum(x => x.Quantity * x.UnitPrice);
+
+    var id = await db.InsertGraphAsync<Order, CreateOrderRequest, int>(
+        request,
+        graph =>
+        {
+            graph.Parent().Key(x => x.Id);
+            graph.Children<OrderItem, CreateOrderItemRequest>(x => x.Items)
+                .ForeignKey(x => x.OrderId)
+                .UseSqlServerTvp("dbo.OrderItemTvp", "dbo.InsertOrderItemsTvp");
+        },
+        ct);
+
+    return Results.Created($"/orders/{id}", new { Id = id, request.OrderNo, request.GrandTotal, Items = request.Items.Count });
+})
+.WithTags("17 Graph Insert TVP");
+
+
+app.MapGet("/orders/status/{status}", async (OrderStatus status, ForgeDbContext db, CancellationToken ct) =>
+    Results.Ok(await db.QueryAsync<OrderSummaryRecord>(
+        """
+        SELECT Id, OrderNo, Status, GrandTotal, CreatedAt
+        FROM dbo.Orders
+        WHERE Status = @status
+        ORDER BY CreatedAt DESC
+        """,
+        new { status },
+        cancellationToken: ct)))
+.WithTags("18 Enum Mapping");
+
 app.MapGet("/v2/cache/demo", async (IForgeQueryCache cache) =>
 {
     var value = await cache.GetOrCreateAsync("demo:products", _ => Task.FromResult(new { CachedAtUtc = DateTimeOffset.UtcNow, Source = "ForgeORM cache" }), TimeSpan.FromMinutes(5));
@@ -405,7 +457,60 @@ public sealed class Brand { public int Id { get; set; } public string Name { get
 [ForgeTable("Customers")]
 public sealed class Customer { public int Id { get; set; } public string Name { get; set; } = ""; public string Email { get; set; } = ""; public CustomerProfile? Profile { get; set; } public List<Order> Orders { get; set; } = []; }
 public sealed class CustomerProfile { public int Id { get; set; } public int CustomerId { get; set; } public string Phone { get; set; } = ""; public string City { get; set; } = ""; }
-public sealed class Order { public int Id { get; set; } public int CustomerId { get; set; } public DateTime OrderDate { get; set; } public decimal TotalAmount { get; set; } }
+[ForgeTable("Orders")]
+public sealed class Order
+{
+    public int Id { get; set; }
+    public int CustomerId { get; set; }
+    public string OrderNo { get; set; } = "";
+    public OrderStatus Status { get; set; } = OrderStatus.Draft;
+    public decimal GrandTotal { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTime OrderDate { get; set; } = DateTime.UtcNow;
+    public decimal TotalAmount { get; set; }
+    public List<OrderItem> Items { get; set; } = [];
+}
+
+[ForgeTable("OrderItems")]
+public sealed class OrderItem
+{
+    public int Id { get; set; }
+    public int OrderId { get; set; }
+    public int ProductId { get; set; }
+    public int Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal LineTotal { get; set; }
+}
+
 public sealed class ProductCategory { public int ProductId { get; set; } public int CategoryId { get; set; } }
-public sealed class ProductListItem { public int Id { get; set; } public string Code { get; set; } = ""; public string Name { get; set; } = ""; public decimal Price { get; set; } public string? CategoryName { get; set; } public string? BrandName { get; set; } }
+public sealed record ProductListItem(int Id, string Code, string Name, decimal Price, string? CategoryName, string? BrandName);
+public sealed record OrderSummaryRecord(int Id, string OrderNo, OrderStatus Status, decimal GrandTotal, DateTimeOffset CreatedAt);
+public enum OrderStatus
+{
+    Draft = 0,
+    Pending = 1,
+    Paid = 2,
+    Shipped = 3,
+    Completed = 4,
+    Cancelled = 5
+}
+
 public sealed class ProductCreateRequest { public string Code { get; set; } = ""; public string Name { get; set; } = ""; public decimal Price { get; set; } public int? CategoryId { get; set; } public int? BrandId { get; set; } }
+public sealed class CreateOrderRequest
+{
+    public int CustomerId { get; set; }
+    public string OrderNo { get; set; } = "";
+    public OrderStatus Status { get; set; } = OrderStatus.Draft;
+    public decimal GrandTotal { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTime OrderDate { get; set; } = DateTime.UtcNow;
+    public decimal TotalAmount { get; set; }
+    public List<CreateOrderItemRequest> Items { get; set; } = [];
+}
+public sealed class CreateOrderItemRequest
+{
+    public int ProductId { get; set; }
+    public int Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal LineTotal => Quantity * UnitPrice;
+}

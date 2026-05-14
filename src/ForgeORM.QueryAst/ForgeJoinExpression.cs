@@ -21,6 +21,8 @@ internal sealed partial class ForgeAstSelectBuilder<T>
 
     private static string Member(Expression expression)
     {
+        expression = StripConvert(expression);
+
         if (expression is MemberExpression member)
         {
             if (member.Expression is ParameterExpression parameter)
@@ -29,7 +31,20 @@ internal sealed partial class ForgeAstSelectBuilder<T>
             return member.Member.Name;
         }
 
-        throw new NotSupportedException("Join condition must use member expressions.");
+        throw new NotSupportedException($"Join condition must use member expressions. Found: {expression.NodeType} - {expression}");
+    }
+
+    private static Expression StripConvert(Expression expression)
+    {
+        while (expression is UnaryExpression unary &&
+               (unary.NodeType == ExpressionType.Convert ||
+                unary.NodeType == ExpressionType.ConvertChecked ||
+                unary.NodeType == ExpressionType.TypeAs))
+        {
+            expression = unary.Operand;
+        }
+
+        return expression;
     }
 
     private static string Operator(ExpressionType type)

@@ -3,6 +3,7 @@ using System.Data;
 using System.Dynamic;
 using System.Data.Common;
 using System.Reflection;
+using ForgeORM.Abstractions;
 
 namespace ForgeORM.Core;
 
@@ -106,8 +107,21 @@ internal static class ForgeAdo
         if (!name.StartsWith('@')) name = "@" + name;
         var parameter = command.CreateParameter();
         parameter.ParameterName = name;
-        parameter.Value = value ?? DBNull.Value;
+        parameter.Value = NormalizeParameterValue(value) ?? DBNull.Value;
         command.Parameters.Add(parameter);
+    }
+
+    private static object? NormalizeParameterValue(object? value)
+    {
+        if (value is null || value is DBNull) return value;
+
+        var valueType = value.GetType();
+        var enumType = Nullable.GetUnderlyingType(valueType) ?? valueType;
+
+        if (enumType.IsEnum)
+            return value.ToString(); // default ForgeORM behavior: enums are stored as readable strings
+
+        return value;
     }
 
     public static T Map<T>(DbDataReader reader)
@@ -121,26 +135,138 @@ internal static class ForgeAdo
             return (T)row;
         }
 
-        if (targetType == typeof(string) || targetType.IsPrimitive || targetType.IsEnum || targetType == typeof(decimal) || targetType == typeof(DateTime) || targetType == typeof(Guid))
+        if (IsSimple(targetType))
             return ConvertValue<T>(reader.IsDBNull(0) ? null : reader.GetValue(0))!;
 
+        var parameterless = targetType.GetConstructor(Type.EmptyTypes);
+        return parameterless is not null
+            ? MapByProperties<T>(reader)
+            : MapByConstructor<T>(reader);
+    }
+
+    private static T MapByProperties<T>(DbDataReader reader)
+    {
         var instance = Activator.CreateInstance<T>();
-        var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanWrite).ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
+        var props = typeof(T)
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanWrite)
+            .ToDictionary(p => ResolveColumnName(p), StringComparer.OrdinalIgnoreCase);
+
         for (var i = 0; i < reader.FieldCount; i++)
         {
             if (!props.TryGetValue(reader.GetName(i), out var prop) || reader.IsDBNull(i)) continue;
-            var value = reader.GetValue(i);
-            var propType = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
-            prop.SetValue(instance, propType.IsEnum ? Enum.ToObject(propType, value) : Convert.ChangeType(value, propType));
+            prop.SetValue(instance, ConvertTo(reader.GetValue(i), prop.PropertyType));
         }
         return instance;
+    }
+
+    private static T MapByConstructor<T>(DbDataReader reader)
+    {
+        var type = typeof(T);
+        var columns = GetColumnLookup(reader);
+        var constructors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+            .OrderByDescending(c => c.GetParameters().Length)
+            .ToList();
+
+        foreach (var ctor in constructors)
+        {
+            var parameters = ctor.GetParameters();
+            var values = new object?[parameters.Length];
+            var canUse = true;
+
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                var parameter = parameters[i];
+                if (!columns.TryGetValue(parameter.Name ?? string.Empty, out var ordinal))
+                {
+                    if (!parameter.HasDefaultValue && IsRequiredConstructorParameter(parameter.ParameterType))
+                    {
+                        canUse = false;
+                        break;
+                    }
+                    values[i] = parameter.HasDefaultValue ? parameter.DefaultValue : GetDefault(parameter.ParameterType);
+                    continue;
+                }
+
+                values[i] = reader.IsDBNull(ordinal)
+                    ? GetDefault(parameter.ParameterType)
+                    : ConvertTo(reader.GetValue(ordinal), parameter.ParameterType);
+            }
+
+            if (canUse)
+                return (T)ctor.Invoke(values);
+        }
+
+        throw new InvalidOperationException($"ForgeORM could not map result to {type.FullName}. Add a parameterless constructor or make constructor parameter names match selected column aliases.");
+    }
+
+    private static Dictionary<string, int> GetColumnLookup(DbDataReader reader)
+    {
+        var columns = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < reader.FieldCount; i++)
+            columns[reader.GetName(i)] = i;
+        return columns;
+    }
+
+    private static bool IsSimple(Type type)
+    {
+        type = Nullable.GetUnderlyingType(type) ?? type;
+        return type == typeof(string)
+            || type.IsPrimitive
+            || type.IsEnum
+            || type == typeof(decimal)
+            || type == typeof(DateTime)
+            || type == typeof(DateTimeOffset)
+            || type == typeof(Guid)
+            || type == typeof(TimeSpan);
+    }
+
+    private static object? ConvertTo(object? value, Type targetType)
+    {
+        if (value is null || value is DBNull) return GetDefault(targetType);
+        var type = Nullable.GetUnderlyingType(targetType) ?? targetType;
+        if (type.IsEnum)
+        {
+            if (value is string text)
+                return Enum.Parse(type, text, ignoreCase: true);
+            return Enum.ToObject(type, value);
+        }
+        if (type == typeof(Guid)) return value is Guid g ? g : Guid.Parse(value.ToString()!);
+        if (type == typeof(DateTimeOffset)) return value is DateTimeOffset dto ? dto : new DateTimeOffset(Convert.ToDateTime(value));
+        if (type == typeof(TimeSpan)) return value is TimeSpan ts ? ts : TimeSpan.Parse(value.ToString()!);
+        if (type == typeof(string)) return value.ToString();
+        if (type.IsAssignableFrom(value.GetType())) return value;
+        return Convert.ChangeType(value, type);
+    }
+
+    private static object? GetDefault(Type type)
+    {
+        var nullable = Nullable.GetUnderlyingType(type);
+        if (nullable is not null) return null;
+        return type.IsValueType ? Activator.CreateInstance(type) : null;
+    }
+
+    private static bool IsRequiredConstructorParameter(Type type)
+        => Nullable.GetUnderlyingType(type) is null && type.IsValueType;
+
+    private static string ResolveColumnName(PropertyInfo property)
+    {
+        var attr = property.GetCustomAttributes(false)
+            .FirstOrDefault(x => x.GetType().Name == "ForgeColumnAttribute");
+        var name = attr?.GetType().GetProperty("Name")?.GetValue(attr)?.ToString();
+        return string.IsNullOrWhiteSpace(name) ? property.Name : name!;
     }
 
     private static T? ConvertValue<T>(object? value)
     {
         if (value is null || value is DBNull) return default;
         var type = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
-        if (type.IsEnum) return (T)Enum.ToObject(type, value);
+        if (type.IsEnum)
+        {
+            if (value is string text)
+                return (T)Enum.Parse(type, text, ignoreCase: true);
+            return (T)Enum.ToObject(type, value);
+        }
         if (value is T typed) return typed;
         return (T)Convert.ChangeType(value, type);
     }

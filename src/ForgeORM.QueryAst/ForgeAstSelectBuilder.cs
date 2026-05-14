@@ -317,9 +317,12 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
         Expression<Func<T, TJoin, bool>> on)
     {
         var table = ResolveTableName(typeof(TJoin));
+        var rightAlias = on.Parameters.Count > 1 && !string.IsNullOrWhiteSpace(on.Parameters[1].Name)
+            ? on.Parameters[1].Name!
+            : typeof(TJoin).Name[..1].ToLowerInvariant();
         var joinCondition = ForgeJoinExpression.Translate<T, TJoin>(on);
 
-        _joins.Add($"{joinType} {table} ON {joinCondition}");
+        _joins.Add($"{joinType} {table} {rightAlias} ON {joinCondition}");
 
         return this;
     }

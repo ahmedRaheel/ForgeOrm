@@ -1,16 +1,17 @@
 
 using ForgeORM.Abstractions;
-using ForgeORM.AspNetCore;
-using ForgeORM.Core;
 using ForgeORM.AI.Advanced;
+using ForgeORM.AspNetCore;
+using ForgeORM.Caching.Redis;
+using ForgeORM.Core;
 using ForgeORM.Core.Search;
 using ForgeORM.QueryAst;
 using ForgeORM.QueryAst.Artifacts;
 using ForgeORM.SchemaOps;
-using ForgeORM.Caching.Redis;
 using ForgeORM.Security;
 using ForgeORM.Telemetry;
 using ForgeORM.VectorSearch;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,7 +26,10 @@ builder.Services.AddForgeSecurity();
 builder.Services.AddForgeInMemoryVectorSearch();
 builder.Services.AddForgeAdvancedAi();
 
-
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
 var app = builder.Build();
 
 app.UseSwagger();

@@ -29,7 +29,7 @@ internal sealed class ForgeGridReader : IForgeGridReader
 
         var rows = new List<T>();
         while (await _reader.ReadAsync())
-            rows.Add(ForgeAdo.Map<T>(_reader));
+            rows.Add(ForgeMaterializer.Map<T>(_reader));
 
         _hasConsumedCurrentResult = true;
         return rows;

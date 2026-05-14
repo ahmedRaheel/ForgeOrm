@@ -1,8 +1,9 @@
-using ForgeORM.Abstractions;
-using ForgeORM.QueryBuilder;
-using ForgeORM.Analytics;
-using ForgeORM.Intelligence;
-using ForgeORM.Core;
+
+using ForgeORM.AI.Advanced;
+using ForgeORM.Caching.Redis;
+using ForgeORM.Security;
+using ForgeORM.Telemetry;
+using ForgeORM.VectorSearch;
 using System.Data;
 using System.Data.Common;
 using System.Linq.Expressions;
@@ -19,12 +20,12 @@ builder.Services.AddSingleton<ForgeDb>();
 builder.Services.AddSingleton<ForgeArtifactManager>();
 builder.Services.AddSingleton<ForgeDynamicQueryBuilder>();
 
-builder.Services.AddSingleton<InMemoryForgeCompiledQueryCache>();
-builder.Services.AddSingleton<InMemoryForgeCacheProvider>();
-builder.Services.AddSingleton<InMemoryForgeOutboxStore>();
-builder.Services.AddSingleton<ForgeReportingEngine>();
-builder.Services.AddSingleton<ForgeAiAssistant>();
-builder.Services.AddSingleton<ForgeEnterpriseAnalyzer>();
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddForgeMemoryQueryCaching();
+builder.Services.AddForgeTelemetry();
+builder.Services.AddForgeSecurity();
+builder.Services.AddForgeInMemoryVectorSearch();
+builder.Services.AddForgeAdvancedAi();
 
 
 var app = builder.Build();
@@ -343,120 +344,51 @@ app.MapGet("/search/products/procedure", async (
 .WithTags("14 Universal Search");
 
 
-app.MapGet("/v1-v3/features", () => ForgePlatform.Modules)
-    .WithTags("00 ForgeORM V1-V3 Platform");
-
-app.MapGet("/v1/advanced-query/products", (
-    string? name,
-    decimal? minPrice,
-    int page,
-    int pageSize) =>
+app.MapGet("/v2/cache/demo", async (IForgeQueryCache cache) =>
 {
-    var query = new ForgeAdvancedQuery<Product>()
-        .From("dbo.Products")
-        .Select("Id", "Code", "Name", "Price")
-        .WhereIf(!string.IsNullOrWhiteSpace(name), "Name LIKE @Name", new { Name = $"%{name}%" })
-        .WhereIf(minPrice.HasValue, "Price >= @MinPrice", new { MinPrice = minPrice })
-        .OrderBy("Id DESC")
-        .Page(page, pageSize)
-        .Build("SqlServer");
-
-    return Results.Ok(query);
-})
-.WithTags("15 V1 Advanced Query Engine");
-
-app.MapGet("/v1/compiled-query-cache/demo", (InMemoryForgeCompiledQueryCache cache) =>
-{
-    var key = new ForgeCompiledQueryKey("SqlServer", "Product", "ActiveProductsPage");
-    if (!cache.TryGet(key, out var sql))
-    {
-        sql = "SELECT Id, Code, Name, Price FROM dbo.Products WHERE IsActive = 1 ORDER BY Id DESC OFFSET 0 ROWS FETCH NEXT 20 ROWS ONLY";
-        cache.Set(key, sql);
-    }
-
-    return Results.Ok(new { key, sql, cached = true });
-})
-.WithTags("15 V1 Advanced Query Engine");
-
-app.MapGet("/v2/reporting/products-by-category", (ForgeReportingEngine reporting) =>
-{
-    var report = reporting.Build(new ForgeReportRequest(
-        "ProductsByCategory",
-        "dbo.Products p INNER JOIN dbo.Categories c ON c.Id = p.CategoryId",
-        [
-            new ForgeReportColumn("CategoryName", "c.Name", "CategoryName"),
-            new ForgeReportColumn("TotalProducts", "COUNT(1)", "TotalProducts"),
-            new ForgeReportColumn("AveragePrice", "AVG(p.Price)", "AveragePrice")
-        ],
-        [],
-        GroupBy: "c.Name",
-        OrderBy: "TotalProducts DESC",
-        Take: 50));
-
-    return Results.Ok(report);
-})
-.WithTags("16 V2 Enterprise");
-
-app.MapPost("/v2/cache/demo", async (InMemoryForgeCacheProvider cache) =>
-{
-    await cache.SetAsync("forgeorm:demo", new { Message = "ForgeORM V2 cache is working", At = DateTimeOffset.UtcNow }, TimeSpan.FromMinutes(5));
-    var value = await cache.GetAsync<object>("forgeorm:demo");
+    var value = await cache.GetOrCreateAsync("demo:products", _ => Task.FromResult(new { CachedAtUtc = DateTimeOffset.UtcNow, Source = "ForgeORM cache" }), TimeSpan.FromMinutes(5));
     return Results.Ok(value);
 })
-.WithTags("16 V2 Enterprise");
+.WithTags("20 V2 Redis/Distributed Cache");
 
-app.MapPost("/v2/outbox/demo", async (InMemoryForgeOutboxStore outbox) =>
+app.MapPost("/v2/security/validate-sql", (string sql, IForgeSqlSecurityValidator validator) =>
+    Results.Ok(validator.Validate(sql)))
+.WithTags("21 V2 Security");
+
+app.MapGet("/v2/security/mask-email", (string email, IForgeDataMasker masker) =>
+    Results.Ok(new { original = email, masked = masker.MaskEmail(email) }))
+.WithTags("21 V2 Security");
+
+app.MapGet("/v2/telemetry/snapshot", (IForgeTelemetry telemetry) =>
+    Results.Ok(telemetry.Snapshot()))
+.WithTags("22 V2 Telemetry");
+
+app.MapPost("/v3/ai/optimize", (string sql, IForgeAiOptimizer optimizer) =>
+    Results.Ok(optimizer.Optimize(new ForgeAiOptimizationRequest(sql))))
+.WithTags("23 V3 AI Optimization");
+
+app.MapPost("/v3/ai/diagnose", (string sql, double elapsedMs, int rowCount, IForgeAiDiagnostics diagnostics) =>
+    Results.Ok(diagnostics.Diagnose(sql, TimeSpan.FromMilliseconds(elapsedMs), rowCount)))
+.WithTags("24 V3 AI Diagnostics");
+
+app.MapPost("/v3/ai/generate-crud", (string entityName, string routePrefix, IForgeAiCodeGenerator generator) =>
+    Results.Ok(generator.GenerateMinimalApiCrud(entityName, routePrefix)))
+.WithTags("25 V3 AI Code Generation");
+
+app.MapPost("/v3/ai/migration/add-column", (string table, string column, string sqlType, bool nullable, IForgeAiMigrationPlanner planner) =>
+    Results.Ok(planner.PlanAddColumn(table, column, sqlType, nullable)))
+.WithTags("26 V3 AI Migrations");
+
+app.MapPost("/v3/vector/upsert", async (ForgeVectorDocument document, IForgeVectorStore store) =>
 {
-    await outbox.EnqueueDomainEventAsync(new { Event = "ProductCreated", ProductId = 1001 }, "default");
-    var pending = await outbox.GetPendingAsync();
-    return Results.Ok(pending);
+    await store.UpsertAsync(document);
+    return Results.Ok(new { document.Id, Upserted = true });
 })
-.WithTags("16 V2 Enterprise");
+.WithTags("27 V3 Vector Search");
 
-app.MapGet("/v2/analyze-sql", (string sql, ForgeEnterpriseAnalyzer analyzer) =>
-{
-    return Results.Ok(analyzer.AnalyzeSql(sql));
-})
-.WithTags("16 V2 Enterprise");
-
-app.MapPost("/v3/ai/query", async (string prompt, ForgeAiAssistant ai) =>
-{
-    var result = await ai.GenerateSqlAsync(new ForgeAiQueryRequest(
-        prompt,
-        Provider: "SqlServer",
-        EntityName: "Products",
-        Schema: "dbo"));
-
-    return Results.Ok(result);
-})
-.WithTags("17 V3 AI First");
-
-app.MapPost("/v3/ai/generate-api", (string entityName, ForgeAiAssistant ai) =>
-{
-    var files = ai.GenerateCrudApi(new ForgeApiGenerationRequest(
-        entityName,
-        RoutePrefix: $"api/{entityName.ToLowerInvariant()}",
-        Namespace: "ForgeORM.Generated"));
-
-    return Results.Ok(files);
-})
-.WithTags("17 V3 AI First");
-
-app.MapPost("/v3/ai/migration-plan", (ForgeAiAssistant ai) =>
-{
-    var plan = ai.Plan(
-        "AddProductAuditColumns",
-        ["CREATE TABLE Products (Id INT NOT NULL, Name NVARCHAR(200) NOT NULL);"],
-        [
-            "CREATE TABLE Products (Id INT NOT NULL, Name NVARCHAR(200) NOT NULL);",
-            "ALTER TABLE Products ADD CreatedAt DATETIMEOFFSET NULL;",
-            "ALTER TABLE Products ADD UpdatedAt DATETIMEOFFSET NULL;"
-        ]);
-
-    return Results.Ok(plan);
-})
-.WithTags("17 V3 AI First");
-
+app.MapPost("/v3/vector/search", async (float[] vector, int topK, IForgeVectorStore store) =>
+    Results.Ok(await store.SearchAsync(vector, topK)))
+.WithTags("27 V3 Vector Search");
 
 app.Run();
 

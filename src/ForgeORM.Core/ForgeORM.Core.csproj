@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>ForgeORM.Core</PackageId>
-    <Version>1.0.2</Version>
+    <Version>1.2.0</Version>
     <Authors>Raheel Ahmed</Authors>
     <Company>Forge Ecosystem</Company>
     <RepositoryUrl>https://github.com/raaheelahmed/ForgeORM</RepositoryUrl>

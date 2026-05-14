@@ -10,6 +10,7 @@ using ForgeORM.Providers.PostgreSql;
 using ForgeORM.Providers.Sqlite;
 using ForgeORM.Providers.SqlServer;
 using ForgeORM.QueryBuilder;
+using ForgeORM.SchemaOps;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Caching.Memory;
 
@@ -40,7 +41,13 @@ public static class ForgeOrmServiceCollectionExtensions
         services.AddSingleton(options.Provider);
         services.AddSingleton<IForgeEntityMetadataResolver, ReflectionForgeEntityMetadataResolver>();
         services.AddSingleton<IForgeQueryAnalyzer, BasicForgeQueryAnalyzer>();
-        services.AddSingleton<IForgeSelectQueryBuilder, ForgeDynamicQueryBuilder>();
+        services.AddSingleton<IForgeSelectQueryBuilder, ForgeORM.QueryBuilder.ForgeDynamicQueryBuilder>();
+        services.AddSingleton<ForgeORM.QueryAst.IForgeDynamicQueryBuilder, ForgeORM.QueryAst.ForgeDynamicQueryBuilder>();
+        services.AddScoped<IForgeArtifactManager>(sp =>
+        {
+            var provider = sp.GetRequiredService<IForgeDatabaseProvider>();
+            return new ForgeArtifactManager(() => provider.CreateConnection(options.ConnectionString), provider);
+        });
         services.AddSingleton<IForgeObjectMapper, ReflectionForgeObjectMapper>();
         services.AddSingleton<IForgeSqlIntelligence, BasicForgeSqlIntelligence>();
         services.AddMemoryCache();

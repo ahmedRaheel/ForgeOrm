@@ -7,7 +7,6 @@ using ForgeORM.Core.Search;
 using ForgeORM.QueryAst;
 using ForgeORM.QueryAst.Artifacts;
 using ForgeORM.SchemaOps;
-using ForgeORM.Providers.SqlServer;
 using ForgeORM.Caching.Redis;
 using ForgeORM.Security;
 using ForgeORM.Telemetry;
@@ -19,13 +18,6 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
 builder.Services.AddForgeOrm(options => options.UseSqlServer(connectionString));
-builder.Services.AddSingleton<IForgeDynamicQueryBuilder, ForgeDynamicQueryBuilder>();
-builder.Services.AddScoped<IForgeArtifactManager>(sp =>
-{
-    var provider = sp.GetRequiredService<IForgeDatabaseProvider>();
-    return new ForgeArtifactManager(() => provider.CreateConnection(connectionString), provider);
-});
-
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddForgeMemoryQueryCaching();
 builder.Services.AddForgeTelemetry();

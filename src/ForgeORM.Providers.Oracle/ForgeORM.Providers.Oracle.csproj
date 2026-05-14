@@ -21,7 +21,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\ForgeORM.Abstractions\ForgeORM.Abstractions.csproj" />
-    <PackageReference Include="Oracle.ManagedDataAccess.Core" Version="23.6.1" />
+    <PackageReference Include="Oracle.ManagedDataAccess.Core"  />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />

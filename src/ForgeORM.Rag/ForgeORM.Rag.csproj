@@ -20,7 +20,7 @@
   <ItemGroup>
     <ProjectReference Include="..\ForgeORM.VectorSearch\ForgeORM.VectorSearch.csproj" />
     <ProjectReference Include="..\ForgeORM.AI.Advanced\ForgeORM.AI.Advanced.csproj" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions"  />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />

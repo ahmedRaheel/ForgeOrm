@@ -19,8 +19,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ForgeORM.Abstractions\ForgeORM.Abstractions.csproj" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions"  />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions"  />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />

@@ -33,8 +33,8 @@
     <ProjectReference Include="..\ForgeORM.Providers.MySql\ForgeORM.Providers.MySql.csproj" />
     <ProjectReference Include="..\ForgeORM.Providers.Oracle\ForgeORM.Providers.Oracle.csproj" />
     <ProjectReference Include="..\ForgeORM.Providers.Sqlite\ForgeORM.Providers.Sqlite.csproj" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
-    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
     <ProjectReference Include="..\ForgeORM.Relationships\ForgeORM.Relationships.csproj" />
     <ProjectReference Include="..\ForgeORM.QueryAst.Artifacts\ForgeORM.QueryAst.Artifacts.csproj" />
     <ProjectReference Include="..\ForgeORM.SchemaOps\ForgeORM.SchemaOps.csproj" />

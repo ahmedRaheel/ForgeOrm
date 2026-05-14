@@ -10,7 +10,7 @@
     <ProjectReference Include="..\..\src\ForgeORM.QueryAst\ForgeORM.QueryAst.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.Core\ForgeORM.Core.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.AspNetCore\ForgeORM.AspNetCore.csproj" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+    <PackageReference Include="Swashbuckle.AspNetCore"  />
     <ProjectReference Include="..\..\src\ForgeORM.NextGen\ForgeORM.NextGen.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.QueryBuilder\ForgeORM.QueryBuilder.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.Intelligence\ForgeORM.Intelligence.csproj" />

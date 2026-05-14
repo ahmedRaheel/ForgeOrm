@@ -41,7 +41,7 @@
     <ProjectReference Include="..\ForgeORM.TimeTravel\ForgeORM.TimeTravel.csproj" />
     <ProjectReference Include="..\ForgeORM.Observability.AI\ForgeORM.Observability.AI.csproj" />
     <ProjectReference Include="..\ForgeORM.AI.Memory\ForgeORM.AI.Memory.csproj" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+    <PackageReference Include="Swashbuckle.AspNetCore"  />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />

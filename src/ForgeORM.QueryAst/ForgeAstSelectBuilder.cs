@@ -312,17 +312,14 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
         return AddTypedJoin<TJoin>("FULL OUTER JOIN", on);
     }
 
-    private ForgeAstSelectBuilder<T> AddTypedJoin<TJoin>(
-    string joinType,
-    Expression<Func<T, TJoin, bool>> on)
+    private IForgeAstSelectBuilder<T> AddTypedJoin<TJoin>(
+        string joinType,
+        Expression<Func<T, TJoin, bool>> on)
     {
-        var rightAlias = on.Parameters[1].Name ?? typeof(TJoin).Name.ToLowerInvariant();
+        var table = ResolveTableName(typeof(TJoin));
+        var joinCondition = ForgeJoinExpression.Translate<T, TJoin>(on);
 
-        var tableName = ResolveTableName(typeof(TJoin));
-
-        var condition = ForgeJoinExpression.Translate(on);
-
-        _joins.Add($"{joinType} {tableName} {rightAlias} ON {condition}");
+        _joins.Add($"{joinType} {table} ON {joinCondition}");
 
         return this;
     }
@@ -340,5 +337,4 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
                 .ToDictionary(x => x.Name, x => x.GetValue(parameters), StringComparer.OrdinalIgnoreCase);
         }
     }
-    
 }

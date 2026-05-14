@@ -2,45 +2,34 @@ using System.Linq.Expressions;
 
 namespace ForgeORM.QueryAst;
 
-public static class ForgeJoinExpression
+internal sealed partial class ForgeAstSelectBuilder<T>
+{
+    internal static class ForgeJoinExpression
 {
     public static string Translate<TLeft, TRight>(
         Expression<Func<TLeft, TRight, bool>> expression)
     {
         if (expression.Body is not BinaryExpression binary)
-            throw new NotSupportedException("Join condition must be a binary expression.");
+            throw new NotSupportedException("Only simple join conditions are supported.");
 
         var left = Member(binary.Left);
         var right = Member(binary.Right);
+        var op = Operator(binary.NodeType);
 
-        return $"{left} {Operator(binary.NodeType)} {right}";
+        return $"{left} {op} {right}";
     }
 
     private static string Member(Expression expression)
     {
-        expression = StripConvert(expression);
-
-        if (expression is MemberExpression member &&
-            member.Expression is ParameterExpression parameter)
+        if (expression is MemberExpression member)
         {
-            return $"{parameter.Name}.{member.Member.Name}";
+            if (member.Expression is ParameterExpression parameter)
+                return $"{parameter.Name}.{member.Member.Name}";
+
+            return member.Member.Name;
         }
 
-        throw new NotSupportedException(
-            $"Join condition must use member expressions. Found: {expression.NodeType} - {expression}");
-    }
-
-    private static Expression StripConvert(Expression expression)
-    {
-        while (expression is UnaryExpression unary &&
-               (unary.NodeType == ExpressionType.Convert ||
-                unary.NodeType == ExpressionType.ConvertChecked ||
-                unary.NodeType == ExpressionType.TypeAs))
-        {
-            expression = unary.Operand;
-        }
-
-        return expression;
+        throw new NotSupportedException("Join condition must use member expressions.");
     }
 
     private static string Operator(ExpressionType type)
@@ -53,7 +42,8 @@ public static class ForgeJoinExpression
             ExpressionType.GreaterThanOrEqual => ">=",
             ExpressionType.LessThan => "<",
             ExpressionType.LessThanOrEqual => "<=",
-            _ => throw new NotSupportedException($"Unsupported join operator: {type}")
+            _ => throw new NotSupportedException($"Join operator {type} is not supported.")
         };
     }
+}
 }

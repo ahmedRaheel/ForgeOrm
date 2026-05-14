@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>ForgeORM.Cloud</PackageId>
-    <Version>1.0.3</Version>
+    <Version>1.1.0</Version>
     <Authors>Raheel Ahmed</Authors>
     <Company>Forge Ecosystem</Company>
     <RepositoryUrl>https://github.com/raaheelahmed/ForgeORM</RepositoryUrl>

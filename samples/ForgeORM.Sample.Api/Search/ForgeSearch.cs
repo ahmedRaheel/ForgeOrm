@@ -1,3 +1,5 @@
+using ForgeORM.Core;
+using ForgeORM.QueryAst;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;

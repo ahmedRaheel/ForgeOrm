@@ -48,7 +48,19 @@ public static class ForgeOrmServiceCollectionExtensions
         services.AddSingleton<IForgeTraceVisualizer, LocalForgeTraceVisualizer>();
         services.AddSingleton<IForgeRequestReflector, ForgeRequestReflector>();
         services.AddSingleton<IForgeSemanticSearch, ForgeSemanticSearch>();
-        services.AddScoped<IForgeDb>(sp => new ForgeDb(options.ConnectionString, sp.GetRequiredService<IForgeDatabaseProvider>(), sp.GetRequiredService<IForgeEntityMetadataResolver>(), sp.GetRequiredService<IForgeQueryAnalyzer>()));
+        services.AddScoped<ForgeDb>(sp => new ForgeDb(
+            options.ConnectionString,
+            sp.GetRequiredService<IForgeDatabaseProvider>(),
+            sp.GetRequiredService<IForgeEntityMetadataResolver>(),
+            sp.GetRequiredService<IForgeQueryAnalyzer>()));
+
+        services.AddScoped<ForgeDbContext>(sp => new ForgeDbContext(
+            options.ConnectionString,
+            sp.GetRequiredService<IForgeDatabaseProvider>(),
+            sp.GetRequiredService<IForgeEntityMetadataResolver>(),
+            sp.GetRequiredService<IForgeQueryAnalyzer>()));
+
+        services.AddScoped<IForgeDb>(sp => sp.GetRequiredService<ForgeDbContext>());
         return services;
     }
 }

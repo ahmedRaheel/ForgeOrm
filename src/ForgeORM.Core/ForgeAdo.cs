@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Data;
+using System.Dynamic;
 using System.Data.Common;
 using System.Reflection;
 
@@ -112,6 +113,14 @@ internal static class ForgeAdo
     public static T Map<T>(DbDataReader reader)
     {
         var targetType = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
+        if (targetType == typeof(object) || targetType == typeof(ExpandoObject))
+        {
+            IDictionary<string, object?> row = new ExpandoObject();
+            for (var i = 0; i < reader.FieldCount; i++)
+                row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+            return (T)row;
+        }
+
         if (targetType == typeof(string) || targetType.IsPrimitive || targetType.IsEnum || targetType == typeof(decimal) || targetType == typeof(DateTime) || targetType == typeof(Guid))
             return ConvertValue<T>(reader.IsDBNull(0) ? null : reader.GetValue(0))!;
 

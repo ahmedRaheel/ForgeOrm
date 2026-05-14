@@ -4,7 +4,7 @@ using ForgeORM.Abstractions;
 
 namespace ForgeORM.Core;
 
-public sealed partial class ForgeDb : IForgeDb
+public partial class ForgeDb : IForgeDb
 {
     private readonly string _connectionString;
     private readonly IForgeEntityMetadataResolver _metadata;

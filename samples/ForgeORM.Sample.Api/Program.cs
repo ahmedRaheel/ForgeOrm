@@ -1,3 +1,9 @@
+
+using ForgeORM.AI.Advanced;
+using ForgeORM.Caching.Redis;
+using ForgeORM.Security;
+using ForgeORM.Telemetry;
+using ForgeORM.VectorSearch;
 using System.Data;
 using System.Data.Common;
 using System.Linq.Expressions;
@@ -13,6 +19,14 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddSingleton<ForgeDb>();
 builder.Services.AddSingleton<ForgeArtifactManager>();
 builder.Services.AddSingleton<ForgeDynamicQueryBuilder>();
+
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddForgeMemoryQueryCaching();
+builder.Services.AddForgeTelemetry();
+builder.Services.AddForgeSecurity();
+builder.Services.AddForgeInMemoryVectorSearch();
+builder.Services.AddForgeAdvancedAi();
+
 
 var app = builder.Build();
 
@@ -328,6 +342,53 @@ app.MapGet("/search/products/procedure", async (
         .ToListAsync();
 })
 .WithTags("14 Universal Search");
+
+
+app.MapGet("/v2/cache/demo", async (IForgeQueryCache cache) =>
+{
+    var value = await cache.GetOrCreateAsync("demo:products", _ => Task.FromResult(new { CachedAtUtc = DateTimeOffset.UtcNow, Source = "ForgeORM cache" }), TimeSpan.FromMinutes(5));
+    return Results.Ok(value);
+})
+.WithTags("20 V2 Redis/Distributed Cache");
+
+app.MapPost("/v2/security/validate-sql", (string sql, IForgeSqlSecurityValidator validator) =>
+    Results.Ok(validator.Validate(sql)))
+.WithTags("21 V2 Security");
+
+app.MapGet("/v2/security/mask-email", (string email, IForgeDataMasker masker) =>
+    Results.Ok(new { original = email, masked = masker.MaskEmail(email) }))
+.WithTags("21 V2 Security");
+
+app.MapGet("/v2/telemetry/snapshot", (IForgeTelemetry telemetry) =>
+    Results.Ok(telemetry.Snapshot()))
+.WithTags("22 V2 Telemetry");
+
+app.MapPost("/v3/ai/optimize", (string sql, IForgeAiOptimizer optimizer) =>
+    Results.Ok(optimizer.Optimize(new ForgeAiOptimizationRequest(sql))))
+.WithTags("23 V3 AI Optimization");
+
+app.MapPost("/v3/ai/diagnose", (string sql, double elapsedMs, int rowCount, IForgeAiDiagnostics diagnostics) =>
+    Results.Ok(diagnostics.Diagnose(sql, TimeSpan.FromMilliseconds(elapsedMs), rowCount)))
+.WithTags("24 V3 AI Diagnostics");
+
+app.MapPost("/v3/ai/generate-crud", (string entityName, string routePrefix, IForgeAiCodeGenerator generator) =>
+    Results.Ok(generator.GenerateMinimalApiCrud(entityName, routePrefix)))
+.WithTags("25 V3 AI Code Generation");
+
+app.MapPost("/v3/ai/migration/add-column", (string table, string column, string sqlType, bool nullable, IForgeAiMigrationPlanner planner) =>
+    Results.Ok(planner.PlanAddColumn(table, column, sqlType, nullable)))
+.WithTags("26 V3 AI Migrations");
+
+app.MapPost("/v3/vector/upsert", async (ForgeVectorDocument document, IForgeVectorStore store) =>
+{
+    await store.UpsertAsync(document);
+    return Results.Ok(new { document.Id, Upserted = true });
+})
+.WithTags("27 V3 Vector Search");
+
+app.MapPost("/v3/vector/search", async (float[] vector, int topK, IForgeVectorStore store) =>
+    Results.Ok(await store.SearchAsync(vector, topK)))
+.WithTags("27 V3 Vector Search");
 
 app.Run();
 

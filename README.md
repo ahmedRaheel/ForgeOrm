@@ -181,3 +181,25 @@ enterprise-grade
 future-ready
 Author
 Developed by Raheel Ahmed
+
+## V2/V3 Enterprise + AI Modules Update
+
+This package now includes additive implementations for:
+
+- Redis/distributed query caching with memory fallback
+- Telemetry and monitoring snapshots
+- SQL security validation, data masking and AES column encryption helpers
+- Vector search with cosine similarity and SQL Server/PostgreSQL SQL generation helpers
+- AI query optimization
+- AI diagnostics
+- AI Minimal API code generation
+- AI migration planning
+- Studio API for query visualization, ERD, API testing, SaaS tenants and monitoring
+- React Studio shell under `studio/ForgeORM.Studio.Web`
+
+See `docs/V2-V3-IMPLEMENTED-MODULES.md`.
+
+
+## V4 Platform Modules Added
+
+See `docs/V4-PLATFORM-MODULES-IMPLEMENTED.md`. Added RAG, workflow engine, event sourcing, realtime, AI agents, low-code ERP generator, cloud/IaC generator, identity policy engine, offline sync, marketplace, data virtualization, time travel, AI observability and AI memory.

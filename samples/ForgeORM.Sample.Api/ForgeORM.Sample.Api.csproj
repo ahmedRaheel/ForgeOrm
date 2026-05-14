@@ -8,5 +8,10 @@
     <ProjectReference Include="..\..\src\ForgeORM.NextGen\ForgeORM.NextGen.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.QueryBuilder\ForgeORM.QueryBuilder.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.Intelligence\ForgeORM.Intelligence.csproj" />
+    <ProjectReference Include="..\..\src\ForgeORM.Caching.Redis\ForgeORM.Caching.Redis.csproj" />
+    <ProjectReference Include="..\..\src\ForgeORM.Telemetry\ForgeORM.Telemetry.csproj" />
+    <ProjectReference Include="..\..\src\ForgeORM.Security\ForgeORM.Security.csproj" />
+    <ProjectReference Include="..\..\src\ForgeORM.VectorSearch\ForgeORM.VectorSearch.csproj" />
+    <ProjectReference Include="..\..\src\ForgeORM.AI.Advanced\ForgeORM.AI.Advanced.csproj" />
   </ItemGroup>
 </Project>

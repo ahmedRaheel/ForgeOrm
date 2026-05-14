@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>ForgeORM.Caching.Redis</PackageId>
+    <Version>1.0.2</Version>
+    <Authors>Raheel Ahmed</Authors>
+    <Company>Forge Ecosystem</Company>
+    <RepositoryUrl>https://github.com/raaheelahmed/ForgeORM</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>forgeorm-icon.png</PackageIcon>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <Title>ForgeORM.Caching.Redis</Title>
+    <Description>Redis and distributed query caching for ForgeORM.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ForgeORM.Abstractions\ForgeORM.Abstractions.csproj" />
+    <ProjectReference Include="..\ForgeORM.Core\ForgeORM.Core.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\assets\forgeorm-icon.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

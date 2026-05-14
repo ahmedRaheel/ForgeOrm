@@ -1,0 +1,204 @@
+using System.Collections.Concurrent;
+using System.Text.Json;
+using ForgeORM.Abstractions;
+
+namespace ForgeORM.Core;
+
+public static class ForgePlatform
+{
+    public static IReadOnlyList<ForgeModuleDescriptor> Modules { get; } =
+    [
+        new("V1 Core ORM", ForgeReleasePhase.V1Core,
+        [
+            Feature("V1-001", "Hybrid ORM engine", ForgeReleasePhase.V1Core, ForgeFeatureStatus.Ready, "Raw SQL, stored procedures, repository helpers and query builders in one API."),
+            Feature("V1-002", "Expression query builder", ForgeReleasePhase.V1Core, ForgeFeatureStatus.Ready, "Expression-based filters, sorting and paging."),
+            Feature("V1-003", "Provider abstraction", ForgeReleasePhase.V1Core, ForgeFeatureStatus.Ready, "Provider-oriented SQL rendering and dialect support."),
+            Feature("V1-004", "Compiled query cache", ForgeReleasePhase.V1Core, ForgeFeatureStatus.Ready, "Caches generated SQL shapes for repeated execution.")
+        ]),
+        new("V2 Enterprise", ForgeReleasePhase.V2Enterprise,
+        [
+            Feature("V2-001", "Bulk operations", ForgeReleasePhase.V2Enterprise, ForgeFeatureStatus.Ready, "Bulk insert, update, delete and merge extension points."),
+            Feature("V2-002", "Multi-tenancy", ForgeReleasePhase.V2Enterprise, ForgeFeatureStatus.Ready, "Tenant context for shared DB, schema-per-tenant or database-per-tenant strategies."),
+            Feature("V2-003", "Auditing and soft delete", ForgeReleasePhase.V2Enterprise, ForgeFeatureStatus.Ready, "Created/updated user stamps and soft delete helpers."),
+            Feature("V2-004", "Outbox pattern", ForgeReleasePhase.V2Enterprise, ForgeFeatureStatus.Preview, "In-memory outbox store plus database integration contract."),
+            Feature("V2-005", "Reporting engine", ForgeReleasePhase.V2Enterprise, ForgeFeatureStatus.Ready, "Dynamic SQL report builder for dashboards, pivots and exports."),
+            Feature("V2-006", "Caching", ForgeReleasePhase.V2Enterprise, ForgeFeatureStatus.Ready, "Cache provider contract and in-memory implementation.")
+        ]),
+        new("V3 AI First", ForgeReleasePhase.V3AiFirst,
+        [
+            Feature("V3-001", "Natural language to SQL", ForgeReleasePhase.V3AiFirst, ForgeFeatureStatus.Preview, "AI query client abstraction with safe deterministic fallback."),
+            Feature("V3-002", "AI query diagnostics", ForgeReleasePhase.V3AiFirst, ForgeFeatureStatus.Preview, "Warnings, index hints and explanation generation."),
+            Feature("V3-003", "AI CRUD API generation", ForgeReleasePhase.V3AiFirst, ForgeFeatureStatus.Preview, "Generates Minimal API endpoints for a selected entity."),
+            Feature("V3-004", "AI migration planning", ForgeReleasePhase.V3AiFirst, ForgeFeatureStatus.ExtensionPoint, "Schema diff and migration plan extension point."),
+            Feature("V3-005", "Scaffolding", ForgeReleasePhase.V3AiFirst, ForgeFeatureStatus.ExtensionPoint, "Reverse engineering extension point for database-first adoption.")
+        ])
+    ];
+
+    public static IReadOnlyList<ForgeFeatureDescriptor> Features =>
+        Modules.SelectMany(x => x.Features).ToList();
+
+    private static ForgeFeatureDescriptor Feature(string code, string name, ForgeReleasePhase phase, ForgeFeatureStatus status, string description)
+        => new(code, name, phase, status, description);
+}
+
+public sealed class InMemoryForgeCompiledQueryCache : IForgeCompiledQueryCache
+{
+    private readonly ConcurrentDictionary<ForgeCompiledQueryKey, string> _cache = new();
+
+    public bool TryGet(ForgeCompiledQueryKey key, out string sql)
+        => _cache.TryGetValue(key, out sql!);
+
+    public void Set(ForgeCompiledQueryKey key, string sql)
+        => _cache[key] = sql;
+
+    public void Clear() => _cache.Clear();
+}
+
+public sealed class StaticForgeTenantProvider : IForgeTenantProvider
+{
+    public StaticForgeTenantProvider(string tenantId = "default", string? connectionString = null, string? schema = null)
+        => Current = new ForgeTenantContext(tenantId, connectionString, schema);
+
+    public ForgeTenantContext Current { get; }
+}
+
+public sealed class SystemForgeAuditUserProvider : IForgeAuditUserProvider
+{
+    public string? UserId => Environment.UserName;
+    public string? UserName => Environment.UserName;
+}
+
+public static class ForgeAudit
+{
+    public static void StampCreate<T>(T entity, IForgeAuditUserProvider userProvider) where T : IForgeAuditable
+    {
+        entity.CreatedAt = DateTimeOffset.UtcNow;
+        entity.CreatedBy = userProvider.UserName ?? userProvider.UserId;
+        entity.IsDeleted = false;
+    }
+
+    public static void StampUpdate<T>(T entity, IForgeAuditUserProvider userProvider) where T : IForgeAuditable
+    {
+        entity.UpdatedAt = DateTimeOffset.UtcNow;
+        entity.UpdatedBy = userProvider.UserName ?? userProvider.UserId;
+    }
+
+    public static void SoftDelete<T>(T entity, IForgeAuditUserProvider userProvider) where T : IForgeAuditable
+    {
+        entity.IsDeleted = true;
+        StampUpdate(entity, userProvider);
+    }
+}
+
+public sealed class InMemoryForgeCacheProvider : IForgeCacheProvider
+{
+    private sealed record CacheItem(object? Value, DateTimeOffset ExpiresAt);
+    private readonly ConcurrentDictionary<string, CacheItem> _cache = new();
+
+    public Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
+    {
+        if (!_cache.TryGetValue(key, out var item))
+            return Task.FromResult(default(T));
+
+        if (item.ExpiresAt <= DateTimeOffset.UtcNow)
+        {
+            _cache.TryRemove(key, out _);
+            return Task.FromResult(default(T));
+        }
+
+        return Task.FromResult((T?)item.Value);
+    }
+
+    public Task SetAsync<T>(string key, T value, TimeSpan ttl, CancellationToken cancellationToken = default)
+    {
+        _cache[key] = new CacheItem(value, DateTimeOffset.UtcNow.Add(ttl));
+        return Task.CompletedTask;
+    }
+
+    public Task RemoveAsync(string key, CancellationToken cancellationToken = default)
+    {
+        _cache.TryRemove(key, out _);
+        return Task.CompletedTask;
+    }
+}
+
+public sealed class InMemoryForgeOutboxStore : IForgeOutboxStore
+{
+    private readonly ConcurrentDictionary<Guid, ForgeOutboxMessage> _messages = new();
+
+    public Task EnqueueAsync(ForgeOutboxMessage message, CancellationToken cancellationToken = default)
+    {
+        _messages[message.Id] = message;
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<ForgeOutboxMessage>> GetPendingAsync(int take = 100, CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<ForgeOutboxMessage> pending = _messages.Values
+            .Where(x => x.ProcessedAt is null)
+            .OrderBy(x => x.CreatedAt)
+            .Take(take)
+            .ToList();
+
+        return Task.FromResult(pending);
+    }
+
+    public Task MarkProcessedAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        if (_messages.TryGetValue(id, out var message))
+            _messages[id] = message with { ProcessedAt = DateTimeOffset.UtcNow };
+
+        return Task.CompletedTask;
+    }
+
+    public Task EnqueueDomainEventAsync<T>(T @event, string? tenantId = null, CancellationToken cancellationToken = default)
+    {
+        var message = new ForgeOutboxMessage(
+            Guid.NewGuid(),
+            typeof(T).Name,
+            JsonSerializer.Serialize(@event),
+            DateTimeOffset.UtcNow,
+            tenantId);
+
+        return EnqueueAsync(message, cancellationToken);
+    }
+}
+
+public sealed class ForgeReportingEngine : IForgeReportingEngine
+{
+    public ForgeReportSql Build(ForgeReportRequest request, string provider = "SqlServer")
+    {
+        if (string.IsNullOrWhiteSpace(request.From))
+            throw new ArgumentException("Report source table/query is required.", nameof(request));
+
+        var columns = request.Columns.Count == 0
+            ? "*"
+            : string.Join(", ", request.Columns.Select(c => string.IsNullOrWhiteSpace(c.Alias)
+                ? c.Expression
+                : $"{c.Expression} AS {c.Alias}"));
+
+        var sql = $"SELECT {columns} FROM {request.From}";
+        if (request.Filters.Count > 0)
+            sql += " WHERE " + string.Join(" AND ", request.Filters.Select(x => x.Expression));
+
+        if (!string.IsNullOrWhiteSpace(request.GroupBy))
+            sql += " GROUP BY " + request.GroupBy;
+
+        if (!string.IsNullOrWhiteSpace(request.OrderBy))
+            sql += " ORDER BY " + request.OrderBy;
+
+        if (request.Take.HasValue)
+        {
+            sql += provider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase)
+                ? $" OFFSET {request.Skip ?? 0} ROWS FETCH NEXT {request.Take.Value} ROWS ONLY"
+                : $" LIMIT {request.Take.Value} OFFSET {request.Skip ?? 0}";
+        }
+
+        var parameters = request.Filters
+            .Where(x => x.Parameters is not null)
+            .Select(x => x.Parameters)
+            .ToList();
+
+        return new ForgeReportSql(sql, parameters.Count == 0 ? null : parameters);
+    }
+}

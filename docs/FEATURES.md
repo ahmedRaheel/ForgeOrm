@@ -1,6 +1,6 @@
 # ForgeORM Complete Feature List
 
-## Dapper-like
+## Raw SQL-native
 Query, QueryAsync, QueryFirst, QueryFirstAsync, QueryFirstOrDefault, QueryFirstOrDefaultAsync, QuerySingle, QuerySingleAsync, QuerySingleOrDefault, QuerySingleOrDefaultAsync, Execute, ExecuteAsync, ExecuteScalar, ExecuteScalarAsync, QueryMultiple, QueryMultipleAsync.
 
 ## Stored Procedures

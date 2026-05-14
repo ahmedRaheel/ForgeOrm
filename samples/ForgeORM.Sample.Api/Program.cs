@@ -6,10 +6,11 @@ using ForgeORM.Telemetry;
 using ForgeORM.VectorSearch;
 using System.Data;
 using System.Data.Common;
+using System.Collections;
+using System.Reflection;
 using System.Linq.Expressions;
 using System.Security.Cryptography;
 using System.Text;
-using Dapper;
 using Microsoft.Data.SqlClient;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -175,7 +176,7 @@ app.MapPost("/transaction/increase-prices", async (decimal amount, ForgeDb db) =
 
     try
     {
-        await connection.ExecuteAsync("UPDATE dbo.Products SET Price = Price + @Amount", new { Amount = amount }, tx);
+        await ForgeSampleAdo.ExecuteAsync(connection, "UPDATE dbo.Products SET Price = Price + @Amount", new { Amount = amount }, tx);
         await tx.CommitAsync();
         return Results.Ok(new { Updated = true });
     }
@@ -401,39 +402,40 @@ public sealed class ForgeDb
     public async Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null)
     {
         await using var c = CreateConnection();
-        return (await c.QueryAsync<T>(sql, parameters)).ToList();
+        await c.OpenAsync();
+        return await ForgeSampleAdo.QueryAsync<T>(c, sql, parameters);
     }
 
     public async Task<T?> QuerySingleOrDefaultAsync<T>(string sql, object? parameters = null)
-    {
-        await using var c = CreateConnection();
-        return await c.QuerySingleOrDefaultAsync<T>(sql, parameters);
-    }
+        => (await QueryAsync<T>(sql, parameters)).SingleOrDefault();
 
     public async Task<T?> ExecuteScalarAsync<T>(string sql, object? parameters = null)
     {
         await using var c = CreateConnection();
-        return await c.ExecuteScalarAsync<T>(sql, parameters);
+        await c.OpenAsync();
+        return await ForgeSampleAdo.ExecuteScalarAsync<T>(c, sql, parameters);
     }
 
     public async Task<int> ExecuteAsync(string sql, object? parameters = null)
     {
         await using var c = CreateConnection();
-        return await c.ExecuteAsync(sql, parameters);
+        await c.OpenAsync();
+        return await ForgeSampleAdo.ExecuteAsync(c, sql, parameters);
     }
 
     public async Task<GridWrapper> QueryMultipleAsync(string sql, object? parameters = null)
     {
         var c = CreateConnection();
         await c.OpenAsync();
-        var grid = await c.QueryMultipleAsync(sql, parameters);
-        return new GridWrapper(c, grid);
+        var command = ForgeSampleAdo.CreateCommand(c, sql, parameters);
+        return new GridWrapper(c, command, await command.ExecuteReaderAsync());
     }
 
     public async Task<IReadOnlyList<T>> QueryProcedureAsync<T>(string name, object? parameters = null)
     {
         await using var c = CreateConnection();
-        return (await c.QueryAsync<T>(name, parameters, commandType: CommandType.StoredProcedure)).ToList();
+        await c.OpenAsync();
+        return await ForgeSampleAdo.QueryAsync<T>(c, name, parameters, commandType: CommandType.StoredProcedure);
     }
 
     public async Task BulkInsertAsync<T>(string tableName, IReadOnlyCollection<T> rows)
@@ -449,10 +451,146 @@ public sealed class ForgeDb
 public sealed class GridWrapper : IDisposable
 {
     private readonly DbConnection _connection;
-    private readonly SqlMapper.GridReader _reader;
-    public GridWrapper(DbConnection connection, SqlMapper.GridReader reader) { _connection = connection; _reader = reader; }
-    public async Task<IReadOnlyList<T>> ReadAsync<T>() => (await _reader.ReadAsync<T>()).ToList();
-    public void Dispose() { _reader.Dispose(); _connection.Dispose(); }
+    private readonly DbCommand _command;
+    private readonly DbDataReader _reader;
+    private bool _hasConsumedCurrentResult;
+
+    public GridWrapper(DbConnection connection, DbCommand command, DbDataReader reader)
+    {
+        _connection = connection;
+        _command = command;
+        _reader = reader;
+    }
+
+    public async Task<IReadOnlyList<T>> ReadAsync<T>()
+    {
+        if (_hasConsumedCurrentResult)
+            await _reader.NextResultAsync();
+
+        var rows = new List<T>();
+        while (await _reader.ReadAsync())
+            rows.Add(ForgeSampleAdo.Map<T>(_reader));
+
+        _hasConsumedCurrentResult = true;
+        return rows;
+    }
+
+    public void Dispose()
+    {
+        _reader.Dispose();
+        _command.Dispose();
+        _connection.Dispose();
+    }
+}
+
+public static class ForgeSampleAdo
+{
+    public static async Task<IReadOnlyList<T>> QueryAsync<T>(DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, CancellationToken cancellationToken = default)
+    {
+        await using var command = CreateCommand(connection, sql, parameters, transaction, commandType);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var rows = new List<T>();
+        while (await reader.ReadAsync(cancellationToken))
+            rows.Add(Map<T>(reader));
+        return rows;
+    }
+
+    public static async Task<int> ExecuteAsync(DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, CancellationToken cancellationToken = default)
+    {
+        var total = 0;
+        if (IsBatch(parameters))
+        {
+            foreach (var row in (IEnumerable)parameters!)
+            {
+                await using var command = CreateCommand(connection, sql, row, transaction, commandType);
+                total += await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+            return total;
+        }
+
+        await using var single = CreateCommand(connection, sql, parameters, transaction, commandType);
+        return await single.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public static async Task<T?> ExecuteScalarAsync<T>(DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, CancellationToken cancellationToken = default)
+    {
+        await using var command = CreateCommand(connection, sql, parameters, transaction, commandType);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return ConvertValue<T>(value);
+    }
+
+    public static DbCommand CreateCommand(DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text)
+    {
+        var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.CommandType = commandType;
+        if (transaction is not null) command.Transaction = transaction;
+        BindParameters(command, parameters);
+        return command;
+    }
+
+    private static void BindParameters(DbCommand command, object? parameters)
+    {
+        if (parameters is null) return;
+        foreach (var prop in parameters.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead))
+        {
+            var value = prop.GetValue(parameters);
+            if (value is string || value is null || value is not IEnumerable enumerable)
+            {
+                AddParameter(command, prop.Name, value);
+                continue;
+            }
+
+            var values = enumerable.Cast<object?>().ToList();
+            var names = new List<string>();
+            for (var i = 0; i < values.Count; i++)
+            {
+                var name = prop.Name + i;
+                names.Add("@" + name);
+                AddParameter(command, name, values[i]);
+            }
+            command.CommandText = command.CommandText.Replace("@" + prop.Name, names.Count == 0 ? "(NULL)" : string.Join(", ", names));
+        }
+    }
+
+    private static void AddParameter(DbCommand command, string name, object? value)
+    {
+        if (!name.StartsWith('@')) name = "@" + name;
+        var p = command.CreateParameter();
+        p.ParameterName = name;
+        p.Value = value ?? DBNull.Value;
+        command.Parameters.Add(p);
+    }
+
+    public static T Map<T>(DbDataReader reader)
+    {
+        var targetType = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
+        if (targetType == typeof(string) || targetType.IsPrimitive || targetType.IsEnum || targetType == typeof(decimal) || targetType == typeof(DateTime) || targetType == typeof(Guid))
+            return ConvertValue<T>(reader.IsDBNull(0) ? null : reader.GetValue(0))!;
+
+        var instance = Activator.CreateInstance<T>();
+        var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanWrite).ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < reader.FieldCount; i++)
+        {
+            if (!props.TryGetValue(reader.GetName(i), out var prop) || reader.IsDBNull(i)) continue;
+            var value = reader.GetValue(i);
+            var type = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
+            prop.SetValue(instance, type.IsEnum ? Enum.ToObject(type, value) : Convert.ChangeType(value, type));
+        }
+        return instance;
+    }
+
+    private static T? ConvertValue<T>(object? value)
+    {
+        if (value is null || value is DBNull) return default;
+        var type = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
+        if (type.IsEnum) return (T)Enum.ToObject(type, value);
+        if (value is T typed) return typed;
+        return (T)Convert.ChangeType(value, type);
+    }
+
+    private static bool IsBatch(object? parameters)
+        => parameters is not null and IEnumerable and not string and not byte[];
 }
 
 public static class ForgeSql

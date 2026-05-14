@@ -10,7 +10,7 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>forgeorm-icon.png</PackageIcon>
-    <PackageTags>orm;micro-orm;dapper;efcore;sql;database;query-builder;bulk;dotnet;forgeorm</PackageTags>
+    <PackageTags>orm;micro-orm;micro-orm;efcore;sql;database;query-builder;bulk;dotnet;forgeorm</PackageTags>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>

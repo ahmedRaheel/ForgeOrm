@@ -1,6 +1,5 @@
 using System.Data;
 using System.Data.Common;
-using Dapper;
 using ForgeORM.Abstractions;
 
 namespace ForgeORM.Core;
@@ -23,193 +22,150 @@ public sealed partial class ForgeDb : IForgeDb
 
     private DbConnection CreateConnection() => Provider.CreateConnection(_connectionString);
 
-    private static CommandDefinition Command(ForgeCommand command, CancellationToken cancellationToken = default)
-        => new(command.CommandText, command.Parameters, commandTimeout: command.TimeoutSeconds, commandType: command.CommandType, cancellationToken: cancellationToken);
-
     public IEnumerable<T> Query<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
         using var c = CreateConnection();
         c.Open();
-        return c.Query<T>(sql, parameters, commandTimeout: timeoutSeconds).ToList();
+        return ForgeAdo.Query<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds).ToList();
     }
 
     public async Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
-        var rows = await c.QueryAsync<T>(new CommandDefinition(sql, parameters, commandTimeout: timeoutSeconds, cancellationToken: cancellationToken));
-        return rows.ToList();
+        return await ForgeAdo.QueryAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     }
 
     public T QueryFirst<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
-    {
-        using var c = CreateConnection();
-        c.Open();
-        return c.QueryFirst<T>(sql, parameters, commandTimeout: timeoutSeconds);
-    }
+        => Query<T>(sql, parameters, timeoutSeconds).First();
 
     public async Task<T> QueryFirstAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-    {
-        await using var c = CreateConnection();
-        await c.OpenAsync(cancellationToken);
-        return await c.QueryFirstAsync<T>(new CommandDefinition(sql, parameters, commandTimeout: timeoutSeconds, cancellationToken: cancellationToken));
-    }
+        => (await QueryAsync<T>(sql, parameters, timeoutSeconds, cancellationToken)).First();
 
     public T? QueryFirstOrDefault<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
-    {
-        using var c = CreateConnection();
-        c.Open();
-        return c.QueryFirstOrDefault<T>(sql, parameters, commandTimeout: timeoutSeconds);
-    }
+        => Query<T>(sql, parameters, timeoutSeconds).FirstOrDefault();
 
     public async Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-    {
-        await using var c = CreateConnection();
-        await c.OpenAsync(cancellationToken);
-        return await c.QueryFirstOrDefaultAsync<T>(new CommandDefinition(sql, parameters, commandTimeout: timeoutSeconds, cancellationToken: cancellationToken));
-    }
+        => (await QueryAsync<T>(sql, parameters, timeoutSeconds, cancellationToken)).FirstOrDefault();
 
     public T QuerySingle<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
-    {
-        using var c = CreateConnection();
-        c.Open();
-        return c.QuerySingle<T>(sql, parameters, commandTimeout: timeoutSeconds);
-    }
+        => Query<T>(sql, parameters, timeoutSeconds).Single();
 
     public async Task<T> QuerySingleAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-    {
-        await using var c = CreateConnection();
-        await c.OpenAsync(cancellationToken);
-        return await c.QuerySingleAsync<T>(new CommandDefinition(sql, parameters, commandTimeout: timeoutSeconds, cancellationToken: cancellationToken));
-    }
+        => (await QueryAsync<T>(sql, parameters, timeoutSeconds, cancellationToken)).Single();
 
     public T? QuerySingleOrDefault<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
-    {
-        using var c = CreateConnection();
-        c.Open();
-        return c.QuerySingleOrDefault<T>(sql, parameters, commandTimeout: timeoutSeconds);
-    }
+        => Query<T>(sql, parameters, timeoutSeconds).SingleOrDefault();
 
     public async Task<T?> QuerySingleOrDefaultAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-    {
-        await using var c = CreateConnection();
-        await c.OpenAsync(cancellationToken);
-        return await c.QuerySingleOrDefaultAsync<T>(new CommandDefinition(sql, parameters, commandTimeout: timeoutSeconds, cancellationToken: cancellationToken));
-    }
+        => (await QueryAsync<T>(sql, parameters, timeoutSeconds, cancellationToken)).SingleOrDefault();
 
     public int Execute(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
         using var c = CreateConnection();
         c.Open();
-        return c.Execute(sql, parameters, commandTimeout: timeoutSeconds);
+        return ForgeAdo.Execute(c, sql, parameters, timeoutSeconds: timeoutSeconds);
     }
 
     public async Task<int> ExecuteAsync(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
-        return await c.ExecuteAsync(new CommandDefinition(sql, parameters, commandTimeout: timeoutSeconds, cancellationToken: cancellationToken));
+        return await ForgeAdo.ExecuteAsync(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     }
 
     public T? ExecuteScalar<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
         using var c = CreateConnection();
         c.Open();
-        return c.ExecuteScalar<T>(sql, parameters, commandTimeout: timeoutSeconds);
+        return ForgeAdo.ExecuteScalar<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds);
     }
 
     public async Task<T?> ExecuteScalarAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
-        return await c.ExecuteScalarAsync<T>(new CommandDefinition(sql, parameters, commandTimeout: timeoutSeconds, cancellationToken: cancellationToken));
+        return await ForgeAdo.ExecuteScalarAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     }
 
     public IForgeGridReader QueryMultiple(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
         var c = CreateConnection();
         c.Open();
-        return new ForgeGridReader(c, c.QueryMultiple(sql, parameters, commandTimeout: timeoutSeconds));
+        var command = ForgeAdo.CreateCommand(c, sql, parameters, timeoutSeconds: timeoutSeconds);
+        return new ForgeGridReader(c, command, command.ExecuteReader());
     }
 
     public async Task<IForgeGridReader> QueryMultipleAsync(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
-        var grid = await c.QueryMultipleAsync(new CommandDefinition(sql, parameters, commandTimeout: timeoutSeconds, cancellationToken: cancellationToken));
-        return new ForgeGridReader(c, grid);
+        var command = ForgeAdo.CreateCommand(c, sql, parameters, timeoutSeconds: timeoutSeconds);
+        return new ForgeGridReader(c, command, await command.ExecuteReaderAsync(cancellationToken));
     }
 
     public IEnumerable<T> QueryProcedure<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null)
     {
         using var c = CreateConnection();
         c.Open();
-        return c.Query<T>(procedureName, parameters, commandType: CommandType.StoredProcedure, commandTimeout: timeoutSeconds).ToList();
+        return ForgeAdo.Query<T>(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds).ToList();
     }
 
     public async Task<IReadOnlyList<T>> QueryProcedureAsync<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
-        var rows = await c.QueryAsync<T>(new CommandDefinition(procedureName, parameters, commandTimeout: timeoutSeconds, commandType: CommandType.StoredProcedure, cancellationToken: cancellationToken));
-        return rows.ToList();
+        return await ForgeAdo.QueryAsync<T>(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     }
 
     public T? QueryProcedureSingleOrDefault<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null)
-    {
-        using var c = CreateConnection();
-        c.Open();
-        return c.QuerySingleOrDefault<T>(procedureName, parameters, commandType: CommandType.StoredProcedure, commandTimeout: timeoutSeconds);
-    }
+        => QueryProcedure<T>(procedureName, parameters, timeoutSeconds).SingleOrDefault();
 
     public async Task<T?> QueryProcedureSingleOrDefaultAsync<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-    {
-        await using var c = CreateConnection();
-        await c.OpenAsync(cancellationToken);
-        return await c.QuerySingleOrDefaultAsync<T>(new CommandDefinition(procedureName, parameters, commandTimeout: timeoutSeconds, commandType: CommandType.StoredProcedure, cancellationToken: cancellationToken));
-    }
+        => (await QueryProcedureAsync<T>(procedureName, parameters, timeoutSeconds, cancellationToken)).SingleOrDefault();
 
     public int ExecuteProcedure(string procedureName, object? parameters = null, int? timeoutSeconds = null)
     {
         using var c = CreateConnection();
         c.Open();
-        return c.Execute(procedureName, parameters, commandType: CommandType.StoredProcedure, commandTimeout: timeoutSeconds);
+        return ForgeAdo.Execute(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds);
     }
 
     public async Task<int> ExecuteProcedureAsync(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
-        return await c.ExecuteAsync(new CommandDefinition(procedureName, parameters, commandTimeout: timeoutSeconds, commandType: CommandType.StoredProcedure, cancellationToken: cancellationToken));
+        return await ForgeAdo.ExecuteAsync(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     }
 
     public T? ExecuteProcedureScalar<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null)
     {
         using var c = CreateConnection();
         c.Open();
-        return c.ExecuteScalar<T>(procedureName, parameters, commandType: CommandType.StoredProcedure, commandTimeout: timeoutSeconds);
+        return ForgeAdo.ExecuteScalar<T>(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds);
     }
 
     public async Task<T?> ExecuteProcedureScalarAsync<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
-        return await c.ExecuteScalarAsync<T>(new CommandDefinition(procedureName, parameters, commandTimeout: timeoutSeconds, commandType: CommandType.StoredProcedure, cancellationToken: cancellationToken));
+        return await ForgeAdo.ExecuteScalarAsync<T>(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     }
 
     public IForgeGridReader QueryProcedureMultiple(string procedureName, object? parameters = null, int? timeoutSeconds = null)
     {
         var c = CreateConnection();
         c.Open();
-        return new ForgeGridReader(c, c.QueryMultiple(procedureName, parameters, commandType: CommandType.StoredProcedure, commandTimeout: timeoutSeconds));
+        var command = ForgeAdo.CreateCommand(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds);
+        return new ForgeGridReader(c, command, command.ExecuteReader());
     }
 
     public async Task<IForgeGridReader> QueryProcedureMultipleAsync(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
-        var grid = await c.QueryMultipleAsync(new CommandDefinition(procedureName, parameters, commandTimeout: timeoutSeconds, commandType: CommandType.StoredProcedure, cancellationToken: cancellationToken));
-        return new ForgeGridReader(c, grid);
+        var command = ForgeAdo.CreateCommand(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds);
+        return new ForgeGridReader(c, command, await command.ExecuteReaderAsync(cancellationToken));
     }
 
     public T? ExecuteFunction<T>(string functionName, object? parameters = null, int? timeoutSeconds = null)

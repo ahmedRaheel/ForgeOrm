@@ -2,34 +2,45 @@ using System.Linq.Expressions;
 
 namespace ForgeORM.QueryAst;
 
-internal sealed partial class ForgeAstSelectBuilder<T>
-{
-    internal static class ForgeJoinExpression
+public static class ForgeJoinExpression
 {
     public static string Translate<TLeft, TRight>(
         Expression<Func<TLeft, TRight, bool>> expression)
     {
         if (expression.Body is not BinaryExpression binary)
-            throw new NotSupportedException("Only simple join conditions are supported.");
+            throw new NotSupportedException("Join condition must be a binary expression.");
 
         var left = Member(binary.Left);
         var right = Member(binary.Right);
-        var op = Operator(binary.NodeType);
 
-        return $"{left} {op} {right}";
+        return $"{left} {Operator(binary.NodeType)} {right}";
     }
 
     private static string Member(Expression expression)
     {
-        if (expression is MemberExpression member)
-        {
-            if (member.Expression is ParameterExpression parameter)
-                return $"{parameter.Name}.{member.Member.Name}";
+        expression = StripConvert(expression);
 
-            return member.Member.Name;
+        if (expression is MemberExpression member &&
+            member.Expression is ParameterExpression parameter)
+        {
+            return $"{parameter.Name}.{member.Member.Name}";
         }
 
-        throw new NotSupportedException("Join condition must use member expressions.");
+        throw new NotSupportedException(
+            $"Join condition must use member expressions. Found: {expression.NodeType} - {expression}");
+    }
+
+    private static Expression StripConvert(Expression expression)
+    {
+        while (expression is UnaryExpression unary &&
+               (unary.NodeType == ExpressionType.Convert ||
+                unary.NodeType == ExpressionType.ConvertChecked ||
+                unary.NodeType == ExpressionType.TypeAs))
+        {
+            expression = unary.Operand;
+        }
+
+        return expression;
     }
 
     private static string Operator(ExpressionType type)
@@ -42,8 +53,7 @@ internal sealed partial class ForgeAstSelectBuilder<T>
             ExpressionType.GreaterThanOrEqual => ">=",
             ExpressionType.LessThan => "<",
             ExpressionType.LessThanOrEqual => "<=",
-            _ => throw new NotSupportedException($"Join operator {type} is not supported.")
+            _ => throw new NotSupportedException($"Unsupported join operator: {type}")
         };
     }
-}
 }

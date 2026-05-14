@@ -1,4 +1,5 @@
 using ForgeORM.Abstractions;
+using ForgeORM.Core.Search;
 
 namespace ForgeORM.Core;
 
@@ -27,4 +28,10 @@ public class ForgeDbContext : ForgeDb
     /// EF-style alias for raw SQL query composition.
     /// </summary>
     public IForgeQuery<T> FromSql<T>(string sql, object? parameters = null) => Sql<T>(sql, parameters);
+
+    /// <summary>ForgeORM search builder with expression-based optional filters and paging.</summary>
+    public ForgeSearch<T> Search<T>() => new(this);
+
+    /// <summary>ForgeORM stored procedure search builder.</summary>
+    public ForgeProcedureSearch<T> SearchProcedure<T>(string procedureName) => new(this, procedureName);
 }

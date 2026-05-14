@@ -391,10 +391,7 @@ internal sealed class ForgeEntityShape
     {
         var attr = type.GetCustomAttribute<ForgeTableAttribute>();
         if (attr is not null) return attr.Name;
-
-        return type.Name.EndsWith("s", StringComparison.OrdinalIgnoreCase)
-            ? type.Name
-            : type.Name + "s";
+        return type.Name.EndsWith("s", StringComparison.OrdinalIgnoreCase) ? type.Name : type.Name + "s";
     }
 
     public static string ColumnName(PropertyInfo property)
@@ -407,13 +404,9 @@ internal sealed class ForgeEntityShape
     {
         var shape = For(entity.GetType());
         var key = shape.KeyProperty;
-
-        if (key is null || !key.CanWrite)
-            return;
-
+        if (key is null || !key.CanWrite) return;
         var type = Nullable.GetUnderlyingType(key.PropertyType) ?? key.PropertyType;
         var current = key.GetValue(entity);
-
         if (type == typeof(Guid) && (current is null || (Guid)current == Guid.Empty))
             key.SetValue(entity, Guid.NewGuid());
     }

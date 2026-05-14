@@ -278,13 +278,14 @@ app.MapGet("/search/products/text", async (
     int pageSize,
     ForgeDbContext db) =>
 {
+    // Advanced raw-SQL escape hatch stays available, but search infrastructure is inside ForgeORM.Core.
     return await db.Search<Product>()
         .FromSql("SELECT Id, Code, Name, Price FROM dbo.Products")
         .WhereIf(!string.IsNullOrWhiteSpace(code), "Code = @Code", new { Code = code })
         .WhereIf(!string.IsNullOrWhiteSpace(name), "Name LIKE @Name", new { Name = $"%{name}%" })
         .WhereIf(minPrice.HasValue, "Price >= @MinPrice", new { MinPrice = minPrice })
         .WhereIf(maxPrice.HasValue, "Price <= @MaxPrice", new { MaxPrice = maxPrice })
-        .OrderBy("Id DESC")
+        .OrderByDescending(x => x.Id)
         .Page(page, pageSize)
         .ToPagedAsync();
 })
@@ -301,7 +302,7 @@ app.MapGet("/search/products/expression", async (
         .From("dbo.Products")
         .WhereIf(minPrice.HasValue, x => x.Price >= minPrice!.Value)
         .WhereIf(maxPrice.HasValue, x => x.Price <= maxPrice!.Value)
-        .OrderBy("Id DESC")
+        .OrderByDescending(x => x.Id)
         .Page(page, pageSize)
         .ToPagedAsync();
 })
@@ -316,13 +317,14 @@ app.MapGet("/search/products/builder", async (
     int pageSize,
     ForgeDbContext db) =>
 {
+    // This is the recommended user-facing API: expression-based, IntelliSense-friendly, no internal classes exposed.
     return await db.Search<Product>()
-        .Select("Id", "Code", "Name", "Price")
+        .Select(x => x.Id, x => x.Code, x => x.Name, x => x.Price)
         .From("dbo.Products")
-        .Optional("Code", code)
-        .OptionalLike("Name", name)
-        .OptionalBetween("Price", minPrice, maxPrice)
-        .OrderBy("Id DESC")
+        .Optional(x => x.Code, code)
+        .OptionalLike(x => x.Name, name)
+        .OptionalBetween(x => x.Price, minPrice, maxPrice)
+        .OrderByDescending(x => x.Id)
         .Page(page, pageSize)
         .ToPagedAsync();
 })

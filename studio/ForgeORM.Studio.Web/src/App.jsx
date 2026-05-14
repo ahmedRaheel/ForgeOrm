@@ -34,7 +34,14 @@ function App() {
       <div className="actions"><button onClick={visualize}>Visualize Query</button><button onClick={optimize}>AI Optimize</button></div>
       <pre>{result ? JSON.stringify(result, null, 2) : 'Result will appear here...'}</pre>
     </section>
-  </main>
+  
+      <section className="card"><h2>RAG Engine</h2><p>Ingest documents, chunk content, generate embeddings and retrieve context for AI answers.</p></section>
+      <section className="card"><h2>Workflow Designer</h2><p>Visual nodes for APIs, queues, database actions, approvals, AI actions and saga compensations.</p></section>
+      <section className="card"><h2>AI Agents</h2><p>Optimization, diagnostics, reporting, migration, security and observability agents.</p></section>
+      <section className="card"><h2>Low-Code ERP Generator</h2><p>Generate entities, APIs, forms, dashboards, reports and workflow modules from metadata.</p></section>
+      <section className="card"><h2>Cloud + IaC Generator</h2><p>Generate Dockerfile, Kubernetes YAML, Helm values and Terraform starter files.</p></section>
+      <section className="card"><h2>Marketplace</h2><p>Publish providers, templates, AI agents, workflow packs, reports and ERP modules.</p></section>
+    </main>
 }
 
 createRoot(document.getElementById('root')).render(<App />);

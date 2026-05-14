@@ -27,6 +27,20 @@
     <ProjectReference Include="..\ForgeORM.Security\ForgeORM.Security.csproj" />
     <ProjectReference Include="..\ForgeORM.VectorSearch\ForgeORM.VectorSearch.csproj" />
     <ProjectReference Include="..\ForgeORM.AI.Advanced\ForgeORM.AI.Advanced.csproj" />
+    <ProjectReference Include="..\ForgeORM.Rag\ForgeORM.Rag.csproj" />
+    <ProjectReference Include="..\ForgeORM.Workflow\ForgeORM.Workflow.csproj" />
+    <ProjectReference Include="..\ForgeORM.EventSourcing\ForgeORM.EventSourcing.csproj" />
+    <ProjectReference Include="..\ForgeORM.Realtime\ForgeORM.Realtime.csproj" />
+    <ProjectReference Include="..\ForgeORM.AI.Agents\ForgeORM.AI.Agents.csproj" />
+    <ProjectReference Include="..\ForgeORM.LowCode\ForgeORM.LowCode.csproj" />
+    <ProjectReference Include="..\ForgeORM.Cloud\ForgeORM.Cloud.csproj" />
+    <ProjectReference Include="..\ForgeORM.Identity\ForgeORM.Identity.csproj" />
+    <ProjectReference Include="..\ForgeORM.Sync\ForgeORM.Sync.csproj" />
+    <ProjectReference Include="..\ForgeORM.Marketplace\ForgeORM.Marketplace.csproj" />
+    <ProjectReference Include="..\ForgeORM.DataVirtualization\ForgeORM.DataVirtualization.csproj" />
+    <ProjectReference Include="..\ForgeORM.TimeTravel\ForgeORM.TimeTravel.csproj" />
+    <ProjectReference Include="..\ForgeORM.Observability.AI\ForgeORM.Observability.AI.csproj" />
+    <ProjectReference Include="..\ForgeORM.AI.Memory\ForgeORM.AI.Memory.csproj" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
   <ItemGroup>

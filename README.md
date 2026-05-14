@@ -198,3 +198,8 @@ This package now includes additive implementations for:
 - React Studio shell under `studio/ForgeORM.Studio.Web`
 
 See `docs/V2-V3-IMPLEMENTED-MODULES.md`.
+
+
+## V4 Platform Modules Added
+
+See `docs/V4-PLATFORM-MODULES-IMPLEMENTED.md`. Added RAG, workflow engine, event sourcing, realtime, AI agents, low-code ERP generator, cloud/IaC generator, identity policy engine, offline sync, marketplace, data virtualization, time travel, AI observability and AI memory.

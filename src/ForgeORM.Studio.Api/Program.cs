@@ -3,6 +3,20 @@ using ForgeORM.Caching.Redis;
 using ForgeORM.Security;
 using ForgeORM.Telemetry;
 using ForgeORM.VectorSearch;
+using ForgeORM.Rag;
+using ForgeORM.Workflow;
+using ForgeORM.EventSourcing;
+using ForgeORM.Realtime;
+using ForgeORM.AI.Agents;
+using ForgeORM.LowCode;
+using ForgeORM.Cloud;
+using ForgeORM.Identity;
+using ForgeORM.Sync;
+using ForgeORM.Marketplace;
+using ForgeORM.DataVirtualization;
+using ForgeORM.TimeTravel;
+using ForgeORM.Observability.AI;
+using ForgeORM.AI.Memory;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +28,20 @@ builder.Services.AddForgeTelemetry();
 builder.Services.AddForgeSecurity();
 builder.Services.AddForgeInMemoryVectorSearch();
 builder.Services.AddForgeAdvancedAi();
+builder.Services.AddForgeRag();
+builder.Services.AddForgeWorkflow();
+builder.Services.AddForgeEventSourcing();
+builder.Services.AddForgeRealtime();
+builder.Services.AddForgeAiAgents();
+builder.Services.AddForgeLowCode();
+builder.Services.AddForgeCloudDeployment();
+builder.Services.AddForgeIdentityPolicies();
+builder.Services.AddForgeOfflineSync();
+builder.Services.AddForgeMarketplace();
+builder.Services.AddForgeDataVirtualization();
+builder.Services.AddForgeTimeTravel();
+builder.Services.AddForgeAiObservability();
+builder.Services.AddForgeAiMemory();
 
 var app = builder.Build();
 app.UseSwagger();
@@ -70,6 +98,40 @@ app.MapGet("/studio/saas/tenants", () => Results.Ok(new[]
     new { id = "default", name = "Default Tenant", status = "Active" },
     new { id = "enterprise", name = "Enterprise Tenant", status = "Active" }
 }));
+
+
+
+app.MapPost("/studio/rag/ingest", async (ForgeRagDocument document, IForgeRagEngine rag) => Results.Ok(await rag.IngestAsync(document)));
+app.MapPost("/studio/rag/context", async (RagQuestionRequest request, IForgeRagEngine rag) => Results.Ok(await rag.BuildContextAsync(request.Question, request.TopK)));
+
+app.MapPost("/studio/workflows/run", async (ForgeWorkflowDefinition workflow, IForgeWorkflowEngine engine) => Results.Ok(await engine.RunAsync(workflow)));
+app.MapPost("/studio/workflows/designer", (ForgeWorkflowDefinition workflow, IForgeWorkflowEngine engine) => Results.Ok(engine.ToDesignerModel(workflow)));
+
+app.MapPost("/studio/events/append", async (AppendEventRequest request, IForgeEventStore store) =>
+{
+    await store.AppendAsync(request.StreamId, [new StudioEvent(request.StreamId, request.Name, DateTimeOffset.UtcNow)]);
+    return Results.Ok(new { appended = true, request.StreamId });
+});
+app.MapGet("/studio/events/{streamId}", async (string streamId, IForgeEventStore store) => Results.Ok(await store.ReadStreamAsync(streamId)));
+
+app.MapPost("/studio/realtime/publish", async (ForgeRealtimeEvent evt, IForgeRealtimeHub hub) =>
+{
+    await hub.PublishAsync(evt);
+    return Results.Ok(new { published = true, evt.Topic });
+});
+
+app.MapPost("/studio/agents/run", async (ForgeAgentTask task, ForgeAgentRunner runner) => Results.Ok(await runner.RunAllAsync(task)));
+app.MapPost("/studio/lowcode/erp", (GenerateErpRequest request, IForgeLowCodeEngine lowCode) => Results.Ok(lowCode.GenerateErp(request.BusinessDomain, request.Modules)));
+app.MapPost("/studio/cloud/deployment", (CloudDeploymentRequest request, IForgeDeploymentGenerator generator) => Results.Ok(generator.Generate(request)));
+app.MapPost("/studio/identity/authorize", (AuthorizeRequest request, IForgePolicyEngine policies) => Results.Ok(policies.Authorize(request.Principal, request.Requirement)));
+app.MapPost("/studio/sync", async (SyncRequest request, IForgeSyncEngine sync) => Results.Ok(await sync.SynchronizeAsync(request.Local, request.Remote)));
+app.MapPost("/studio/marketplace/publish", (ForgeMarketplaceItem item, IForgeMarketplaceCatalog catalog) => { catalog.Publish(item); return Results.Ok(item); });
+app.MapGet("/studio/marketplace", (string? q, string? category, IForgeMarketplaceCatalog catalog) => Results.Ok(catalog.Search(q, category)));
+app.MapPost("/studio/federated/plan", (FederatedPlanRequest request, IForgeFederatedQueryPlanner planner) => Results.Ok(planner.Plan(request.Query, request.Sources)));
+app.MapPost("/studio/time-travel/sql", (TimeTravelQuery request, IForgeTimeTravelSqlBuilder builder) => Results.Ok(builder.BuildSql(request)));
+app.MapGet("/studio/observability/ai", (IForgeTelemetry telemetry, IForgeAiObservabilityAnalyzer analyzer) => Results.Ok(analyzer.Analyze(telemetry.Snapshot())));
+app.MapPost("/studio/memory/remember", async (ForgeMemoryEntry entry, IForgeAiMemoryStore memory) => { await memory.RememberAsync(entry); return Results.Ok(entry); });
+app.MapGet("/studio/memory/{scope}", async (string scope, string? q, IForgeAiMemoryStore memory) => Results.Ok(await memory.RecallAsync(scope, q)));
 
 app.Run();
 

@@ -34,4 +34,5 @@ public class ForgeDbContext : ForgeDb
 
     /// <summary>ForgeORM stored procedure search builder.</summary>
     public ForgeProcedureSearch<T> SearchProcedure<T>(string procedureName) => new(this, procedureName);
+   
 }

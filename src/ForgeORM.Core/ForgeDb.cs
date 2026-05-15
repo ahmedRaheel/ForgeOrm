@@ -185,4 +185,17 @@ public partial class ForgeDb : IForgeDb
 
     public Task<IReadOnlyList<T>> QueryFunctionAsync<T>(string functionSql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
         => QueryAsync<T>(functionSql, parameters, timeoutSeconds, cancellationToken);
+    public async Task<IReadOnlyList<IDictionary<string, object?>>> QueryDynamicAsync(
+    string sql,
+    object? parameters = null,
+    CancellationToken cancellationToken = default)
+    {
+        await using var connection = CreateConnection();
+
+        return await ForgeAdo.QueryDynamicAsync(
+            connection,
+            sql,
+            parameters,
+            cancellationToken: cancellationToken);
+    }
 }

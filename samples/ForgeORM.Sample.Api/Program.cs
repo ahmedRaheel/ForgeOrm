@@ -443,28 +443,165 @@ app.MapPost("/v3/vector/search", async (float[] vector, int topK, IForgeVectorSt
 .WithTags("27 V3 Vector Search");
 
 
-app.MapGet("/analytics/window/ndp-percentile-sql", (decimal percentile, ForgeDbContext db) =>
+app.MapGet("/analytics/window-functions/sql", (ForgeDbContext db) =>
 {
-    var sql = db.Analytics<NdpStatement>()
-        .From("[NDP].[vw_FBS_Stock_Statement]")
-        .Select(x => x.CurrentFinancialStatYear, "Year")
-        .PercentileCont(x => x.EbitdaToTotalIndebtedness, percentile)
-            .PartitionBy(x => x.CurrentFinancialStatYear)
-            .As("YearPercentile")
-        .Count()
-            .PartitionBy(x => x.CurrentFinancialStatYear)
-            .As("YearSample")
-        .PercentileCont(x => x.EbitdaToTotalIndebtedness, percentile)
-            .OverAll()
-            .As("OverallPercentile")
+    var sql = db.Analytics<Order>()
+        .From("Orders")
+
+        .Select(x => x.Id)
+        .Select(x => x.OrderNo)
+        .Select(x => x.CustomerId)
+        .Select(x => x.GrandTotal)
+        .Select(x => x.CreatedAt)
+
+        // Ranking
         .RowNumber()
-            .PartitionBy(x => x.CurrentFinancialStatYear)
-            .OrderBy(x => x.CurrentFinancialStatYear)
-            .As("rn")
+            .PartitionBy(x => x.CustomerId)
+            .OrderByDescending(x => x.CreatedAt)
+            .As("RowNo")
+
+        .Rank()
+            .PartitionBy(x => x.CustomerId)
+            .OrderByDescending(x => x.GrandTotal)
+            .As("RankNo")
+
+        .DenseRank()
+            .PartitionBy(x => x.CustomerId)
+            .OrderByDescending(x => x.GrandTotal)
+            .As("DenseRankNo")
+
+        // Aggregates
+        .Count()
+            .PartitionBy(x => x.CustomerId)
+            .As("CustomerOrderCount")
+
+        .Sum(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .As("CustomerTotalSales")
+
+        .Avg(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .As("CustomerAverageSales")
+
+        .Min(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .As("CustomerMinSale")
+
+        .Max(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .As("CustomerMaxSale")
+
+        // Navigation functions
+        .Lag(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .OrderBy(x => x.CreatedAt)
+            .As("PreviousOrderAmount")
+
+        .Lead(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .OrderBy(x => x.CreatedAt)
+            .As("NextOrderAmount")
+
+        // Distribution
+        .PercentRank()
+            .PartitionBy(x => x.CustomerId)
+            .OrderBy(x => x.GrandTotal)
+            .As("PercentRank")
+
+        .CumeDist()
+            .PartitionBy(x => x.CustomerId)
+            .OrderBy(x => x.GrandTotal)
+            .As("CumeDist")
+
+        // Percentiles
+        .PercentileCont(x => x.GrandTotal, 0.5m)
+            .PartitionBy(x => x.CustomerId)
+            .As("MedianOrder")
+
+        .PercentileCont(x => x.GrandTotal, 0.9m)
+            .PartitionBy(x => x.CustomerId)
+            .As("P90Order")
+
+        // Running total
+        .Sum(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .OrderBy(x => x.CreatedAt)
+            .RowsBetweenUnboundedPrecedingAndCurrentRow()
+            .As("RunningSales")
+
         .Render()
         .Sql;
 
     return Results.Ok(new { sql });
+})
+.WithTags("30 Analytics Window Functions");
+
+app.MapGet("/analytics/window-functions", async (
+    ForgeDbContext db,
+    CancellationToken ct) =>
+{
+    var result = await db.Analytics<Order>()
+        .From("Orders")
+        //.Select(x => x.Id)
+        //.Select(x => x.OrderNo)
+        //.Select(x => x.CustomerId)
+        //.Select(x => x.GrandTotal)
+        //.Select(x => x.CreatedAt)
+
+        .RowNumber()
+            .PartitionBy(x => x.CustomerId)
+            .OrderByDescending(x => x.CreatedAt)
+            .As("RowNo")
+
+        .Rank()
+            .PartitionBy(x => x.CustomerId)
+            .OrderByDescending(x => x.GrandTotal)
+            .As("RankNo")
+
+        .DenseRank()
+            .PartitionBy(x => x.CustomerId)
+            .OrderByDescending(x => x.GrandTotal)
+            .As("DenseRankNo")
+
+        .Count()
+            .PartitionBy(x => x.CustomerId)
+            .As("CustomerOrderCount")
+
+        .Sum(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .As("CustomerTotalSales")
+
+        .Avg(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .As("CustomerAverageSales")
+
+        .Min(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .As("CustomerMinSale")
+
+        .Max(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .As("CustomerMaxSale")
+
+        .Lag(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .OrderBy(x => x.CreatedAt)
+            .As("PreviousOrderAmount")
+
+        .Lead(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .OrderBy(x => x.CreatedAt)
+            .As("NextOrderAmount")
+
+        .Sum(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .OrderBy(x => x.CreatedAt)
+            .RowsBetweenUnboundedPrecedingAndCurrentRow()
+            .As("RunningSales")
+
+        .ToDynamicListAsync(ct);
+  
+    return Results.Ok(result);
 })
 .WithTags("30 Analytics Window Functions");
 
@@ -596,13 +733,3 @@ public sealed class CreateOrderItemRequest
 }
 
 
-public sealed class NdpStatement
-{
-    [ForgeColumn("current_financial_stat_year")]
-    public int CurrentFinancialStatYear { get; set; }
-
-    [ForgeColumn("EBITDA_To_Total_Indebtedness")]
-    public decimal? EbitdaToTotalIndebtedness { get; set; }
-
-    public string Sector { get; set; } = string.Empty;
-}

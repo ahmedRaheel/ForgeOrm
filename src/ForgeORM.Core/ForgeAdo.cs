@@ -203,5 +203,44 @@ public static class ForgeAdo
         return value is IEnumerable;
     }
 
+    public static async Task<IReadOnlyList<IDictionary<string, object?>>> QueryDynamicAsync(
+    DbConnection connection,
+    string sql,
+    object? parameters = null,
+    DbTransaction? transaction = null,
+    CommandType commandType = CommandType.Text,
+    int? timeoutSeconds = null,
+    CancellationToken cancellationToken = default)
+    {
+        await using var command = CreateCommand(
+            connection,
+            sql,
+            parameters,
+            transaction,
+            commandType,
+            timeoutSeconds);
 
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        var rows = new List<IDictionary<string, object?>>();
+
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+            for (var i = 0; i < reader.FieldCount; i++)
+            {
+                row[reader.GetName(i)] = reader.IsDBNull(i)
+                    ? null
+                    : reader.GetValue(i);
+            }
+
+            rows.Add(row);
+        }
+
+        return rows;
+    }
 }

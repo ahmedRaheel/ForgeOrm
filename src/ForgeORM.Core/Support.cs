@@ -2,7 +2,6 @@ using System.Data;
 using System.Data.Common;
 using System.Linq.Expressions;
 using System.Reflection;
-using Dapper;
 using ForgeORM.Abstractions;
 
 namespace ForgeORM.Core;
@@ -10,11 +9,38 @@ namespace ForgeORM.Core;
 internal sealed class ForgeGridReader : IForgeGridReader
 {
     private readonly DbConnection _connection;
-    private readonly SqlMapper.GridReader _reader;
-    public ForgeGridReader(DbConnection connection, SqlMapper.GridReader reader) { _connection = connection; _reader = reader; }
-    public IEnumerable<T> Read<T>() => _reader.Read<T>().ToList();
-    public async Task<IReadOnlyList<T>> ReadAsync<T>() => (await _reader.ReadAsync<T>()).ToList();
-    public void Dispose() { _reader.Dispose(); _connection.Dispose(); }
+    private readonly DbCommand _command;
+    private readonly DbDataReader _reader;
+    private bool _hasConsumedCurrentResult;
+
+    public ForgeGridReader(DbConnection connection, DbCommand command, DbDataReader reader)
+    {
+        _connection = connection;
+        _command = command;
+        _reader = reader;
+    }
+
+    public IEnumerable<T> Read<T>() => ReadAsync<T>().GetAwaiter().GetResult();
+
+    public async Task<IReadOnlyList<T>> ReadAsync<T>()
+    {
+        if (_hasConsumedCurrentResult)
+            await _reader.NextResultAsync();
+
+        var rows = new List<T>();
+        while (await _reader.ReadAsync())
+            rows.Add(ForgeMaterializer.Map<T>(_reader));
+
+        _hasConsumedCurrentResult = true;
+        return rows;
+    }
+
+    public void Dispose()
+    {
+        _reader.Dispose();
+        _command.Dispose();
+        _connection.Dispose();
+    }
 }
 
 public sealed class ReflectionForgeEntityMetadataResolver : IForgeEntityMetadataResolver
@@ -153,12 +179,23 @@ internal sealed class ForgeTransaction : IForgeTransaction
     public static ForgeTransaction Begin(DbConnection connection) => new(connection, connection.BeginTransaction());
     public static async Task<ForgeTransaction> BeginAsync(DbConnection connection, CancellationToken ct) => new(connection, await connection.BeginTransactionAsync(ct));
 
-    public IEnumerable<T> Query<T>(string sql, object? parameters = null, int? timeoutSeconds = null) => _connection.Query<T>(sql, parameters, _transaction, false, timeoutSeconds).ToList();
-    public async Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken  = default) => (await _connection.QueryAsync<T>(new CommandDefinition(sql, parameters, _transaction, timeoutSeconds, cancellationToken: cancellationToken))).ToList();
-    public int Execute(string sql, object? parameters = null, int? timeoutSeconds = null) => _connection.Execute(sql, parameters, _transaction, timeoutSeconds);
-    public Task<int> ExecuteAsync(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default) => _connection.ExecuteAsync(new CommandDefinition(sql, parameters, _transaction, timeoutSeconds, cancellationToken: cancellationToken));
-    public T? ExecuteScalar<T>(string sql, object? parameters = null, int? timeoutSeconds = null) => _connection.ExecuteScalar<T>(sql, parameters, _transaction, timeoutSeconds);
-    public Task<T?> ExecuteScalarAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default) => _connection.ExecuteScalarAsync<T>(new CommandDefinition(sql, parameters, _transaction, timeoutSeconds, cancellationToken: cancellationToken));
+    public IEnumerable<T> Query<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
+        => ForgeAdo.Query<T>(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds).ToList();
+
+    public Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken  = default)
+        => ForgeAdo.QueryAsync<T>(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+
+    public int Execute(string sql, object? parameters = null, int? timeoutSeconds = null)
+        => ForgeAdo.Execute(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds);
+
+    public Task<int> ExecuteAsync(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+        => ForgeAdo.ExecuteAsync(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+
+    public T? ExecuteScalar<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
+        => ForgeAdo.ExecuteScalar<T>(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds);
+
+    public Task<T?> ExecuteScalarAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+        => ForgeAdo.ExecuteScalarAsync<T>(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     public void Commit() => _transaction.Commit();
     public Task CommitAsync(CancellationToken cancellationToken = default) => _transaction.CommitAsync(cancellationToken);
     public void Rollback() => _transaction.Rollback();

@@ -1,7 +1,6 @@
 using System.Data.Common;
 using System.Security.Cryptography;
 using System.Text;
-using Dapper;
 using ForgeORM.Abstractions;
 using ForgeORM.QueryAst.Artifacts;
 
@@ -58,7 +57,7 @@ public sealed class ForgeArtifactManager : IForgeArtifactManager
             "Sqlite" => SqliteHistoryTableSql,
             _ => SqlServerHistoryTableSql
         };
-        await connection.ExecuteAsync(new CommandDefinition(sql, cancellationToken: cancellationToken));
+        await ForgeSchemaAdo.ExecuteAsync(connection, sql, cancellationToken: cancellationToken);
     }
 
     public async Task<ForgeArtifactApplyResult> CreateOrUpdateAsync(ForgeDbArtifact artifact, CancellationToken cancellationToken = default)
@@ -69,13 +68,12 @@ public sealed class ForgeArtifactManager : IForgeArtifactManager
 
         var hash = Sha256(artifact.SqlDefinition);
 
-        var latest = await connection.QueryFirstOrDefaultAsync<ForgeArtifactVersion>(
-            new CommandDefinition(LatestHistorySql, new
+        var latest = (await ForgeSchemaAdo.QueryAsync<ForgeArtifactVersion>(connection, LatestHistorySql, new
             {
                 ArtifactType = artifact.Type.ToString(),
                 SchemaName = artifact.Schema,
                 ArtifactName = artifact.Name
-            }, cancellationToken: cancellationToken));
+            }, cancellationToken: cancellationToken)).FirstOrDefault();
 
         if (latest is not null && latest.SqlHash == hash)
         {
@@ -93,9 +91,9 @@ public sealed class ForgeArtifactManager : IForgeArtifactManager
 
         var nextVersion = (latest?.VersionNo ?? 0) + 1;
 
-        await connection.ExecuteAsync(new CommandDefinition(artifact.SqlDefinition, cancellationToken: cancellationToken));
+        await ForgeSchemaAdo.ExecuteAsync(connection, artifact.SqlDefinition, cancellationToken: cancellationToken);
 
-        await connection.ExecuteAsync(new CommandDefinition(InsertHistorySql, new
+        await ForgeSchemaAdo.ExecuteAsync(connection, InsertHistorySql, new
         {
             ArtifactType = artifact.Type.ToString(),
             SchemaName = artifact.Schema,
@@ -109,7 +107,7 @@ public sealed class ForgeArtifactManager : IForgeArtifactManager
             AppliedBy = Environment.UserName,
             MachineName = Environment.MachineName,
             ApplicationName = AppDomain.CurrentDomain.FriendlyName
-        }, cancellationToken: cancellationToken));
+        }, cancellationToken: cancellationToken);
 
         return new ForgeArtifactApplyResult
         {
@@ -233,4 +231,54 @@ public sealed class ForgeArtifactManager : IForgeArtifactManager
             ApplicationName TEXT NULL
         );
         """;
+}
+
+
+internal static class ForgeSchemaAdo
+{
+    public static async Task<IReadOnlyList<T>> QueryAsync<T>(DbConnection connection, string sql, object? parameters = null, CancellationToken cancellationToken = default)
+    {
+        await using var command = CreateCommand(connection, sql, parameters);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var rows = new List<T>();
+        while (await reader.ReadAsync(cancellationToken)) rows.Add(Map<T>(reader));
+        return rows;
+    }
+
+    public static async Task<int> ExecuteAsync(DbConnection connection, string sql, object? parameters = null, CancellationToken cancellationToken = default)
+    {
+        await using var command = CreateCommand(connection, sql, parameters);
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static DbCommand CreateCommand(DbConnection connection, string sql, object? parameters)
+    {
+        var command = connection.CreateCommand();
+        command.CommandText = sql;
+        if (parameters is not null)
+        {
+            foreach (var prop in parameters.GetType().GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance).Where(p => p.CanRead))
+            {
+                var parameter = command.CreateParameter();
+                parameter.ParameterName = "@" + prop.Name;
+                parameter.Value = prop.GetValue(parameters) ?? DBNull.Value;
+                command.Parameters.Add(parameter);
+            }
+        }
+        return command;
+    }
+
+    private static T Map<T>(DbDataReader reader)
+    {
+        var instance = Activator.CreateInstance<T>();
+        var props = typeof(T).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance).Where(p => p.CanWrite).ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < reader.FieldCount; i++)
+        {
+            if (!props.TryGetValue(reader.GetName(i), out var prop) || reader.IsDBNull(i)) continue;
+            var value = reader.GetValue(i);
+            var type = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
+            prop.SetValue(instance, Convert.ChangeType(value, type));
+        }
+        return instance;
+    }
 }

@@ -1,6 +1,5 @@
 using System.Data.Common;
 using System.Reflection;
-using Dapper;
 using ForgeORM.Abstractions;
 using Microsoft.Data.SqlClient;
 
@@ -62,7 +61,7 @@ internal static class BulkFallback
         var columns = string.Join(", ", props.Select(p => p.Name));
         var values = string.Join(", ", props.Select(p => "@" + p.Name));
         var sql = $"INSERT INTO {tableName} ({columns}) VALUES ({values})";
-        return connection.ExecuteAsync(new CommandDefinition(sql, rows, cancellationToken: ct));
+        return ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
     }
 
     public static Task UpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken ct)
@@ -70,6 +69,29 @@ internal static class BulkFallback
         var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead && !p.Name.Equals(keyColumn, StringComparison.OrdinalIgnoreCase)).ToList();
         var set = string.Join(", ", props.Select(p => p.Name + " = @" + p.Name));
         var sql = $"UPDATE {tableName} SET {set} WHERE {keyColumn} = @{keyColumn}";
-        return connection.ExecuteAsync(new CommandDefinition(sql, rows, cancellationToken: ct));
+        return ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
+    }
+}
+
+
+internal static class ForgeProviderAdo
+{
+    public static async Task<int> ExecuteManyAsync<T>(DbConnection connection, string sql, IReadOnlyCollection<T> rows, CancellationToken cancellationToken)
+    {
+        var total = 0;
+        foreach (var row in rows)
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = sql;
+            foreach (var prop in typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead))
+            {
+                var parameter = command.CreateParameter();
+                parameter.ParameterName = "@" + prop.Name;
+                parameter.Value = prop.GetValue(row) ?? DBNull.Value;
+                command.Parameters.Add(parameter);
+            }
+            total += await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        return total;
     }
 }

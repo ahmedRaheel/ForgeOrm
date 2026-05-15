@@ -3,82 +3,221 @@ using ForgeORM.VectorSearch;
 
 namespace ForgeORM.Rag;
 
-public sealed record ForgeRagDocument(string Id, string Title, string Content, IReadOnlyDictionary<string,string>? Metadata = null);
-public sealed record ForgeRagChunk(string Id, string DocumentId, string Text, int Index, IReadOnlyDictionary<string,string>? Metadata = null);
-public sealed record ForgeRagAnswerContext(string Question, IReadOnlyList<ForgeRagChunk> Chunks, string Prompt);
+public sealed record ForgeRagDocument(
+    string Id,
+    string Title,
+    string Content,
+    IReadOnlyDictionary<string, string>? Metadata = null);
+
+public sealed record ForgeRagChunk(
+    string Id,
+    string DocumentId,
+    string Text,
+    int Index,
+    IReadOnlyDictionary<string, string>? Metadata = null);
+
+public sealed record ForgeRagAnswerContext(
+    string Question,
+    IReadOnlyList<ForgeRagChunk> Chunks,
+    string Prompt);
 
 public interface IForgeEmbeddingProvider
 {
-    Task<float[]> EmbedAsync(string text, CancellationToken cancellationToken = default);
+    Task<float[]> EmbedAsync(
+        string text,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class DeterministicEmbeddingProvider : IForgeEmbeddingProvider
 {
-    public Task<float[]> EmbedAsync(string text, CancellationToken cancellationToken = default)
+    private const int Dimensions = 64;
+
+    public Task<float[]> EmbedAsync(
+        string text,
+        CancellationToken cancellationToken = default)
     {
-        var vector = new float[64];
+        var vector = new float[Dimensions];
+
         foreach (var ch in text ?? string.Empty)
         {
-            var idx = Math.Abs(ch.GetHashCode()) % vector.Length;
+            var idx = ((int)ch) % vector.Length;
             vector[idx] += 1f;
         }
-        var len = MathF.Sqrt(vector.Sum(x => x * x));
-        if (len > 0) for (var i = 0; i < vector.Length; i++) vector[i] /= len;
+
+        var length = MathF.Sqrt(vector.Sum(x => x * x));
+
+        if (length > 0)
+        {
+            for (var i = 0; i < vector.Length; i++)
+                vector[i] /= length;
+        }
+
         return Task.FromResult(vector);
     }
 }
 
 public interface IForgeRagEngine
 {
-    Task<IReadOnlyList<ForgeRagChunk>> IngestAsync(ForgeRagDocument document, CancellationToken cancellationToken = default);
-    Task<ForgeRagAnswerContext> BuildContextAsync(string question, int topK = 5, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ForgeRagChunk>> IngestAsync(
+        ForgeRagDocument document,
+        CancellationToken cancellationToken = default);
+
+    Task<ForgeRagAnswerContext> BuildContextAsync(
+        string question,
+        int topK = 5,
+        CancellationToken cancellationToken = default);
 }
 
-public sealed class ForgeRagEngine(IForgeVectorStore vectorStore, IForgeEmbeddingProvider embeddingProvider) : IForgeRagEngine
+public sealed class ForgeRagEngine : IForgeRagEngine
 {
-    public async Task<IReadOnlyList<ForgeRagChunk>> IngestAsync(ForgeRagDocument document, CancellationToken cancellationToken = default)
+    private readonly IForgeVectorStore _vectorStore;
+    private readonly IForgeEmbeddingProvider _embeddingProvider;
+
+    public ForgeRagEngine(
+        IForgeVectorStore vectorStore,
+        IForgeEmbeddingProvider embeddingProvider)
     {
+        _vectorStore = vectorStore;
+        _embeddingProvider = embeddingProvider;
+    }
+
+    public async Task<IReadOnlyList<ForgeRagChunk>> IngestAsync(
+        ForgeRagDocument document,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+
         var chunks = Chunk(document).ToList();
+
         foreach (var chunk in chunks)
         {
-            var vector = await embeddingProvider.EmbedAsync(chunk.Text, cancellationToken);
-            await vectorStore.UpsertAsync(new ForgeVectorDocument(chunk.Id, vector, chunk.Text, new Dictionary<string,string>
+            if (chunk is null)
+                continue;
+
+            if (string.IsNullOrWhiteSpace(chunk.Text))
+                continue;
+
+            var vector = await _embeddingProvider.EmbedAsync(
+                chunk.Text,
+                cancellationToken);
+
+            if (vector is null || vector.Length == 0)
+                throw new InvalidOperationException(
+                    $"Embedding provider returned null/empty vector for chunk {chunk.Id}.");
+
+            var metadata = new Dictionary<string, string>(
+                document.Metadata ?? new Dictionary<string, string>())
             {
                 ["documentId"] = chunk.DocumentId,
-                ["title"] = document.Title,
+                ["title"] = document.Title ?? string.Empty,
                 ["chunkIndex"] = chunk.Index.ToString()
-            }), cancellationToken);
+            };
+
+            var vectorDocument = new ForgeVectorDocument(
+                Id: chunk.Id,
+                Vector: vector,
+                Text: chunk.Text,
+                Metadata: metadata);
+
+            await _vectorStore.UpsertAsync(
+                vectorDocument,
+                cancellationToken);
         }
+
         return chunks;
     }
 
-    public async Task<ForgeRagAnswerContext> BuildContextAsync(string question, int topK = 5, CancellationToken cancellationToken = default)
+    public async Task<ForgeRagAnswerContext> BuildContextAsync(
+        string question,
+        int topK = 5,
+        CancellationToken cancellationToken = default)
     {
-        var vector = await embeddingProvider.EmbedAsync(question, cancellationToken);
-        var matches = await vectorStore.SearchAsync(vector, topK, cancellationToken);
-        var chunks = matches.Select((m, i) => new ForgeRagChunk(m.Document.Id, m.Document.Metadata.TryGetValue("documentId", out var d) ? d : m.Document.Id, m.Document.Text, i, m.Document.Metadata)).ToList();
-        var prompt = "Answer using only this context:\n" + string.Join("\n---\n", chunks.Select(x => x.Text)) + $"\nQuestion: {question}";
+        if (string.IsNullOrWhiteSpace(question))
+            throw new ArgumentException("Question is required.", nameof(question));
+
+        var vector = await _embeddingProvider.EmbedAsync(
+            question,
+            cancellationToken);
+
+        var matches = await _vectorStore.SearchAsync(
+            vector,
+            topK,
+            cancellationToken);
+
+        var chunks = matches
+            .Select((match, index) =>
+            {
+                var metadata = match.Metadata
+                    ?? new Dictionary<string, string>();
+
+                var documentId = metadata.TryGetValue("documentId", out var value)
+                    ? value
+                    : match.Id;
+
+                return new ForgeRagChunk(
+                    match.Id,
+                    documentId,
+                    match.Text,
+                    index,
+                    metadata);
+            })
+            .ToList();
+
+        var prompt =
+            "Answer using only this context:\n" +
+            string.Join("\n---\n", chunks.Select(x => x.Text)) +
+            $"\nQuestion: {question}";
+
         return new ForgeRagAnswerContext(question, chunks, prompt);
     }
 
     private static IEnumerable<ForgeRagChunk> Chunk(ForgeRagDocument document)
     {
         const int size = 900;
+
         var content = document.Content ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(content))
+            yield break;
+
         for (var i = 0; i < content.Length; i += size)
         {
-            var len = Math.Min(size, content.Length - i);
-            yield return new ForgeRagChunk($"{document.Id}:{i / size}", document.Id, content.Substring(i, len), i / size, document.Metadata);
+            var length = Math.Min(size, content.Length - i);
+
+            yield return new ForgeRagChunk(
+                $"{document.Id}:{i / size}",
+                document.Id,
+                content.Substring(i, length),
+                i / size,
+                document.Metadata);
         }
     }
 }
+public sealed record RagQuestionRequest
+{
+    public required string Question { get; init; }
 
+    public int TopK { get; init; } = 5;
+
+    public string? TenantId { get; init; }
+
+    public IReadOnlyDictionary<string, string>? Filters { get; init; }
+
+    public bool IncludeSources { get; init; } = true;
+
+    public bool UseSemanticRanking { get; init; } = true;
+
+    public double? MinimumScore { get; init; }
+
+    public CancellationToken CancellationToken { get; init; }
+}
 public static class ForgeRagServiceCollectionExtensions
 {
     public static IServiceCollection AddForgeRag(this IServiceCollection services)
     {
         services.AddSingleton<IForgeEmbeddingProvider, DeterministicEmbeddingProvider>();
         services.AddSingleton<IForgeRagEngine, ForgeRagEngine>();
+
         return services;
     }
 }

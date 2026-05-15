@@ -1,6 +1,6 @@
 # ForgeORM
 
-High-performance next-generation .NET ORM combining the power of raw SQL, Dapper-level speed, EF Core-style developer experience, compile-time safety, dynamic query generation, schema artifacts, split-query relationship loading, and advanced database tooling.
+High-performance next-generation .NET ORM combining the power of raw SQL, native ADO.NET speed, EF Core-style developer experience, compile-time safety, dynamic query generation, schema artifacts, split-query relationship loading, and advanced database tooling.
 
 ---
 
@@ -9,7 +9,7 @@ High-performance next-generation .NET ORM combining the power of raw SQL, Dapper
 ForgeORM is designed to become:
 
 - Faster than EF Core
-- More developer friendly than Dapper
+- More developer friendly than lightweight SQL wrappers
 - SQL-first without losing type safety
 - Database transparent
 - IDE-aware
@@ -59,7 +59,7 @@ ForgeORM supports ALL development styles:
 | Style | Supported |
 |---|---|
 | Raw SQL | ✅ |
-| Dapper-like | ✅ |
+| Raw SQL-native | ✅ |
 | EF-like expressions | ✅ |
 | Dynamic query builder | ✅ |
 | AST query builder | ✅ |

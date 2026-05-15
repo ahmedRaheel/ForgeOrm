@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>ForgeORM.Realtime</PackageId>
-    <Version>1.0.3</Version>
+    <Version>1.3.0</Version>
     <Authors>Raheel Ahmed</Authors>
     <Company>Forge Ecosystem</Company>
     <RepositoryUrl>https://github.com/raaheelahmed/ForgeORM</RepositoryUrl>
@@ -19,10 +19,13 @@
 
   <ItemGroup>
 
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions"  />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
     <None Include="..\..\assets\forgeorm-icon.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ForgeORM.EventSourcing\ForgeORM.EventSourcing.csproj" />
   </ItemGroup>
 </Project>

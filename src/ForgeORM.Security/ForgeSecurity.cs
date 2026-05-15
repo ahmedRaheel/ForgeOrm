@@ -94,3 +94,17 @@ public static class ForgeSecurityServiceCollectionExtensions
         return services;
     }
 }
+public sealed record AuthorizeRequest
+{
+    public required string UserId { get; init; }
+    public required string Resource { get; init; }
+    public required string Action { get; init; }
+    public string? TenantId { get; init; }
+    public IReadOnlyList<string> Roles { get; init; }        = [];
+    public IReadOnlyDictionary<string, string> Claims { get; init; }   = new Dictionary<string, string>();
+    public IReadOnlyDictionary<string, string>? Metadata { get; init; }
+    public string? IpAddress { get; init; }
+    public string? UserAgent { get; init; }
+    public DateTimeOffset RequestedAt { get; init; }  = DateTimeOffset.UtcNow;
+    public CancellationToken CancellationToken { get; init; }
+}

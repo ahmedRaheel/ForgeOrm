@@ -14,7 +14,7 @@
   <ItemGroup>
     <ProjectReference Include="..\ForgeORM.Core\ForgeORM.Core.csproj" />
     <ProjectReference Include="..\ForgeORM.Abstractions\ForgeORM.Abstractions.csproj" />
-    <PackageReference Include="Microsoft.Data.Analysis" />
+	  <PackageReference Include="Microsoft.Data.Analysis" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />

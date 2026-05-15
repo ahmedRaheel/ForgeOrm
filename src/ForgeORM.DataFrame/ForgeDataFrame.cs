@@ -2,6 +2,7 @@ using System.Collections;
 using System.Globalization;
 using Microsoft.Data.Analysis;
 
+
 namespace ForgeORM.DataFrame;
 
 public sealed class ForgeDataFrame
@@ -180,7 +181,7 @@ public sealed class ForgeDataFrame
         return new(result);
     }
 
-    public DataFrame ToMicrosoftDataFrame()
+    public Microsoft.Data.Analysis.DataFrame ToMicrosoftDataFrame()
     {
         var columns = new List<DataFrameColumn>();
         foreach (var col in Columns)
@@ -188,7 +189,7 @@ public sealed class ForgeDataFrame
             var values = _rows.Select(r => Get(r, col)).ToList();
             columns.Add(CreateColumn(col, values));
         }
-        return new DataFrame(columns);
+        return new Microsoft.Data.Analysis.DataFrame(columns);
     }
 
     public static object? Get(IReadOnlyDictionary<string, object?> row, string column)
@@ -243,17 +244,46 @@ public sealed class ForgeDataFrame
         return string.Compare(Convert.ToString(x, CultureInfo.InvariantCulture), Convert.ToString(y, CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase);
     }
 
+
+
     private static DataFrameColumn CreateColumn(string name, IReadOnlyList<object?> values)
     {
         var nonNull = values.FirstOrDefault(v => v is not null and not DBNull);
         var type = nonNull?.GetType();
-        if (type == typeof(int)) return new Int32DataFrameColumn(name, values.Select(v => v is null or DBNull ? null : Convert.ToInt32(v)));
-        if (type == typeof(long)) return new Int64DataFrameColumn(name, values.Select(v => v is null or DBNull ? null : Convert.ToInt64(v)));
-        if (type == typeof(float)) return new SingleDataFrameColumn(name, values.Select(v => v is null or DBNull ? null : Convert.ToSingle(v)));
-        if (type == typeof(double)) return new DoubleDataFrameColumn(name, values.Select(v => v is null or DBNull ? null : Convert.ToDouble(v)));
-        if (type == typeof(decimal)) return new DoubleDataFrameColumn(name, values.Select(v => v is null or DBNull ? null : Convert.ToDouble(v)));
-        if (type == typeof(bool)) return new BooleanDataFrameColumn(name, values.Select(v => v is null or DBNull ? null : Convert.ToBoolean(v)));
-        return new StringDataFrameColumn(name, values.Select(v => v?.ToString()));
+
+        if (type == typeof(int))
+            return new Int32DataFrameColumn(
+                name,
+                values.Select(v => v is null or DBNull ? (int?)null : Convert.ToInt32(v)));
+
+        if (type == typeof(long))
+            return new Int64DataFrameColumn(
+                name,
+                values.Select(v => v is null or DBNull ? (long?)null : Convert.ToInt64(v)));
+
+        if (type == typeof(float))
+            return new SingleDataFrameColumn(
+                name,
+                values.Select(v => v is null or DBNull ? (float?)null : Convert.ToSingle(v)));
+
+        if (type == typeof(double))
+            return new DoubleDataFrameColumn(
+                name,
+                values.Select(v => v is null or DBNull ? (double?)null : Convert.ToDouble(v)));
+
+        if (type == typeof(decimal))
+            return new DoubleDataFrameColumn(
+                name,
+                values.Select(v => v is null or DBNull ? (double?)null : Convert.ToDouble(v)));
+
+        if (type == typeof(bool))
+            return new BooleanDataFrameColumn(
+                name,
+                values.Select(v => v is null or DBNull ? (bool?)null : Convert.ToBoolean(v)));
+
+        return new StringDataFrameColumn(
+            name,
+            values.Select(v => v is null or DBNull ? null : v.ToString()));
     }
 }
 

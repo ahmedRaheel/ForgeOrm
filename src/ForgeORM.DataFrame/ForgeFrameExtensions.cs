@@ -18,11 +18,17 @@ public static class ForgeFrameExtensions
     public static Task<ForgeDataFrame> ReadCsvAsync(string path, bool hasHeader = true, char delimiter = ',', CancellationToken cancellationToken = default)
         => ForgeDataFrame.FromCsvAsync(path, hasHeader, delimiter, cancellationToken);
 
+    public static Task<ForgeDataFrame> ReadCsvAsync(Stream stream, bool hasHeader = true, char delimiter = ',', CancellationToken cancellationToken = default)
+        => ForgeDataFrame.FromCsvAsync(stream, hasHeader, delimiter, cancellationToken);
+
     public static ForgeDataFrame ReadJson(string path)
         => ForgeDataFrame.FromJson(path);
 
     public static Task<ForgeDataFrame> ReadJsonAsync(string path, CancellationToken cancellationToken = default)
         => ForgeDataFrame.FromJsonAsync(path, cancellationToken);
+
+    public static Task<ForgeDataFrame> ReadJsonAsync(Stream stream, CancellationToken cancellationToken = default)
+        => ForgeDataFrame.FromJsonAsync(stream, cancellationToken);
 
     private static IDictionary<string, object?> ToDictionary<T>(T row)
     {

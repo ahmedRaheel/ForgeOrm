@@ -119,6 +119,12 @@ public static class ForgeAdo
         if (parameters is null)
             return;
 
+        // Defensive guard: a CancellationToken must never be treated as SQL parameters.
+        // This prevents provider errors such as ManualResetEvent being bound as a parameter
+        // when callers accidentally pass ct in the parameters position.
+        if (parameters is CancellationToken)
+            return;
+
         if (parameters is IReadOnlyDictionary<string, object?> dictionary)
         {
             foreach (var item in dictionary)

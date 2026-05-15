@@ -29,6 +29,13 @@ public sealed class ForgeDataFrame
     public static async Task<ForgeDataFrame> FromCsvAsync(string path, bool hasHeader = true, char delimiter = ',', CancellationToken cancellationToken = default)
         => FromCsvText(await File.ReadAllTextAsync(path, cancellationToken), hasHeader, delimiter);
 
+    public static async Task<ForgeDataFrame> FromCsvAsync(Stream stream, bool hasHeader = true, char delimiter = ',', CancellationToken cancellationToken = default)
+    {
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
+        var csv = await reader.ReadToEndAsync(cancellationToken);
+        return FromCsvText(csv, hasHeader, delimiter);
+    }
+
     public static ForgeDataFrame FromCsvText(string csv, bool hasHeader = true, char delimiter = ',')
     {
         var lines = csv.Replace("\r\n", "\n").Replace('\r', '\n')
@@ -52,7 +59,7 @@ public sealed class ForgeDataFrame
             var values = ParseCsvLine(line, delimiter);
             var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
             for (var i = 0; i < headers.Count; i++)
-                row[headers[i]] = i < values.Count ? InferTextValue(values[i]) : null;
+                row[headers[i]] = i < values.Count ? NormalizeValue(InferTextValue(values[i])) : null;
             rows.Add(row);
         }
 
@@ -64,6 +71,13 @@ public sealed class ForgeDataFrame
 
     public static async Task<ForgeDataFrame> FromJsonAsync(string path, CancellationToken cancellationToken = default)
         => FromJsonText(await File.ReadAllTextAsync(path, cancellationToken));
+
+    public static async Task<ForgeDataFrame> FromJsonAsync(Stream stream, CancellationToken cancellationToken = default)
+    {
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
+        var json = await reader.ReadToEndAsync(cancellationToken);
+        return FromJsonText(json);
+    }
 
     public static ForgeDataFrame FromJsonText(string json)
     {
@@ -83,7 +97,7 @@ public sealed class ForgeDataFrame
         {
             rows.Add(new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
             {
-                ["Value"] = JsonElementToValue(doc.RootElement)
+                ["Value"] = NormalizeValue(JsonElementToValue(doc.RootElement))
             });
         }
 
@@ -129,7 +143,7 @@ public sealed class ForgeDataFrame
         {
             var insertColumns = string.Join(", ", columns.Select(EscapeIdentifier));
             var parameterNames = string.Join(", ", columns.Select((_, i) => "@p" + i));
-            var parameters = columns.Select((c, i) => new KeyValuePair<string, object?>("p" + i, ToDatabaseValue(Get(row, c))))
+            var parameters = columns.Select((c, i) => new KeyValuePair<string, object?>("p" + i, ToDatabaseValueForColumn(c, Get(row, c))))
                 .ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
 
             inserted += await db.ExecuteAsync(
@@ -374,29 +388,148 @@ public sealed class ForgeDataFrame
 
     private string InferSqlType(string column)
     {
-        var values = _rows.Select(r => Get(r, column)).Where(v => v is not null and not DBNull).Take(100).ToList();
+        var values = _rows
+            .Select(r => NormalizeValue(Get(r, column)))
+            .Where(v => v is not null and not DBNull)
+            .Take(500)
+            .ToList();
+
         if (values.Count == 0) return "NVARCHAR(MAX)";
-        var type = values[0]!.GetType();
-        if (values.All(v => v?.GetType() == type))
-        {
-            if (type == typeof(int) || type == typeof(short) || type == typeof(byte)) return "INT";
-            if (type == typeof(long)) return "BIGINT";
-            if (type == typeof(decimal)) return "DECIMAL(38, 10)";
-            if (type == typeof(float) || type == typeof(double)) return "FLOAT";
-            if (type == typeof(bool)) return "BIT";
-            if (type == typeof(DateTime)) return "DATETIME2";
-            if (type == typeof(DateTimeOffset)) return "DATETIMEOFFSET";
-            if (type == typeof(Guid)) return "UNIQUEIDENTIFIER";
-        }
+
+        if (values.All(v => IsIntLike(v))) return "INT";
+        if (values.All(v => IsLongLike(v))) return "BIGINT";
+        if (values.All(v => IsDecimalLike(v))) return "DECIMAL(38, 10)";
+        if (values.All(v => IsDoubleLike(v))) return "FLOAT";
+        if (values.All(v => IsBoolLike(v))) return "BIT";
+        if (values.All(v => IsDateTimeOffsetLike(v))) return "DATETIMEOFFSET";
+        if (values.All(v => IsDateTimeLike(v))) return "DATETIME2";
+        if (values.All(v => IsGuidLike(v))) return "UNIQUEIDENTIFIER";
+
         return "NVARCHAR(MAX)";
+    }
+
+    private object? ToDatabaseValueForColumn(string column, object? value)
+    {
+        value = NormalizeValue(value);
+        if (value is null or DBNull) return null;
+
+        var sqlType = InferSqlType(column);
+        var text = Convert.ToString(value, CultureInfo.InvariantCulture)?.Trim();
+
+        if (sqlType == "INT")
+            return int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i) ? i : null;
+
+        if (sqlType == "BIGINT")
+            return long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var l) ? l : null;
+
+        if (sqlType.StartsWith("DECIMAL", StringComparison.OrdinalIgnoreCase))
+            return decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var d) ? d : null;
+
+        if (sqlType == "FLOAT")
+            return double.TryParse(text, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var f) ? f : null;
+
+        if (sqlType == "BIT")
+            return TryConvertBool(value, out var b) ? b : null;
+
+        if (sqlType == "DATETIMEOFFSET")
+            return TryConvertDateTimeOffset(value, out var dto) ? dto : null;
+
+        if (sqlType == "DATETIME2")
+            return TryConvertDateTime(value, out var dt) ? dt : null;
+
+        if (sqlType == "UNIQUEIDENTIFIER")
+            return Guid.TryParse(text, out var g) ? g : null;
+
+        return ToDatabaseValue(value);
     }
 
     private static object? ToDatabaseValue(object? value)
     {
+        value = NormalizeValue(value);
         if (value is null or DBNull) return null;
-        if (value is JsonElement element) return JsonElementToValue(element);
+        if (value is JsonElement element) return NormalizeValue(JsonElementToValue(element));
         if (value is Enum) return value.ToString();
         return value;
+    }
+
+    private static bool IsNullLike(object? value)
+    {
+        if (value is null or DBNull) return true;
+        if (value is JsonElement element)
+            return element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined
+                || (element.ValueKind == JsonValueKind.String && IsNullLike(element.GetString()));
+
+        var text = Convert.ToString(value, CultureInfo.InvariantCulture)?.Trim();
+        return string.IsNullOrWhiteSpace(text)
+            || text == "?"
+            || text == "-"
+            || text == "--"
+            || text.Equals("null", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("n/a", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("na", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("nan", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("none", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static object? NormalizeValue(object? value) => IsNullLike(value) ? null : value;
+
+    private static bool IsIntLike(object? value)
+    {
+        if (value is int or short or byte) return true;
+        return int.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), NumberStyles.Integer, CultureInfo.InvariantCulture, out _);
+    }
+
+    private static bool IsLongLike(object? value)
+    {
+        if (value is long or int or short or byte) return true;
+        return long.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), NumberStyles.Integer, CultureInfo.InvariantCulture, out _);
+    }
+
+    private static bool IsDecimalLike(object? value)
+    {
+        if (value is decimal or int or long or short or byte) return true;
+        return decimal.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), NumberStyles.Number, CultureInfo.InvariantCulture, out _);
+    }
+
+    private static bool IsDoubleLike(object? value)
+    {
+        if (value is double or float or decimal or int or long or short or byte) return true;
+        return double.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out _);
+    }
+
+    private static bool IsBoolLike(object? value) => TryConvertBool(value, out _);
+
+    private static bool TryConvertBool(object? value, out bool result)
+    {
+        if (value is bool b) { result = b; return true; }
+        var text = Convert.ToString(value, CultureInfo.InvariantCulture)?.Trim();
+        if (bool.TryParse(text, out result)) return true;
+        if (text == "1") { result = true; return true; }
+        if (text == "0") { result = false; return true; }
+        result = false;
+        return false;
+    }
+
+    private static bool IsDateTimeOffsetLike(object? value) => TryConvertDateTimeOffset(value, out _);
+
+    private static bool TryConvertDateTimeOffset(object? value, out DateTimeOffset result)
+    {
+        if (value is DateTimeOffset dto) { result = dto; return true; }
+        return DateTimeOffset.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out result);
+    }
+
+    private static bool IsDateTimeLike(object? value) => TryConvertDateTime(value, out _);
+
+    private static bool TryConvertDateTime(object? value, out DateTime result)
+    {
+        if (value is DateTime dt) { result = dt; return true; }
+        return DateTime.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out result);
+    }
+
+    private static bool IsGuidLike(object? value)
+    {
+        if (value is Guid) return true;
+        return Guid.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), out _);
     }
 
     private static string EscapeTableName(string tableName)
@@ -444,8 +577,8 @@ public sealed class ForgeDataFrame
 
     private static object? InferTextValue(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        var text = value.Trim();
+        if (IsNullLike(value)) return null;
+        var text = value!.Trim();
         if (bool.TryParse(text, out var b)) return b;
         if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i)) return i;
         if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var l)) return l;
@@ -461,12 +594,12 @@ public sealed class ForgeDataFrame
         var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         if (element.ValueKind != JsonValueKind.Object)
         {
-            row["Value"] = JsonElementToValue(element);
+            row["Value"] = NormalizeValue(JsonElementToValue(element));
             return row;
         }
 
         foreach (var property in element.EnumerateObject())
-            row[property.Name] = JsonElementToValue(property.Value);
+            row[property.Name] = NormalizeValue(JsonElementToValue(property.Value));
 
         return row;
     }
@@ -481,6 +614,7 @@ public sealed class ForgeDataFrame
             JsonValueKind.Number when element.TryGetInt32(out var i) => i,
             JsonValueKind.Number when element.TryGetInt64(out var l) => l,
             JsonValueKind.Number when element.TryGetDecimal(out var d) => d,
+            JsonValueKind.String when IsNullLike(element.GetString()) => null,
             JsonValueKind.String when element.TryGetDateTimeOffset(out var dto) => dto,
             JsonValueKind.String when element.TryGetDateTime(out var dt) => dt,
             JsonValueKind.String when element.TryGetGuid(out var g) => g,

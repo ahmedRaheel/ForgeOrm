@@ -164,13 +164,14 @@ public sealed class ForgeAnalyticsQuery<T>
         return _db.QueryAsync<TResult>(sql, cancellationToken: cancellationToken);
     }
     public async Task<IReadOnlyList<IDictionary<string, object?>>> ToDynamicListAsync(
-    CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default)
     {
         var render = Render();
 
         return await _db.QueryDynamicAsync(
-            render.Sql,           
-            cancellationToken);
+            sql: render.Sql,
+            parameters: null,
+            cancellationToken: cancellationToken);
     }
     internal static string Column(Expression<Func<T, object?>> expression)
     {

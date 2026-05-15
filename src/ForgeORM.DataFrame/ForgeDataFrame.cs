@@ -22,7 +22,23 @@ public sealed class ForgeDataFrame
     public int RowCount => _rows.Count;
 
     public static ForgeDataFrame Empty { get; } = new([]);
+    public static async Task<ForgeDataFrame> FromCsvAsync(
+    Stream stream,
+    CancellationToken cancellationToken = default)
+    {
+        using var reader = new StreamReader(stream, leaveOpen: true);
+        var text = await reader.ReadToEndAsync(cancellationToken);
+        return FromCsvText(text);
+    }
 
+    public static async Task<ForgeDataFrame> FromJsonAsync(
+        Stream stream,
+        CancellationToken cancellationToken = default)
+    {
+        using var reader = new StreamReader(stream, leaveOpen: true);
+        var json = await reader.ReadToEndAsync(cancellationToken);
+        return FromJsonText(json);
+    }
     public static ForgeDataFrame FromCsv(string path, bool hasHeader = true, char delimiter = ',')
         => FromCsvText(File.ReadAllText(path), hasHeader, delimiter);
 
@@ -72,7 +88,7 @@ public sealed class ForgeDataFrame
     public static async Task<ForgeDataFrame> FromJsonAsync(string path, CancellationToken cancellationToken = default)
         => FromJsonText(await File.ReadAllTextAsync(path, cancellationToken));
 
-    public static async Task<ForgeDataFrame> FromJsonAsync(Stream stream, CancellationToken cancellationToken = default)
+    public static async Task<ForgeDataFrame> FromJsonv1Async(Stream stream, CancellationToken cancellationToken = default)
     {
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
         var json = await reader.ReadToEndAsync(cancellationToken);
@@ -103,7 +119,14 @@ public sealed class ForgeDataFrame
 
         return new ForgeDataFrame(rows);
     }
-
+    public static async Task<ForgeDataFrame> FromCsvAsync(
+    string path,
+    CancellationToken cancellationToken = default)
+    {
+        await using var stream = File.OpenRead(path);
+        return await FromCsvAsync(stream, cancellationToken);
+    }
+    
     public int ToTable(ForgeDb db, string tableName, bool createIfNotExists = true, bool dropIfExists = false)
     {
         return ToTableAsync(db, tableName, createIfNotExists, dropIfExists).GetAwaiter().GetResult();

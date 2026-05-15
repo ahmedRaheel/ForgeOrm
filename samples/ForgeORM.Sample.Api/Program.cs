@@ -741,25 +741,73 @@ app.MapPost("/analytics/import/json/orders/to-table", async (ForgeDbContext db, 
 })
 .WithTags("35 DataFrame Import CSV/JSON");
 
-app.MapGet("/analytics/imported-orders/query", async (ForgeDbContext db, CancellationToken ct) =>
+app.MapGet("/analytics/imported-orders/query", async (
+    ForgeDbContext db,
+    CancellationToken ct) =>
 {
-    var frame = await db.Frame<Order>()
-        .FromSql("""
-            SELECT Status, GrandTotal, CreatedAt
-            FROM dbo.ForgeImportedOrderJsonFrame
-            WHERE GrandTotal > 100
-            ORDER BY CreatedAt DESC
-            """)
+    var exists = await db.ExecuteScalarAsync<int>(
+        """
+        SELECT COUNT(1)
+        FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_SCHEMA = 'dbo'
+          AND TABLE_NAME = 'ForgeImportedOrderJsonFrame'
+        """,
+        cancellationToken: ct);
+
+    if (exists == 0)
+    {
+        return Results.NotFound(new
+        {
+            message = "Import table does not exist yet.",
+            requiredStep = "Call POST /dataframes/import/json first.",
+            table = "dbo.ForgeImportedOrderJsonFrame"
+        });
+    }
+
+    var frame = await db.Frame<dynamic>()
+        .From("dbo.ForgeImportedOrderJsonFrame")
         .ToFrameAsync(ct);
 
     return Results.Ok(new
     {
-        rows = frame.Rows,
-        describe = frame.Describe("GrandTotal").Rows
+        rows = frame.RowCount,
+        columns = frame.Columns,
+        data = frame.Rows
     });
 })
-.WithTags("35 DataFrame Import CSV/JSON");
+.WithTags("DataFrames");
+app.MapPost("/dataframes/import/csv-to-table", async (
+    IFormFile file,
+    string tableName,
+    ForgeDbContext db,
+    CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(tableName))
+        return Results.BadRequest("tableName is required.");
 
+    if (!ForgeSqlNameValidator.IsSafeIdentifier(tableName))
+        return Results.BadRequest("Invalid tableName.");
+
+    await using var stream = file.OpenReadStream();
+
+    var frame = await ForgeDataFrame.FromCsvAsync(stream, ct);
+
+    await frame.ToTableAsync(
+        db,
+        tableName: tableName,
+        cancellationToken: ct);
+
+    return Results.Ok(new
+    {
+        message = "CSV imported successfully.",
+        tableName,
+        file.FileName,
+        rows = frame.RowCount,
+        columns = frame.Columns
+    });
+})
+.DisableAntiforgery()
+.WithTags("DataFrames");
 app.Run();
 
 [ForgeTable("Products")]

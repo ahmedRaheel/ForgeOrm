@@ -160,22 +160,17 @@ public sealed class ForgeAnalyticsQuery<T>
 
     public Task<IReadOnlyList<TResult>> ToListAsync<TResult>(CancellationToken cancellationToken = default)
     {
-        var render = Render();
-        return _db.QueryAsync<TResult>(
-            sql: render.Sql,
-            parameters: null,
-            cancellationToken: cancellationToken);
+        var sql = Render().Sql;
+        return _db.QueryAsync<TResult>(sql, cancellationToken: cancellationToken);
     }
-
     public async Task<IReadOnlyList<IDictionary<string, object?>>> ToDynamicListAsync(
-        CancellationToken cancellationToken = default)
+    CancellationToken cancellationToken = default)
     {
         var render = Render();
 
         return await _db.QueryDynamicAsync(
-            sql: render.Sql,
-            parameters: null,
-            cancellationToken: cancellationToken);
+            render.Sql,           
+            cancellationToken);
     }
     internal static string Column(Expression<Func<T, object?>> expression)
     {

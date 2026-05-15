@@ -12,6 +12,18 @@ public static class ForgeFrameExtensions
     public static ForgeDataFrame ToForgeFrame<T>(this IEnumerable<T> rows)
         => new(rows.Select(ToDictionary));
 
+    public static ForgeDataFrame ReadCsv(string path, bool hasHeader = true, char delimiter = ',')
+        => ForgeDataFrame.FromCsv(path, hasHeader, delimiter);
+
+    public static Task<ForgeDataFrame> ReadCsvAsync(string path, bool hasHeader = true, char delimiter = ',', CancellationToken cancellationToken = default)
+        => ForgeDataFrame.FromCsvAsync(path, hasHeader, delimiter, cancellationToken);
+
+    public static ForgeDataFrame ReadJson(string path)
+        => ForgeDataFrame.FromJson(path);
+
+    public static Task<ForgeDataFrame> ReadJsonAsync(string path, CancellationToken cancellationToken = default)
+        => ForgeDataFrame.FromJsonAsync(path, cancellationToken);
+
     private static IDictionary<string, object?> ToDictionary<T>(T row)
     {
         if (row is IDictionary<string, object?> dict) return new Dictionary<string, object?>(dict, StringComparer.OrdinalIgnoreCase);
@@ -47,14 +59,14 @@ public sealed class ForgeFrameQuery<T>
     public async Task<ForgeDataFrame> ToFrameAsync(CancellationToken cancellationToken = default)
     {
         var sql = BuildSql();
-        var rows = await _db.QueryAsync<System.Dynamic.ExpandoObject>(sql, _parameters, cancellationToken: cancellationToken);
-        return new ForgeDataFrame(rows.Cast<IDictionary<string, object?>>());
+        var rows = await _db.QueryDynamicAsync(sql: sql, parameters: _parameters, cancellationToken: cancellationToken);
+        return new ForgeDataFrame(rows);
     }
 
     public ForgeDataFrame ToFrame()
     {
-        var rows = _db.Query<System.Dynamic.ExpandoObject>(BuildSql(), _parameters);
-        return new ForgeDataFrame(rows.Cast<IDictionary<string, object?>>());
+        var rows = _db.QueryDynamicAsync(sql: BuildSql(), parameters: _parameters).GetAwaiter().GetResult();
+        return new ForgeDataFrame(rows);
     }
 
     private string BuildSql()

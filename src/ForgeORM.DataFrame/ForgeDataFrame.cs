@@ -1,5 +1,8 @@
 using System.Collections;
 using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using ForgeORM.Core;
 using Microsoft.Data.Analysis;
 
 
@@ -19,6 +22,128 @@ public sealed class ForgeDataFrame
     public int RowCount => _rows.Count;
 
     public static ForgeDataFrame Empty { get; } = new([]);
+
+    public static ForgeDataFrame FromCsv(string path, bool hasHeader = true, char delimiter = ',')
+        => FromCsvText(File.ReadAllText(path), hasHeader, delimiter);
+
+    public static async Task<ForgeDataFrame> FromCsvAsync(string path, bool hasHeader = true, char delimiter = ',', CancellationToken cancellationToken = default)
+        => FromCsvText(await File.ReadAllTextAsync(path, cancellationToken), hasHeader, delimiter);
+
+    public static ForgeDataFrame FromCsvText(string csv, bool hasHeader = true, char delimiter = ',')
+    {
+        var lines = csv.Replace("\r\n", "\n").Replace('\r', '\n')
+            .Split('\n')
+            .Where(l => !string.IsNullOrWhiteSpace(l))
+            .ToList();
+
+        if (lines.Count == 0)
+            return Empty;
+
+        var first = ParseCsvLine(lines[0], delimiter);
+        var headers = hasHeader
+            ? first.Select((h, i) => string.IsNullOrWhiteSpace(h) ? $"Column{i + 1}" : h.Trim()).ToList()
+            : first.Select((_, i) => $"Column{i + 1}").ToList();
+
+        var dataLines = hasHeader ? lines.Skip(1) : lines;
+        var rows = new List<IDictionary<string, object?>>();
+
+        foreach (var line in dataLines)
+        {
+            var values = ParseCsvLine(line, delimiter);
+            var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < headers.Count; i++)
+                row[headers[i]] = i < values.Count ? InferTextValue(values[i]) : null;
+            rows.Add(row);
+        }
+
+        return new ForgeDataFrame(rows);
+    }
+
+    public static ForgeDataFrame FromJson(string path)
+        => FromJsonText(File.ReadAllText(path));
+
+    public static async Task<ForgeDataFrame> FromJsonAsync(string path, CancellationToken cancellationToken = default)
+        => FromJsonText(await File.ReadAllTextAsync(path, cancellationToken));
+
+    public static ForgeDataFrame FromJsonText(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var rows = new List<IDictionary<string, object?>>();
+
+        if (doc.RootElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in doc.RootElement.EnumerateArray())
+                rows.Add(JsonObjectToRow(item));
+        }
+        else if (doc.RootElement.ValueKind == JsonValueKind.Object)
+        {
+            rows.Add(JsonObjectToRow(doc.RootElement));
+        }
+        else
+        {
+            rows.Add(new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Value"] = JsonElementToValue(doc.RootElement)
+            });
+        }
+
+        return new ForgeDataFrame(rows);
+    }
+
+    public int ToTable(ForgeDb db, string tableName, bool createIfNotExists = true, bool dropIfExists = false)
+    {
+        return ToTableAsync(db, tableName, createIfNotExists, dropIfExists).GetAwaiter().GetResult();
+    }
+
+    public async Task<int> ToTableAsync(
+        ForgeDb db,
+        string tableName,
+        bool createIfNotExists = true,
+        bool dropIfExists = false,
+        CancellationToken cancellationToken = default)
+    {
+        var columns = Columns.ToList();
+        if (columns.Count == 0)
+            return 0;
+
+        var escapedTable = EscapeTableName(tableName);
+        var objectName = tableName.Replace("[", string.Empty).Replace("]", string.Empty).Replace("'", "''");
+
+        if (dropIfExists)
+        {
+            await db.ExecuteAsync(
+                $"IF OBJECT_ID(N'{objectName}', N'U') IS NOT NULL DROP TABLE {escapedTable};",
+                cancellationToken: cancellationToken);
+        }
+
+        if (createIfNotExists)
+        {
+            var definitions = string.Join(", ", columns.Select(c => $"{EscapeIdentifier(c)} {InferSqlType(c)} NULL"));
+            await db.ExecuteAsync(
+                $"IF OBJECT_ID(N'{objectName}', N'U') IS NULL CREATE TABLE {escapedTable} ({definitions});",
+                cancellationToken: cancellationToken);
+        }
+
+        var inserted = 0;
+        foreach (var row in _rows)
+        {
+            var insertColumns = string.Join(", ", columns.Select(EscapeIdentifier));
+            var parameterNames = string.Join(", ", columns.Select((_, i) => "@p" + i));
+            var parameters = columns.Select((c, i) => new KeyValuePair<string, object?>("p" + i, ToDatabaseValue(Get(row, c))))
+                .ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
+
+            inserted += await db.ExecuteAsync(
+                $"INSERT INTO {escapedTable} ({insertColumns}) VALUES ({parameterNames});",
+                parameters,
+                cancellationToken: cancellationToken);
+        }
+
+        return inserted;
+    }
+
+    public IReadOnlyList<IDictionary<string, object?>> ToDictionaries()
+        => _rows.Select(r => new Dictionary<string, object?>(r, StringComparer.OrdinalIgnoreCase)).Cast<IDictionary<string, object?>>().ToList();
+
 
     public ForgeDataFrame Head(int count = 5) => new(_rows.Take(Math.Max(count, 0)));
     public ForgeDataFrame Tail(int count = 5) => new(_rows.Skip(Math.Max(0, _rows.Count - Math.Max(count, 0))));
@@ -244,6 +369,126 @@ public sealed class ForgeDataFrame
         return string.Compare(Convert.ToString(x, CultureInfo.InvariantCulture), Convert.ToString(y, CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase);
     }
 
+
+
+
+    private string InferSqlType(string column)
+    {
+        var values = _rows.Select(r => Get(r, column)).Where(v => v is not null and not DBNull).Take(100).ToList();
+        if (values.Count == 0) return "NVARCHAR(MAX)";
+        var type = values[0]!.GetType();
+        if (values.All(v => v?.GetType() == type))
+        {
+            if (type == typeof(int) || type == typeof(short) || type == typeof(byte)) return "INT";
+            if (type == typeof(long)) return "BIGINT";
+            if (type == typeof(decimal)) return "DECIMAL(38, 10)";
+            if (type == typeof(float) || type == typeof(double)) return "FLOAT";
+            if (type == typeof(bool)) return "BIT";
+            if (type == typeof(DateTime)) return "DATETIME2";
+            if (type == typeof(DateTimeOffset)) return "DATETIMEOFFSET";
+            if (type == typeof(Guid)) return "UNIQUEIDENTIFIER";
+        }
+        return "NVARCHAR(MAX)";
+    }
+
+    private static object? ToDatabaseValue(object? value)
+    {
+        if (value is null or DBNull) return null;
+        if (value is JsonElement element) return JsonElementToValue(element);
+        if (value is Enum) return value.ToString();
+        return value;
+    }
+
+    private static string EscapeTableName(string tableName)
+        => string.Join('.', tableName.Split('.', StringSplitOptions.RemoveEmptyEntries).Select(EscapeIdentifier));
+
+    private static string EscapeIdentifier(string name)
+        => "[" + name.Trim('[', ']').Replace("]", "]]", StringComparison.Ordinal) + "]";
+
+    private static List<string> ParseCsvLine(string line, char delimiter)
+    {
+        var result = new List<string>();
+        var sb = new StringBuilder();
+        var inQuotes = false;
+
+        for (var i = 0; i < line.Length; i++)
+        {
+            var ch = line[i];
+            if (ch == '"')
+            {
+                if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
+                {
+                    sb.Append('"');
+                    i++;
+                }
+                else
+                {
+                    inQuotes = !inQuotes;
+                }
+                continue;
+            }
+
+            if (ch == delimiter && !inQuotes)
+            {
+                result.Add(sb.ToString());
+                sb.Clear();
+                continue;
+            }
+
+            sb.Append(ch);
+        }
+
+        result.Add(sb.ToString());
+        return result;
+    }
+
+    private static object? InferTextValue(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var text = value.Trim();
+        if (bool.TryParse(text, out var b)) return b;
+        if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i)) return i;
+        if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var l)) return l;
+        if (decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var d)) return d;
+        if (DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var dto)) return dto;
+        if (DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var dt)) return dt;
+        if (Guid.TryParse(text, out var g)) return g;
+        return text;
+    }
+
+    private static IDictionary<string, object?> JsonObjectToRow(JsonElement element)
+    {
+        var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            row["Value"] = JsonElementToValue(element);
+            return row;
+        }
+
+        foreach (var property in element.EnumerateObject())
+            row[property.Name] = JsonElementToValue(property.Value);
+
+        return row;
+    }
+
+    private static object? JsonElementToValue(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.Null or JsonValueKind.Undefined => null,
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Number when element.TryGetInt32(out var i) => i,
+            JsonValueKind.Number when element.TryGetInt64(out var l) => l,
+            JsonValueKind.Number when element.TryGetDecimal(out var d) => d,
+            JsonValueKind.String when element.TryGetDateTimeOffset(out var dto) => dto,
+            JsonValueKind.String when element.TryGetDateTime(out var dt) => dt,
+            JsonValueKind.String when element.TryGetGuid(out var g) => g,
+            JsonValueKind.String => element.GetString(),
+            JsonValueKind.Array or JsonValueKind.Object => element.GetRawText(),
+            _ => element.GetRawText()
+        };
+    }
 
 
     private static DataFrameColumn CreateColumn(string name, IReadOnlyList<object?> values)

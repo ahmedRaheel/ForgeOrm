@@ -542,11 +542,11 @@ app.MapGet("/analytics/window-functions", async (
 {
     var result = await db.Analytics<Order>()
         .From("Orders")
-        //.Select(x => x.Id)
-        //.Select(x => x.OrderNo)
-        //.Select(x => x.CustomerId)
-        //.Select(x => x.GrandTotal)
-        //.Select(x => x.CreatedAt)
+        .Select(x => x.Id)
+        .Select(x => x.OrderNo)
+        .Select(x => x.CustomerId)
+        .Select(x => x.GrandTotal)
+        .Select(x => x.CreatedAt)
 
         .RowNumber()
             .PartitionBy(x => x.CustomerId)
@@ -663,6 +663,103 @@ app.MapGet("/analytics/microsoft-dataframe/orders", async (ForgeDbContext db, Ca
 })
 .WithTags("34 Microsoft.Data.Analysis Bridge");
 
+
+app.MapPost("/analytics/import/csv/orders/to-table", async (ForgeDbContext db, CancellationToken ct) =>
+{
+    var csv = """
+OrderNo,CustomerId,Status,GrandTotal,CreatedAt
+CSV-1001,1,Paid,1250.75,2026-05-01T10:00:00+05:00
+CSV-1002,1,Draft,540.25,2026-05-02T12:00:00+05:00
+CSV-1003,2,Cancelled,300.00,2026-05-03T14:00:00+05:00
+""";
+
+    var frame = ForgeDataFrame.FromCsvText(csv);
+
+    await frame.ToTableAsync(
+        db,
+        tableName: "dbo.ForgeImportedOrderCsvFrame",
+        createIfNotExists: true,
+        dropIfExists: true,
+        cancellationToken: ct);
+
+    var queried = await db.Frame<Order>()
+        .FromSql("SELECT * FROM dbo.ForgeImportedOrderCsvFrame")
+        .ToFrameAsync(ct);
+
+    var summary = queried.GroupBy("Status")
+        .Agg(
+            ForgeAggregation.Count(alias: "Orders"),
+            ForgeAggregation.Sum("GrandTotal", "Total"),
+            ForgeAggregation.Avg("GrandTotal", "Average"));
+
+    return Results.Ok(new
+    {
+        importedRows = frame.RowCount,
+        table = "dbo.ForgeImportedOrderCsvFrame",
+        rows = queried.Rows,
+        summary = summary.Rows
+    });
+})
+.WithTags("35 DataFrame Import CSV/JSON");
+
+app.MapPost("/analytics/import/json/orders/to-table", async (ForgeDbContext db, CancellationToken ct) =>
+{
+    var json = """
+[
+  { "OrderNo": "JSON-1001", "CustomerId": 1, "Status": "Paid", "GrandTotal": 900.50, "CreatedAt": "2026-05-04T09:00:00+05:00" },
+  { "OrderNo": "JSON-1002", "CustomerId": 2, "Status": "Draft", "GrandTotal": 150.00, "CreatedAt": "2026-05-05T11:30:00+05:00" },
+  { "OrderNo": "JSON-1003", "CustomerId": 2, "Status": "Paid", "GrandTotal": 2200.00, "CreatedAt": "2026-05-06T15:45:00+05:00" }
+]
+""";
+
+    var frame = ForgeDataFrame.FromJsonText(json);
+
+    await frame.ToTableAsync(
+        db,
+        tableName: "dbo.ForgeImportedOrderJsonFrame",
+        createIfNotExists: true,
+        dropIfExists: true,
+        cancellationToken: ct);
+
+    var queried = await db.Frame<Order>()
+        .FromSql("SELECT * FROM dbo.ForgeImportedOrderJsonFrame")
+        .ToFrameAsync(ct);
+
+    var pivot = queried.PivotTable(
+        rows: "CustomerId",
+        columns: "Status",
+        values: "GrandTotal",
+        aggregate: ForgeAgg.Sum());
+
+    return Results.Ok(new
+    {
+        importedRows = frame.RowCount,
+        table = "dbo.ForgeImportedOrderJsonFrame",
+        rows = queried.Rows,
+        pivot = pivot.Rows
+    });
+})
+.WithTags("35 DataFrame Import CSV/JSON");
+
+app.MapGet("/analytics/imported-orders/query", async (ForgeDbContext db, CancellationToken ct) =>
+{
+    var frame = await db.Frame<Order>()
+        .FromSql("""
+            SELECT Status, GrandTotal, CreatedAt
+            FROM dbo.ForgeImportedOrderJsonFrame
+            WHERE GrandTotal > 100
+            ORDER BY CreatedAt DESC
+            """)
+        .ToFrameAsync(ct);
+
+    return Results.Ok(new
+    {
+        rows = frame.Rows,
+        describe = frame.Describe("GrandTotal").Rows
+    });
+})
+.WithTags("35 DataFrame Import CSV/JSON");
+
 app.Run();
 
 [ForgeTable("Products")]
@@ -733,3 +830,13 @@ public sealed class CreateOrderItemRequest
 }
 
 
+public sealed class NdpStatement
+{
+    [ForgeColumn("current_financial_stat_year")]
+    public int CurrentFinancialStatYear { get; set; }
+
+    [ForgeColumn("EBITDA_To_Total_Indebtedness")]
+    public decimal? EbitdaToTotalIndebtedness { get; set; }
+
+    public string Sector { get; set; } = string.Empty;
+}

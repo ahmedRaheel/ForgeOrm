@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>ForgeORM.Analytics</PackageId>
-    <Version>1.3.0</Version>
+    <Version>1.3.1</Version>
     <Authors>Raheel Ahmed</Authors>
     <Company>Forge Ecosystem</Company>
     <RepositoryUrl>https://github.com/raaheelahmed/ForgeORM</RepositoryUrl>
@@ -10,17 +10,19 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>forgeorm-icon.png</PackageIcon>
-    <PackageTags>orm;micro-orm;micro-orm;efcore;sql;database;query-builder;bulk;dotnet;forgeorm</PackageTags>
+    <PackageTags>orm;analytics;pivot;window-functions;dataframe;pandas;sql;dotnet;forgeorm</PackageTags>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <Title>ForgeORM.Analytics</Title>
-    <Description>Query analysis and diagnostics helpers for ForgeORM.</Description>
+    <Description>SQL analytics, pivot tables, window functions and DataFrame bridge for ForgeORM.</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\ForgeORM.Abstractions\ForgeORM.Abstractions.csproj" />
+    <ProjectReference Include="..\ForgeORM.Core\ForgeORM.Core.csproj" />
+    <ProjectReference Include="..\ForgeORM.DataFrame\ForgeORM.DataFrame.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />

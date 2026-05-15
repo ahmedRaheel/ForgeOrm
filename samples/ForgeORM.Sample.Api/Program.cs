@@ -1,17 +1,18 @@
 
 using ForgeORM.Abstractions;
-using ForgeORM.AI.Advanced;
 using ForgeORM.AspNetCore;
-using ForgeORM.Caching.Redis;
 using ForgeORM.Core;
+using ForgeORM.AI.Advanced;
+using ForgeORM.Analytics;
+using ForgeORM.DataFrame;
 using ForgeORM.Core.Search;
 using ForgeORM.QueryAst;
 using ForgeORM.QueryAst.Artifacts;
 using ForgeORM.SchemaOps;
+using ForgeORM.Caching.Redis;
 using ForgeORM.Security;
 using ForgeORM.Telemetry;
 using ForgeORM.VectorSearch;
-using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,10 +27,7 @@ builder.Services.AddForgeSecurity();
 builder.Services.AddForgeInMemoryVectorSearch();
 builder.Services.AddForgeAdvancedAi();
 
-builder.Services.ConfigureHttpJsonOptions(options =>
-{
-    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
-});
+
 var app = builder.Build();
 
 app.UseSwagger();
@@ -444,6 +442,90 @@ app.MapPost("/v3/vector/search", async (float[] vector, int topK, IForgeVectorSt
     Results.Ok(await store.SearchAsync(vector, topK)))
 .WithTags("27 V3 Vector Search");
 
+
+app.MapGet("/analytics/window/ndp-percentile-sql", (decimal percentile, ForgeDbContext db) =>
+{
+    var sql = db.Analytics<NdpStatement>()
+        .From("[NDP].[vw_FBS_Stock_Statement]")
+        .Select(x => x.CurrentFinancialStatYear, "Year")
+        .PercentileCont(x => x.EbitdaToTotalIndebtedness, percentile)
+            .PartitionBy(x => x.CurrentFinancialStatYear)
+            .As("YearPercentile")
+        .Count()
+            .PartitionBy(x => x.CurrentFinancialStatYear)
+            .As("YearSample")
+        .PercentileCont(x => x.EbitdaToTotalIndebtedness, percentile)
+            .OverAll()
+            .As("OverallPercentile")
+        .RowNumber()
+            .PartitionBy(x => x.CurrentFinancialStatYear)
+            .OrderBy(x => x.CurrentFinancialStatYear)
+            .As("rn")
+        .Render()
+        .Sql;
+
+    return Results.Ok(new { sql });
+})
+.WithTags("30 Analytics Window Functions");
+
+app.MapGet("/analytics/pivot/orders", async (ForgeDbContext db, CancellationToken ct) =>
+{
+    var frame = await db.Frame<Order>()
+        .FromSql("SELECT YEAR(CreatedAt) AS CreatedYear, Status, GrandTotal FROM dbo.Orders")
+        .ToFrameAsync(ct);
+
+    var pivot = frame.PivotTable(
+        rows: "CreatedYear",
+        columns: "Status",
+        values: "GrandTotal",
+        aggregate: ForgeAgg.Sum());
+
+    return Results.Ok(pivot.Rows);
+})
+.WithTags("31 Analytics DataFrame Pivot");
+
+app.MapGet("/analytics/groupby/orders", async (ForgeDbContext db, CancellationToken ct) =>
+{
+    var frame = await db.Frame<Order>()
+        .FromSql("SELECT Status, GrandTotal FROM dbo.Orders")
+        .ToFrameAsync(ct);
+
+    var summary = frame.GroupBy("Status")
+        .Agg(
+            ForgeAggregation.Count(alias: "Orders"),
+            ForgeAggregation.Sum("GrandTotal", "Revenue"),
+            ForgeAggregation.Avg("GrandTotal", "AverageOrder"),
+            ForgeAggregation.Median("GrandTotal", "MedianOrder"));
+
+    return Results.Ok(summary.Rows);
+})
+.WithTags("32 Analytics GroupBy");
+
+app.MapGet("/analytics/describe/orders", async (ForgeDbContext db, CancellationToken ct) =>
+{
+    var frame = await db.Frame<Order>()
+        .FromSql("SELECT GrandTotal, TotalAmount FROM dbo.Orders")
+        .ToFrameAsync(ct);
+
+    return Results.Ok(frame.Describe("GrandTotal", "TotalAmount").Rows);
+})
+.WithTags("33 Analytics Describe");
+
+app.MapGet("/analytics/microsoft-dataframe/orders", async (ForgeDbContext db, CancellationToken ct) =>
+{
+    var frame = await db.Frame<Order>()
+        .FromSql("SELECT TOP 20 Id, OrderNo, Status, GrandTotal, CreatedAt FROM dbo.Orders")
+        .ToFrameAsync(ct);
+
+    var microsoftFrame = frame.ToMicrosoftDataFrame();
+    return Results.Ok(new
+    {
+        forgeRows = frame.RowCount,
+        microsoftColumns = microsoftFrame.Columns.Select(c => c.Name).ToArray()
+    });
+})
+.WithTags("34 Microsoft.Data.Analysis Bridge");
+
 app.Run();
 
 [ForgeTable("Products")]
@@ -511,4 +593,16 @@ public sealed class CreateOrderItemRequest
     public int Quantity { get; set; }
     public decimal UnitPrice { get; set; }
     public decimal LineTotal => Quantity * UnitPrice;
+}
+
+
+public sealed class NdpStatement
+{
+    [ForgeColumn("current_financial_stat_year")]
+    public int CurrentFinancialStatYear { get; set; }
+
+    [ForgeColumn("EBITDA_To_Total_Indebtedness")]
+    public decimal? EbitdaToTotalIndebtedness { get; set; }
+
+    public string Sector { get; set; } = string.Empty;
 }

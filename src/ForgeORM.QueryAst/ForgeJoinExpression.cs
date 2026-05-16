@@ -6,6 +6,11 @@ internal sealed partial class ForgeAstSelectBuilder<T>
 {
     internal static class ForgeJoinExpression
 {
+    /// <summary>
+    /// Initializes or executes the TRight> operation.
+    /// </summary>
+    /// <param name="expression">The expression value.</param>
+    /// <returns>The operation result.</returns>
     public static string Translate<TLeft, TRight>(
         Expression<Func<TLeft, TRight, bool>> expression)
     {

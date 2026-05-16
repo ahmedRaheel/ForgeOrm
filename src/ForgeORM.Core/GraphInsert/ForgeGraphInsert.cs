@@ -9,6 +9,12 @@ namespace ForgeORM.Core;
 
 public partial class ForgeDb
 {
+    /// <summary>
+    /// Initializes or executes the TDto> operation.
+    /// </summary>
+    /// <param name="dto">The dto value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public Task<int> InsertAsync<TEntity, TDto>(TDto dto, CancellationToken cancellationToken = default)
         where TEntity : new()
     {
@@ -16,6 +22,13 @@ public partial class ForgeDb
         return InsertAsync(entity, cancellationToken);
     }
 
+    /// <summary>
+    /// Initializes or executes the TKey> operation.
+    /// </summary>
+    /// <param name="dto">The dto value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<TKey> InsertGraphAsync<TParent, TDto, TKey>(
         TDto dto,
         Action<ForgeGraphInsertOptions<TParent, TDto>> configure,
@@ -47,6 +60,13 @@ public partial class ForgeDb
         }
     }
 
+    /// <summary>
+    /// Initializes or executes the TDto> operation.
+    /// </summary>
+    /// <param name="dto">The dto value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<object?> InsertGraphAsync<TParent, TDto>(
         TDto dto,
         Action<ForgeGraphInsertOptions<TParent, TDto>> configure,
@@ -119,8 +139,17 @@ public sealed class ForgeGraphInsertOptions<TParent, TDto>
     internal ForgeGraphParentOptions<TParent> ParentOptions { get; } = new();
     internal List<IForgeGraphChildInsert<TDto>> ChildMappings { get; } = [];
 
+    /// <summary>
+    /// Initializes or executes the Parent operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public ForgeGraphParentOptions<TParent> Parent() => ParentOptions;
 
+    /// <summary>
+    /// Initializes or executes the TChildDto> operation.
+    /// </summary>
+    /// <param name="selector">The selector value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> ChildrenOf<TChildEntity, TChildDto>(
         Expression<Func<TDto, IEnumerable<TChildDto>>> selector)
         where TChildEntity : new()
@@ -130,6 +159,11 @@ public sealed class ForgeGraphInsertOptions<TParent, TDto>
         return options;
     }
 
+    /// <summary>
+    /// Initializes or executes the TChildDto> operation.
+    /// </summary>
+    /// <param name="selector">The selector value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> Children<TChildEntity, TChildDto>(
         Expression<Func<TDto, IEnumerable<TChildDto>>> selector)
         where TChildEntity : new()
@@ -140,6 +174,11 @@ public sealed class ForgeGraphParentOptions<TParent>
 {
     internal PropertyInfo? KeyProperty { get; private set; }
 
+    /// <summary>
+    /// Initializes or executes the Key operation.
+    /// </summary>
+    /// <param name="key">The key value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeGraphParentOptions<TParent> Key<TKey>(Expression<Func<TParent, TKey>> key)
     {
         KeyProperty = ForgeExpression.Property(key.Body);
@@ -158,12 +197,24 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
 
     internal ForgeGraphChildOptions(Func<TDto, IEnumerable<TChildDto>> selector) => _selector = selector;
 
+    /// <summary>
+    /// Initializes or executes the ForeignKey operation.
+    /// </summary>
+    /// <param name="foreignKey">The foreignKey value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> ForeignKey<TKey>(Expression<Func<TChildEntity, TKey>> foreignKey)
     {
         _foreignKey = ForgeExpression.Property(foreignKey.Body);
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the UseSqlServerTvp operation.
+    /// </summary>
+    /// <param name="tableType">The tableType value.</param>
+    /// <param name="procedure">The procedure value.</param>
+    /// <param name="parameterName">The parameterName value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> UseSqlServerTvp(
         string tableType,
         string procedure,
@@ -175,6 +226,15 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the InsertAsync operation.
+    /// </summary>
+    /// <param name="connection">The connection value.</param>
+    /// <param name="transaction">The transaction value.</param>
+    /// <param name="dto">The dto value.</param>
+    /// <param name="parentKey">The parentKey value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public async Task InsertAsync(DbConnection connection, DbTransaction transaction, TDto dto, object parentKey, CancellationToken cancellationToken)
     {
         var rows = _selector(dto)?.ToList() ?? [];
@@ -237,6 +297,11 @@ internal interface IForgeGraphChildInsert<TDto>
 
 internal static class ForgeEnumConversion
 {
+    /// <summary>
+    /// Initializes or executes the StorageType operation.
+    /// </summary>
+    /// <param name="property">The property value.</param>
+    /// <returns>The operation result.</returns>
     public static Type StorageType(PropertyInfo property)
     {
         var type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
@@ -248,6 +313,12 @@ internal static class ForgeEnumConversion
             : typeof(string);
     }
 
+    /// <summary>
+    /// Initializes or executes the ToDatabaseValue operation.
+    /// </summary>
+    /// <param name="value">The value value.</param>
+    /// <param name="property">The property value.</param>
+    /// <returns>The operation result.</returns>
     public static object? ToDatabaseValue(object? value, PropertyInfo? property = null)
     {
         if (value is null || value is DBNull) return value;
@@ -262,6 +333,12 @@ internal static class ForgeEnumConversion
             : value.ToString();
     }
 
+    /// <summary>
+    /// Initializes or executes the ToEnumOrValue operation.
+    /// </summary>
+    /// <param name="value">The value value.</param>
+    /// <param name="targetType">The targetType value.</param>
+    /// <returns>The operation result.</returns>
     public static object? ToEnumOrValue(object? value, Type targetType)
     {
         if (value is null || value is DBNull)
@@ -280,6 +357,11 @@ internal static class ForgeEnumConversion
 
 internal static class ForgeTvpDataTable
 {
+    /// <summary>
+    /// Initializes or executes the Create operation.
+    /// </summary>
+    /// <param name="rows">The rows value.</param>
+    /// <returns>The operation result.</returns>
     public static DataTable Create<T>(IReadOnlyList<T> rows)
     {
         var shape = ForgeEntityShape.For(typeof(T));
@@ -301,6 +383,11 @@ internal static class ForgeTvpDataTable
 
 internal static class ForgeSqlServerParameterConfigurator
 {
+    /// <summary>
+    /// Initializes or executes the ConfigureStructured operation.
+    /// </summary>
+    /// <param name="parameter">The parameter value.</param>
+    /// <param name="tableType">The tableType value.</param>
     public static void ConfigureStructured(DbParameter parameter, string tableType)
     {
         var type = parameter.GetType();
@@ -317,6 +404,11 @@ internal static class ForgeSqlServerParameterConfigurator
 
 internal static class ForgeObjectMapper
 {
+    /// <summary>
+    /// Initializes or executes the Map operation.
+    /// </summary>
+    /// <param name="new">The new value.</param>
+    /// <returns>The operation result.</returns>
     public static TTarget Map<TTarget>(object source) where TTarget : new()
     {
         if (source is TTarget typed) return typed;
@@ -325,6 +417,11 @@ internal static class ForgeObjectMapper
         return target;
     }
 
+    /// <summary>
+    /// Initializes or executes the Copy operation.
+    /// </summary>
+    /// <param name="source">The source value.</param>
+    /// <param name="target">The target value.</param>
     public static void Copy(object source, object target)
     {
         var sourceProps = source.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance)
@@ -340,6 +437,12 @@ internal static class ForgeObjectMapper
         }
     }
 
+    /// <summary>
+    /// Initializes or executes the ConvertTo operation.
+    /// </summary>
+    /// <param name="value">The value value.</param>
+    /// <param name="targetType">The targetType value.</param>
+    /// <returns>The operation result.</returns>
     public static object? ConvertTo(object? value, Type targetType)
     {
         if (value is null || value is DBNull)
@@ -372,6 +475,11 @@ internal sealed class ForgeEntityShape
     public required PropertyInfo? KeyProperty { get; init; }
     public required IReadOnlyList<PropertyInfo> ScalarProperties { get; init; }
 
+    /// <summary>
+    /// Initializes or executes the For operation.
+    /// </summary>
+    /// <param name="type">The type value.</param>
+    /// <returns>The operation result.</returns>
     public static ForgeEntityShape For(Type type)
     {
         var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
@@ -387,6 +495,11 @@ internal sealed class ForgeEntityShape
         };
     }
 
+    /// <summary>
+    /// Initializes or executes the ResolveTableName operation.
+    /// </summary>
+    /// <param name="type">The type value.</param>
+    /// <returns>The operation result.</returns>
     public static string ResolveTableName(Type type)
     {
         var attr = type.GetCustomAttribute<ForgeTableAttribute>();
@@ -394,12 +507,26 @@ internal sealed class ForgeEntityShape
         return type.Name.EndsWith("s", StringComparison.OrdinalIgnoreCase) ? type.Name : type.Name + "s";
     }
 
+    /// <summary>
+    /// Initializes or executes the ColumnName operation.
+    /// </summary>
+    /// <param name="property">The property value.</param>
+    /// <returns>The operation result.</returns>
     public static string ColumnName(PropertyInfo property)
         => property.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? property.Name;
 
+    /// <summary>
+    /// Initializes or executes the IsComputed operation.
+    /// </summary>
+    /// <param name="property">The property value.</param>
+    /// <returns>The operation result.</returns>
     public static bool IsComputed(PropertyInfo property)
         => property.GetCustomAttribute<ForgeComputedAttribute>() is not null;
 
+    /// <summary>
+    /// Initializes or executes the EnsureGeneratedKey operation.
+    /// </summary>
+    /// <param name="entity">The entity value.</param>
     public static void EnsureGeneratedKey(object entity)
     {
         var shape = For(entity.GetType());
@@ -417,6 +544,11 @@ internal sealed class ForgeEntityShape
 
 internal static class ForgeExpression
 {
+    /// <summary>
+    /// Initializes or executes the Property operation.
+    /// </summary>
+    /// <param name="expression">The expression value.</param>
+    /// <returns>The operation result.</returns>
     public static PropertyInfo Property(Expression expression)
     {
         while (expression is UnaryExpression unary &&

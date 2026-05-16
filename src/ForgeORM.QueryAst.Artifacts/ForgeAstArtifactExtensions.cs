@@ -18,6 +18,11 @@ public sealed class ForgeDbArtifact
     public required string Name { get; init; }
     public required string SqlDefinition { get; init; }
     public string? ChangeReason { get; init; }
+    /// <summary>
+    /// Executes the string.IsNullOrWhiteSpace operation.
+    /// </summary>
+    /// <param name="Schema">The Schema value.</param>
+    /// <returns>The operation result.</returns>
     public string FullName => string.IsNullOrWhiteSpace(Schema) ? Name : $"{Schema}.{Name}";
 }
 
@@ -32,14 +37,32 @@ public sealed class ForgeArtifactParameter
     public required string Name { get; init; }
     public required string DbType { get; init; }
     public string? DefaultValue { get; init; }
+    /// <summary>
+    /// Initializes or executes the Render operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public string Render() => DefaultValue is null ? $"{Name} {DbType}" : $"{Name} {DbType} = {DefaultValue}";
 }
 
 public static class ForgeAstArtifactExtensions
 {
+    /// <summary>
+    /// Initializes or executes the AsView operation.
+    /// </summary>
+    /// <param name="query">The query value.</param>
+    /// <param name="name">The name value.</param>
+    /// <param name="schema">The schema value.</param>
+    /// <returns>The operation result.</returns>
     public static ForgeViewArtifactBuilder<T> AsView<T>(this IForgeAstSelectBuilder<T> query, string name, string schema = "dbo")
         => new(query, name, schema);
 
+    /// <summary>
+    /// Initializes or executes the AsProcedure operation.
+    /// </summary>
+    /// <param name="query">The query value.</param>
+    /// <param name="name">The name value.</param>
+    /// <param name="schema">The schema value.</param>
+    /// <returns>The operation result.</returns>
     public static ForgeProcedureArtifactBuilder<T> AsProcedure<T>(this IForgeAstSelectBuilder<T> query, string name, string schema = "dbo")
         => new(query, name, schema);
 }
@@ -51,6 +74,12 @@ public sealed class ForgeViewArtifactBuilder<T>
     private readonly string _schema;
     private string? _reason;
 
+    /// <summary>
+    /// Initializes or executes the ForgeViewArtifactBuilder operation.
+    /// </summary>
+    /// <param name="query">The query value.</param>
+    /// <param name="name">The name value.</param>
+    /// <param name="schema">The schema value.</param>
     public ForgeViewArtifactBuilder(IForgeAstSelectBuilder<T> query, string name, string schema)
     {
         _query = query;
@@ -58,8 +87,18 @@ public sealed class ForgeViewArtifactBuilder<T>
         _schema = schema;
     }
 
+    /// <summary>
+    /// Initializes or executes the WithReason operation.
+    /// </summary>
+    /// <param name="reason">The reason value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeViewArtifactBuilder<T> WithReason(string reason) { _reason = reason; return this; }
 
+    /// <summary>
+    /// Initializes or executes the Render operation.
+    /// </summary>
+    /// <param name="provider">The provider value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeArtifactRenderResult Render(IForgeDatabaseProvider provider)
     {
         var select = _query.Render(provider);
@@ -121,6 +160,12 @@ public sealed class ForgeProcedureArtifactBuilder<T>
     private readonly List<ForgeArtifactParameter> _parameters = [];
     private string? _reason;
 
+    /// <summary>
+    /// Initializes or executes the ForgeProcedureArtifactBuilder operation.
+    /// </summary>
+    /// <param name="query">The query value.</param>
+    /// <param name="name">The name value.</param>
+    /// <param name="schema">The schema value.</param>
     public ForgeProcedureArtifactBuilder(IForgeAstSelectBuilder<T> query, string name, string schema)
     {
         _query = query;
@@ -128,14 +173,31 @@ public sealed class ForgeProcedureArtifactBuilder<T>
         _schema = schema;
     }
 
+    /// <summary>
+    /// Initializes or executes the WithParameter operation.
+    /// </summary>
+    /// <param name="name">The name value.</param>
+    /// <param name="dbType">The dbType value.</param>
+    /// <param name="defaultValue">The defaultValue value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeProcedureArtifactBuilder<T> WithParameter(string name, string dbType, string? defaultValue = null)
     {
         _parameters.Add(new ForgeArtifactParameter { Name = name, DbType = dbType, DefaultValue = defaultValue });
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the WithReason operation.
+    /// </summary>
+    /// <param name="reason">The reason value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeProcedureArtifactBuilder<T> WithReason(string reason) { _reason = reason; return this; }
 
+    /// <summary>
+    /// Initializes or executes the Render operation.
+    /// </summary>
+    /// <param name="provider">The provider value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeArtifactRenderResult Render(IForgeDatabaseProvider provider)
     {
         var select = _query.Render(provider);

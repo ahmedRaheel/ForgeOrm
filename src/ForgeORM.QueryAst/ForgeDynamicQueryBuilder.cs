@@ -5,7 +5,16 @@ namespace ForgeORM.QueryAst;
 
 public sealed class ForgeDynamicQueryBuilder : IForgeDynamicQueryBuilder
 {
+    /// <summary>
+    /// Initializes or executes the Select operation.
+    /// </summary>
+    /// <param name="columns">The columns value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder Select(params string[] columns) => new ForgeDynamicSelectBuilder(columns.Length == 0 ? ["*"] : columns);
+    /// <summary>
+    /// Initializes or executes the SelectAll operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder SelectAll() => new ForgeDynamicSelectBuilder(["*"]);
 }
 
@@ -24,28 +33,140 @@ internal sealed class ForgeDynamicSelectBuilder : IForgeDynamicSelectBuilder
     private int? _take;
     private object? _parameters;
 
+    /// <summary>
+    /// Initializes or executes the ForgeDynamicSelectBuilder operation.
+    /// </summary>
+    /// <param name="columns">The columns value.</param>
     public ForgeDynamicSelectBuilder(IEnumerable<string> columns) => _columns = columns.ToList();
+    /// <summary>
+    /// Initializes or executes the Distinct operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder Distinct() { _distinct = true; return this; }
+    /// <summary>
+    /// Initializes or executes the From operation.
+    /// </summary>
+    /// <param name="table">The table value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder From(string table) { _table = table; return this; }
+    /// <summary>
+    /// Initializes or executes the Where operation.
+    /// </summary>
+    /// <param name="condition">The condition value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder Where(string condition, object? parameters = null) { _where.Add(condition); _parameters = parameters ?? _parameters; return this; }
+    /// <summary>
+    /// Initializes or executes the And operation.
+    /// </summary>
+    /// <param name="condition">The condition value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder And(string condition, object? parameters = null) => Where(condition, parameters);
+    /// <summary>
+    /// Initializes or executes the Or operation.
+    /// </summary>
+    /// <param name="condition">The condition value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder Or(string condition, object? parameters = null) { if (_where.Count == 0) _where.Add(condition); else _where[^1] = $"({_where[^1]}) OR ({condition})"; _parameters = parameters ?? _parameters; return this; }
+    /// <summary>
+    /// Initializes or executes the Join operation.
+    /// </summary>
+    /// <param name="table">The table value.</param>
+    /// <param name="on">The on value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder Join(string table, string on) => InnerJoin(table, on);
+    /// <summary>
+    /// Initializes or executes the InnerJoin operation.
+    /// </summary>
+    /// <param name="table">The table value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder InnerJoin(string table, string on) { _joins.Add($"INNER JOIN {table} ON {on}"); return this; }
+    /// <summary>
+    /// Initializes or executes the LeftJoin operation.
+    /// </summary>
+    /// <param name="table">The table value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder LeftJoin(string table, string on) { _joins.Add($"LEFT JOIN {table} ON {on}"); return this; }
+    /// <summary>
+    /// Initializes or executes the RightJoin operation.
+    /// </summary>
+    /// <param name="table">The table value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder RightJoin(string table, string on) { _joins.Add($"RIGHT JOIN {table} ON {on}"); return this; }
+    /// <summary>
+    /// Initializes or executes the FullJoin operation.
+    /// </summary>
+    /// <param name="table">The table value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder FullJoin(string table, string on) { _joins.Add($"FULL OUTER JOIN {table} ON {on}"); return this; }
+    /// <summary>
+    /// Initializes or executes the CrossJoin operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder CrossJoin(string table) { _joins.Add($"CROSS JOIN {table}"); return this; }
+    /// <summary>
+    /// Initializes or executes the CrossApply operation.
+    /// </summary>
+    /// <param name="tableExpression">The tableExpression value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder CrossApply(string tableExpression, string alias) { _joins.Add($"CROSS APPLY ({tableExpression}) {alias}"); return this; }
+    /// <summary>
+    /// Initializes or executes the OuterApply operation.
+    /// </summary>
+    /// <param name="tableExpression">The tableExpression value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder OuterApply(string tableExpression, string alias) { _joins.Add($"OUTER APPLY ({tableExpression}) {alias}"); return this; }
+    /// <summary>
+    /// Initializes or executes the WithCte operation.
+    /// </summary>
+    /// <param name="name">The name value.</param>
+    /// <param name="sql">The sql value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder WithCte(string name, string sql) { _ctes.Add(new ForgeCte(name, sql)); return this; }
+    /// <summary>
+    /// Initializes or executes the GroupBy operation.
+    /// </summary>
+    /// <param name="_groupBy">The _groupBy value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder GroupBy(params string[] columns) { _groupBy.AddRange(columns); return this; }
+    /// <summary>
+    /// Initializes or executes the Having operation.
+    /// </summary>
+    /// <param name="condition">The condition value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder Having(string condition) { _having = condition; return this; }
+    /// <summary>
+    /// Initializes or executes the OrderBy operation.
+    /// </summary>
+    /// <param name="orderBy">The orderBy value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder OrderBy(string orderBy) { _orderBy = orderBy; return this; }
+    /// <summary>
+    /// Initializes or executes the Skip operation.
+    /// </summary>
+    /// <param name="rows">The rows value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder Skip(int rows) { _skip = rows; return this; }
+    /// <summary>
+    /// Initializes or executes the Take operation.
+    /// </summary>
+    /// <param name="rows">The rows value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeDynamicSelectBuilder Take(int rows) { _take = rows; return this; }
+    /// <summary>
+    /// Initializes or executes the Build operation.
+    /// </summary>
+    /// <param name="provider">The provider value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeRenderedSql Build(IForgeDatabaseProvider provider) => Render(provider);
 
+    /// <summary>
+    /// Initializes or executes the Render operation.
+    /// </summary>
+    /// <param name="provider">The provider value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeRenderedSql Render(IForgeDatabaseProvider provider)
     {
         if (string.IsNullOrWhiteSpace(_table)) throw new InvalidOperationException("FROM table is required.");

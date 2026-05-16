@@ -16,6 +16,13 @@ public sealed class ForgeSqlSecurityValidator : IForgeSqlSecurityValidator
     private static readonly string[] DangerousTokens = ["DROP ", "TRUNCATE ", "EXEC ", "EXECUTE ", "xp_", "sp_configure", "--", "/*", "*/"];
     private static readonly string[] DdlTokens = ["CREATE ", "ALTER ", "DROP "];
 
+    /// <summary>
+    /// Initializes or executes the Validate operation.
+    /// </summary>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="allowDdl">The allowDdl value.</param>
+    /// <param name="allowDangerous">The allowDangerous value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeSqlSafetyResult Validate(string sql, bool allowDdl = false, bool allowDangerous = false)
     {
         var upper = $" {sql.ToUpperInvariant()} ";
@@ -38,12 +45,29 @@ public interface IForgeDataMasker
 
 public sealed class ForgeDataMasker : IForgeDataMasker
 {
+    /// <summary>
+    /// Initializes or executes the MaskEmail operation.
+    /// </summary>
+    /// <param name="email">The email value.</param>
+    /// <returns>The operation result.</returns>
     public string MaskEmail(string email)
     {
         var parts = email.Split('@');
         return parts.Length == 2 ? $"{Mask(parts[0], 1, 1)}@{parts[1]}" : Mask(email);
     }
+    /// <summary>
+    /// Initializes or executes the MaskPhone operation.
+    /// </summary>
+    /// <param name="phone">The phone value.</param>
+    /// <returns>The operation result.</returns>
     public string MaskPhone(string phone) => Mask(phone, 2, 2);
+    /// <summary>
+    /// Initializes or executes the Mask operation.
+    /// </summary>
+    /// <param name="value">The value value.</param>
+    /// <param name="visibleStart">The visibleStart value.</param>
+    /// <param name="visibleEnd">The visibleEnd value.</param>
+    /// <returns>The operation result.</returns>
     public string Mask(string value, int visibleStart = 2, int visibleEnd = 2)
     {
         if (string.IsNullOrEmpty(value)) return value;
@@ -60,6 +84,12 @@ public interface IForgeColumnEncryptor
 
 public sealed class ForgeAesColumnEncryptor : IForgeColumnEncryptor
 {
+    /// <summary>
+    /// Initializes or executes the EncryptToBase64 operation.
+    /// </summary>
+    /// <param name="plainText">The plainText value.</param>
+    /// <param name="key">The key value.</param>
+    /// <returns>The operation result.</returns>
     public string EncryptToBase64(string plainText, string key)
     {
         using var aes = Aes.Create();
@@ -71,6 +101,12 @@ public sealed class ForgeAesColumnEncryptor : IForgeColumnEncryptor
         return Convert.ToBase64String(aes.IV.Concat(cipher).ToArray());
     }
 
+    /// <summary>
+    /// Initializes or executes the DecryptFromBase64 operation.
+    /// </summary>
+    /// <param name="cipherText">The cipherText value.</param>
+    /// <param name="key">The key value.</param>
+    /// <returns>The operation result.</returns>
     public string DecryptFromBase64(string cipherText, string key)
     {
         var payload = Convert.FromBase64String(cipherText);
@@ -86,6 +122,11 @@ public sealed class ForgeAesColumnEncryptor : IForgeColumnEncryptor
 
 public static class ForgeSecurityServiceCollectionExtensions
 {
+    /// <summary>
+    /// Initializes or executes the AddForgeSecurity operation.
+    /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddForgeSecurity(this IServiceCollection services)
     {
         services.AddSingleton<IForgeSqlSecurityValidator, ForgeSqlSecurityValidator>();

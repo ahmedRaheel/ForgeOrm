@@ -12,6 +12,12 @@ public interface IForgeTimeTravelSqlBuilder
 
 public sealed class ForgeTimeTravelSqlBuilder : IForgeTimeTravelSqlBuilder
 {
+    /// <summary>
+    /// Initializes or executes the BuildSql operation.
+    /// </summary>
+    /// <param name="query">The query value.</param>
+    /// <param name="provider">The provider value.</param>
+    /// <returns>The operation result.</returns>
     public TimeTravelSql BuildSql(TimeTravelQuery query, string provider = "SqlServer")
     {
         var sql = provider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase)
@@ -23,5 +29,10 @@ public sealed class ForgeTimeTravelSqlBuilder : IForgeTimeTravelSqlBuilder
 
 public static class ForgeTimeTravelServiceCollectionExtensions
 {
+    /// <summary>
+    /// Initializes or executes the AddForgeTimeTravel operation.
+    /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddForgeTimeTravel(this IServiceCollection services) => services.AddSingleton<IForgeTimeTravelSqlBuilder, ForgeTimeTravelSqlBuilder>();
 }

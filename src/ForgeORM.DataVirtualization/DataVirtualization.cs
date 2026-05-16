@@ -84,15 +84,32 @@ public interface IForgeFederatedQueryPlanner
 
 public sealed class ForgeFederatedQueryPlanner : IForgeFederatedQueryPlanner
 {
+    /// <summary>
+    /// Initializes or executes the Plan operation.
+    /// </summary>
+    /// <param name="query">The query value.</param>
+    /// <param name="sources">The sources value.</param>
+    /// <returns>The operation result.</returns>
     public FederatedQueryPlan Plan(FederatedQuery query, IReadOnlyList<VirtualDataSource> sources)
     {
         var sourcePlans = query.Sources.Select(s => $"Route '{query.Query}' to {s}").ToList();
         return new FederatedQueryPlan(sourcePlans, "Union/Merge by compatible columns", $"-- Federated query: {query.Name}\n{query.Query}");
     }
 
+    /// <summary>
+    /// Initializes or executes the Plan operation.
+    /// </summary>
+    /// <param name="query">The query value.</param>
+    /// <param name="sources">The sources value.</param>
+    /// <returns>The operation result.</returns>
     public FederatedPlanResult Plan(string query, IReadOnlyList<FederatedDataSource> sources)
         => Plan(new FederatedPlanRequest { Query = query, Sources = sources });
 
+    /// <summary>
+    /// Initializes or executes the Plan operation.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <returns>The operation result.</returns>
     public FederatedPlanResult Plan(FederatedPlanRequest request)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Query);
@@ -151,5 +168,10 @@ public sealed class ForgeFederatedQueryPlanner : IForgeFederatedQueryPlanner
 
 public static class ForgeDataVirtualizationServiceCollectionExtensions
 {
+    /// <summary>
+    /// Initializes or executes the AddForgeDataVirtualization operation.
+    /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddForgeDataVirtualization(this IServiceCollection services) => services.AddSingleton<IForgeFederatedQueryPlanner, ForgeFederatedQueryPlanner>();
 }

@@ -4,6 +4,11 @@ namespace ForgeORM.Relationships;
 
 public static class ForgeRelationshipSplitQueryExtensions
 {
+    /// <summary>
+    /// Initializes or executes the SplitGraph operation.
+    /// </summary>
+    /// <param name="db">The db value.</param>
+    /// <returns>The operation result.</returns>
     public static ForgeRelationshipSplitQuery<TParent> SplitGraph<TParent>(this IForgeDb db) => new(db);
 }
 
@@ -12,8 +17,20 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     private readonly IForgeDb _db;
     private readonly List<Func<IReadOnlyList<TParent>, CancellationToken, Task>> _loaders = [];
 
+    /// <summary>
+    /// Initializes or executes the ForgeRelationshipSplitQuery operation.
+    /// </summary>
+    /// <param name="db">The db value.</param>
     public ForgeRelationshipSplitQuery(IForgeDb db) => _db = db;
 
+    /// <summary>
+    /// Initializes or executes the TKey> operation.
+    /// </summary>
+    /// <param name="childSqlFactory">The childSqlFactory value.</param>
+    /// <param name="parentKey">The parentKey value.</param>
+    /// <param name="childForeignKey">The childForeignKey value.</param>
+    /// <param name="assign">The assign value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeRelationshipSplitQuery<TParent> IncludeOne<TChild, TKey>(
         Func<IReadOnlyCollection<TKey>, string> childSqlFactory,
         Func<TParent, TKey> parentKey,
@@ -38,6 +55,14 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the TKey> operation.
+    /// </summary>
+    /// <param name="childSqlFactory">The childSqlFactory value.</param>
+    /// <param name="parentKey">The parentKey value.</param>
+    /// <param name="childForeignKey">The childForeignKey value.</param>
+    /// <param name="assign">The assign value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeRelationshipSplitQuery<TParent> IncludeMany<TChild, TKey>(
         Func<IReadOnlyCollection<TKey>, string> childSqlFactory,
         Func<TParent, TKey> parentKey,
@@ -62,6 +87,17 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the TChildKey> operation.
+    /// </summary>
+    /// <param name="joinSqlFactory">The joinSqlFactory value.</param>
+    /// <param name="childSqlFactory">The childSqlFactory value.</param>
+    /// <param name="parentKey">The parentKey value.</param>
+    /// <param name="joinParentKey">The joinParentKey value.</param>
+    /// <param name="joinChildKey">The joinChildKey value.</param>
+    /// <param name="childKey">The childKey value.</param>
+    /// <param name="assign">The assign value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeRelationshipSplitQuery<TParent> IncludeManyToMany<TJoin, TChild, TParentKey, TChildKey>(
         Func<IReadOnlyCollection<TParentKey>, string> joinSqlFactory,
         Func<IReadOnlyCollection<TChildKey>, string> childSqlFactory,
@@ -107,8 +143,21 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the ToList operation.
+    /// </summary>
+    /// <param name="parentSql">The parentSql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <returns>The operation result.</returns>
     public IReadOnlyList<TParent> ToList(string parentSql, object? parameters = null) => ToListAsync(parentSql, parameters).GetAwaiter().GetResult();
 
+    /// <summary>
+    /// Initializes or executes the ToListAsync operation.
+    /// </summary>
+    /// <param name="parentSql">The parentSql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<IReadOnlyList<TParent>> ToListAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
     {
         var parents = (await _db.QueryAsync<TParent>(parentSql, parameters, cancellationToken: cancellationToken)).ToList();

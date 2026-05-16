@@ -18,6 +18,12 @@ public interface IForgeWorkflowEngine
 
 public sealed class ForgeWorkflowEngine : IForgeWorkflowEngine
 {
+    /// <summary>
+    /// Initializes or executes the RunAsync operation.
+    /// </summary>
+    /// <param name="workflow">The workflow value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<ForgeWorkflowExecution> RunAsync(ForgeWorkflowDefinition workflow, CancellationToken cancellationToken = default)
     {
         var results = new List<ForgeWorkflowStepResult>();
@@ -38,6 +44,11 @@ public sealed class ForgeWorkflowEngine : IForgeWorkflowEngine
         return new ForgeWorkflowExecution(Guid.NewGuid().ToString("N"), workflow.Name, "Completed", results);
     }
 
+    /// <summary>
+    /// Initializes or executes the ToDesignerModel operation.
+    /// </summary>
+    /// <param name="workflow">The workflow value.</param>
+    /// <returns>The operation result.</returns>
     public VisualWorkflowDesignerModel ToDesignerModel(ForgeWorkflowDefinition workflow)
     {
         var nodes = workflow.Steps.Select((s, i) => new VisualWorkflowNode(s.Name, s.Name, s.Kind, 120 + i * 220, 120)).ToList();
@@ -48,5 +59,10 @@ public sealed class ForgeWorkflowEngine : IForgeWorkflowEngine
 
 public static class ForgeWorkflowServiceCollectionExtensions
 {
+    /// <summary>
+    /// Initializes or executes the AddForgeWorkflow operation.
+    /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddForgeWorkflow(this IServiceCollection services) => services.AddSingleton<IForgeWorkflowEngine, ForgeWorkflowEngine>();
 }

@@ -11,6 +11,11 @@ public interface IForgeObjectMapper
 
 public sealed class ReflectionForgeObjectMapper : IForgeObjectMapper
 {
+    /// <summary>
+    /// Initializes or executes the Map operation.
+    /// </summary>
+    /// <param name="record">The record value.</param>
+    /// <returns>The operation result.</returns>
     public T Map<T>(IDataRecord record)
     {
         var obj = Activator.CreateInstance<T>();
@@ -26,6 +31,11 @@ public sealed class ReflectionForgeObjectMapper : IForgeObjectMapper
         return obj;
     }
 
+    /// <summary>
+    /// Initializes or executes the MapList operation.
+    /// </summary>
+    /// <param name="reader">The reader value.</param>
+    /// <returns>The operation result.</returns>
     public IReadOnlyList<T> MapList<T>(IDataReader reader)
     {
         var list = new List<T>();

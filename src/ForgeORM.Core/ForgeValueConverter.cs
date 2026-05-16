@@ -1,9 +1,15 @@
-﻿using System.Reflection;
+using System.Reflection;
 
 namespace ForgeORM.Core;
 
 internal static class ForgeValueConverter
 {
+    /// <summary>
+    /// Initializes or executes the ToDatabase operation.
+    /// </summary>
+    /// <param name="value">The value value.</param>
+    /// <param name="declaredType">The declaredType value.</param>
+    /// <returns>The operation result.</returns>
     public static object? ToDatabase(object? value, Type? declaredType = null)
     {
         if (value is null)
@@ -31,10 +37,21 @@ internal static class ForgeValueConverter
         return value;
     }
 
+    /// <summary>
+    /// Initializes or executes the FromDatabase operation.
+    /// </summary>
+    /// <param name="value">The value value.</param>
+    /// <returns>The operation result.</returns>
     public static T? FromDatabase<T>(object? value)
     {
         return (T?)FromDatabase(value, typeof(T));
     }
+    /// <summary>
+    /// Initializes or executes the FromDatabase operation.
+    /// </summary>
+    /// <param name="value">The value value.</param>
+    /// <param name="targetType">The targetType value.</param>
+    /// <returns>The operation result.</returns>
     public static object? FromDatabase(object? value, Type targetType)
     {
         if (value is null || value == DBNull.Value)
@@ -165,6 +182,10 @@ public sealed class ForgeEnumStorageAttribute : Attribute
 {
     public ForgeEnumStorage Storage { get; }
 
+    /// <summary>
+    /// Initializes or executes the ForgeEnumStorageAttribute operation.
+    /// </summary>
+    /// <param name="storage">The storage value.</param>
     public ForgeEnumStorageAttribute(ForgeEnumStorage storage)
     {
         Storage = storage;

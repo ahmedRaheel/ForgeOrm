@@ -32,6 +32,12 @@ public sealed class DeterministicEmbeddingProvider : IForgeEmbeddingProvider
 {
     private const int Dimensions = 64;
 
+    /// <summary>
+    /// Initializes or executes the EmbedAsync operation.
+    /// </summary>
+    /// <param name="text">The text value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public Task<float[]> EmbedAsync(
         string text,
         CancellationToken cancellationToken = default)
@@ -73,6 +79,11 @@ public sealed class ForgeRagEngine : IForgeRagEngine
     private readonly IForgeVectorStore _vectorStore;
     private readonly IForgeEmbeddingProvider _embeddingProvider;
 
+    /// <summary>
+    /// Initializes or executes the ForgeRagEngine operation.
+    /// </summary>
+    /// <param name="vectorStore">The vectorStore value.</param>
+    /// <param name="embeddingProvider">The embeddingProvider value.</param>
     public ForgeRagEngine(
         IForgeVectorStore vectorStore,
         IForgeEmbeddingProvider embeddingProvider)
@@ -81,6 +92,12 @@ public sealed class ForgeRagEngine : IForgeRagEngine
         _embeddingProvider = embeddingProvider;
     }
 
+    /// <summary>
+    /// Initializes or executes the IngestAsync operation.
+    /// </summary>
+    /// <param name="document">The document value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<IReadOnlyList<ForgeRagChunk>> IngestAsync(
         ForgeRagDocument document,
         CancellationToken cancellationToken = default)
@@ -127,6 +144,13 @@ public sealed class ForgeRagEngine : IForgeRagEngine
         return chunks;
     }
 
+    /// <summary>
+    /// Initializes or executes the BuildContextAsync operation.
+    /// </summary>
+    /// <param name="question">The question value.</param>
+    /// <param name="topK">The topK value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<ForgeRagAnswerContext> BuildContextAsync(
         string question,
         int topK = 5,
@@ -213,6 +237,11 @@ public sealed record RagQuestionRequest
 }
 public static class ForgeRagServiceCollectionExtensions
 {
+    /// <summary>
+    /// Initializes or executes the AddForgeRag operation.
+    /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddForgeRag(this IServiceCollection services)
     {
         services.AddSingleton<IForgeEmbeddingProvider, DeterministicEmbeddingProvider>();

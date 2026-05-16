@@ -39,12 +39,22 @@ public sealed class ForgeArtifactManager : IForgeArtifactManager
     private readonly Func<DbConnection> _connectionFactory;
     private readonly IForgeDatabaseProvider _provider;
 
+    /// <summary>
+    /// Initializes or executes the ForgeArtifactManager operation.
+    /// </summary>
+    /// <param name="connectionFactory">The connectionFactory value.</param>
+    /// <param name="provider">The provider value.</param>
     public ForgeArtifactManager(Func<DbConnection> connectionFactory, IForgeDatabaseProvider provider)
     {
         _connectionFactory = connectionFactory;
         _provider = provider;
     }
 
+    /// <summary>
+    /// Initializes or executes the EnsureHistoryTableAsync operation.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public async Task EnsureHistoryTableAsync(CancellationToken cancellationToken = default)
     {
         await using var connection = _connectionFactory();
@@ -60,6 +70,12 @@ public sealed class ForgeArtifactManager : IForgeArtifactManager
         await ForgeSchemaAdo.ExecuteAsync(connection, sql, cancellationToken: cancellationToken);
     }
 
+    /// <summary>
+    /// Initializes or executes the CreateOrUpdateAsync operation.
+    /// </summary>
+    /// <param name="artifact">The artifact value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<ForgeArtifactApplyResult> CreateOrUpdateAsync(ForgeDbArtifact artifact, CancellationToken cancellationToken = default)
     {
         await EnsureHistoryTableAsync(cancellationToken);
@@ -236,6 +252,14 @@ public sealed class ForgeArtifactManager : IForgeArtifactManager
 
 internal static class ForgeSchemaAdo
 {
+    /// <summary>
+    /// Initializes or executes the QueryAsync operation.
+    /// </summary>
+    /// <param name="connection">The connection value.</param>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public static async Task<IReadOnlyList<T>> QueryAsync<T>(DbConnection connection, string sql, object? parameters = null, CancellationToken cancellationToken = default)
     {
         await using var command = CreateCommand(connection, sql, parameters);
@@ -245,6 +269,14 @@ internal static class ForgeSchemaAdo
         return rows;
     }
 
+    /// <summary>
+    /// Initializes or executes the ExecuteAsync operation.
+    /// </summary>
+    /// <param name="connection">The connection value.</param>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public static async Task<int> ExecuteAsync(DbConnection connection, string sql, object? parameters = null, CancellationToken cancellationToken = default)
     {
         await using var command = CreateCommand(connection, sql, parameters);

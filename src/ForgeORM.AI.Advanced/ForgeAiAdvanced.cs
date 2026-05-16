@@ -17,6 +17,11 @@ public interface IForgeAiOptimizer
 
 public sealed class RuleBasedForgeAiOptimizer : IForgeAiOptimizer
 {
+    /// <summary>
+    /// Initializes or executes the Optimize operation.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeAiOptimizationResult Optimize(ForgeAiOptimizationRequest request)
     {
         var sql = request.Sql.Trim();
@@ -42,6 +47,13 @@ public interface IForgeAiDiagnostics
 
 public sealed class ForgeAiDiagnostics : IForgeAiDiagnostics
 {
+    /// <summary>
+    /// Initializes or executes the Diagnose operation.
+    /// </summary>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="elapsed">The elapsed value.</param>
+    /// <param name="rowCount">The rowCount value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeAiDiagnosticResult Diagnose(string sql, TimeSpan elapsed, int rowCount)
     {
         var findings = new List<string>();
@@ -61,11 +73,22 @@ public interface IForgeAiCodeGenerator
 
 public sealed class ForgeAiCodeGenerator : IForgeAiCodeGenerator
 {
+    /// <summary>
+    /// Initializes or executes the GenerateMinimalApiCrud operation.
+    /// </summary>
+    /// <param name="entityName">The entityName value.</param>
+    /// <param name="routePrefix">The routePrefix value.</param>
+    /// <returns>The operation result.</returns>
     public IReadOnlyList<ForgeGeneratedFile> GenerateMinimalApiCrud(string entityName, string routePrefix)
     {
         var code = $$"""
         public static class {{entityName}}Endpoints
         {
+            /// <summary>
+            /// Initializes or executes the Map{{entityName}}Endpoints operation.
+            /// </summary>
+            /// <param name="app">The app value.</param>
+            /// <returns>The operation result.</returns>
             public static IEndpointRouteBuilder Map{{entityName}}Endpoints(this IEndpointRouteBuilder app)
             {
                 var group = app.MapGroup("{{routePrefix}}").WithTags("{{entityName}}");
@@ -86,6 +109,14 @@ public interface IForgeAiMigrationPlanner
 
 public sealed class ForgeAiMigrationPlanner : IForgeAiMigrationPlanner
 {
+    /// <summary>
+    /// Initializes or executes the PlanAddColumn operation.
+    /// </summary>
+    /// <param name="table">The table value.</param>
+    /// <param name="column">The column value.</param>
+    /// <param name="sqlType">The sqlType value.</param>
+    /// <param name="nullable">The nullable value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeMigrationPlan PlanAddColumn(string table, string column, string sqlType, bool nullable = true)
     {
         var nullability = nullable ? "NULL" : "NOT NULL";
@@ -105,8 +136,18 @@ public interface IForgeAiSemanticQueryService
 public sealed class ForgeAiSemanticQueryService : IForgeAiSemanticQueryService
 {
     private readonly IForgeVectorStore _store;
+    /// <summary>
+    /// Initializes or executes the ForgeAiSemanticQueryService operation.
+    /// </summary>
+    /// <param name="store">The store value.</param>
     public ForgeAiSemanticQueryService(IForgeVectorStore store) => _store = store;
 
+    /// <summary>
+    /// Initializes or executes the SearchKnowledgeAsync operation.
+    /// </summary>
+    /// <param name="text">The text value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public Task<IReadOnlyList<ForgeVectorSearchResult>> SearchKnowledgeAsync(string text, CancellationToken cancellationToken = default)
     {
         var vector = LocalEmbedding(text, 64);
@@ -127,6 +168,11 @@ public sealed class ForgeAiSemanticQueryService : IForgeAiSemanticQueryService
 
 public static class ForgeAiAdvancedServiceCollectionExtensions
 {
+    /// <summary>
+    /// Initializes or executes the AddForgeAdvancedAi operation.
+    /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddForgeAdvancedAi(this IServiceCollection services)
     {
         services.AddSingleton<IForgeAiOptimizer, RuleBasedForgeAiOptimizer>();

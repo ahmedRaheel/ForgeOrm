@@ -14,6 +14,13 @@ public interface IForgeSyncEngine
 
 public sealed class ForgeSyncEngine : IForgeSyncEngine
 {
+    /// <summary>
+    /// Initializes or executes the SynchronizeAsync operation.
+    /// </summary>
+    /// <param name="localChanges">The localChanges value.</param>
+    /// <param name="remoteChanges">The remoteChanges value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public Task<ForgeSyncResult> SynchronizeAsync(IReadOnlyList<ForgeSyncChange> localChanges, IReadOnlyList<ForgeSyncChange> remoteChanges, CancellationToken cancellationToken = default)
     {
         var conflicts = localChanges.Join(remoteChanges, l => (l.Entity, l.EntityId), r => (r.Entity, r.EntityId), (l, r) => new ForgeSyncConflict(l, r, "Same entity changed in two places.")).ToList();
@@ -22,6 +29,12 @@ public sealed class ForgeSyncEngine : IForgeSyncEngine
         return Task.FromResult(new ForgeSyncResult(applied, conflicts));
     }
 
+    /// <summary>
+    /// Initializes or executes the SynchronizeAsync operation.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public Task<ForgeSyncResult> SynchronizeAsync(SyncRequest request, CancellationToken cancellationToken = default)
     {
         var local = request.Entities
@@ -41,6 +54,11 @@ public sealed class ForgeSyncEngine : IForgeSyncEngine
 
 public static class ForgeSyncServiceCollectionExtensions
 {
+    /// <summary>
+    /// Initializes or executes the AddForgeOfflineSync operation.
+    /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddForgeOfflineSync(this IServiceCollection services) => services.AddSingleton<IForgeSyncEngine, ForgeSyncEngine>();
 }
 public sealed record SyncRequest

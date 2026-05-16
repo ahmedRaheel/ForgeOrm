@@ -4,6 +4,10 @@ namespace ForgeORM.Abstractions;
 public sealed class ForgeTableAttribute : Attribute
 {
     public string Name { get; }
+    /// <summary>
+    /// Initializes or executes the ForgeTableAttribute operation.
+    /// </summary>
+    /// <param name="name">The name value.</param>
     public ForgeTableAttribute(string name) => Name = name;
 }
 
@@ -17,6 +21,10 @@ public sealed class ForgeCodeAttribute : Attribute { }
 public sealed class ForgeColumnAttribute : Attribute
 {
     public string Name { get; }
+    /// <summary>
+    /// Initializes or executes the ForgeColumnAttribute operation.
+    /// </summary>
+    /// <param name="name">The name value.</param>
     public ForgeColumnAttribute(string name) => Name = name;
 }
 
@@ -34,5 +42,9 @@ public enum ForgeEnumStorage
 public sealed class ForgeEnumStorageAttribute : Attribute
 {
     public ForgeEnumStorage Storage { get; }
+    /// <summary>
+    /// Initializes or executes the ForgeEnumStorageAttribute operation.
+    /// </summary>
+    /// <param name="storage">The storage value.</param>
     public ForgeEnumStorageAttribute(ForgeEnumStorage storage) => Storage = storage;
 }

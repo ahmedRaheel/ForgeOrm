@@ -28,6 +28,11 @@ public ref struct ForgeSqlInterpolatedStringHandler
     private Dictionary<string, object?> _parameters;
     private int _index;
 
+    /// <summary>
+    /// Initializes or executes the ForgeSqlInterpolatedStringHandler operation.
+    /// </summary>
+    /// <param name="literalLength">The literalLength value.</param>
+    /// <param name="formattedCount">The formattedCount value.</param>
     public ForgeSqlInterpolatedStringHandler(int literalLength, int formattedCount)
     {
         _sql = new StringBuilder(literalLength + formattedCount * 8);
@@ -35,8 +40,17 @@ public ref struct ForgeSqlInterpolatedStringHandler
         _index = 0;
     }
 
+    /// <summary>
+    /// Initializes or executes the AppendLiteral operation.
+    /// </summary>
+    /// <param name="value">The value value.</param>
     public void AppendLiteral(string value) => _sql.Append(value);
 
+    /// <summary>
+    /// Initializes or executes the AppendFormatted operation.
+    /// </summary>
+    /// <param name="value">The value value.</param>
+    /// <returns>The operation result.</returns>
     public void AppendFormatted<T>(T value)
     {
         var name = "p" + _index++;
@@ -44,6 +58,10 @@ public ref struct ForgeSqlInterpolatedStringHandler
         _parameters[name] = value;
     }
 
+    /// <summary>
+    /// Initializes or executes the ToSql operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public ForgeSchemaAwareSql ToSql()
     {
         return new ForgeSchemaAwareSql
@@ -71,6 +89,13 @@ public sealed class ForgeTraceLink
 
 public sealed class LocalForgeTraceVisualizer : IForgeTraceVisualizer
 {
+    /// <summary>
+    /// Initializes or executes the CreateTrace operation.
+    /// </summary>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <param name="providerName">The providerName value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeTraceLink CreateTrace(string sql, object? parameters, string providerName)
     {
         var id = Guid.NewGuid().ToString("N");
@@ -95,6 +120,11 @@ public interface IForgeRequestReflector
 
 public sealed class ForgeRequestReflector : IForgeRequestReflector
 {
+    /// <summary>
+    /// Initializes or executes the ReflectRequest operation.
+    /// </summary>
+    /// <param name="context">The context value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeBuiltQuery ReflectRequest<T>(HttpContext context)
     {
         var table = typeof(T).Name;
@@ -134,6 +164,13 @@ public interface IForgeSemanticSearch
 
 public sealed class ForgeSemanticSearch : IForgeSemanticSearch
 {
+    /// <summary>
+    /// Initializes or executes the SearchSemantic operation.
+    /// </summary>
+    /// <param name="propertyOrColumn">The propertyOrColumn value.</param>
+    /// <param name="searchText">The searchText value.</param>
+    /// <param name="top">The top value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeBuiltQuery SearchSemantic<T>(string propertyOrColumn, string searchText, int top = 20)
     {
         // Provider-specific implementations can replace this with pgvector, SQL Server vector search,
@@ -150,30 +187,58 @@ public sealed class ForgeSemanticSearch : IForgeSemanticSearch
 
 public static class ForgeIdeIntegrationExtensions
 {
+    /// <summary>
+    /// Initializes or executes the SchemaSqlHandler operation.
+    /// </summary>
+    /// <param name="db">The db value.</param>
+    /// <param name="handler">The handler value.</param>
+    /// <returns>The operation result.</returns>
     public static IForgeSmartQuery<T> SchemaSqlHandler<T>(this IForgeDb db, ForgeSqlInterpolatedStringHandler handler)
     {
         var sql = handler.ToSql();
         return db.SmartSql<T>(sql.Sql, sql.Parameters);
     }
 
+    /// <summary>
+    /// Initializes or executes the SchemaSql operation.
+    /// </summary>
+    /// <param name="db">The db value.</param>
+    /// <param name="sql">The sql value.</param>
+    /// <returns>The operation result.</returns>
     public static IForgeSmartQuery<T> SchemaSql<T>(this IForgeDb db, FormattableString sql)
     {
         var safe = ForgeSqlSafety.From(sql);
         return db.SmartSql<T>(safe.Sql, safe.Parameters);
     }
 
+    /// <summary>
+    /// Initializes or executes the AutoJoin operation.
+    /// </summary>
+    /// <param name="query">The query value.</param>
+    /// <returns>The operation result.</returns>
     public static IForgeSmartQuery<T> AutoJoin<T>(this IForgeSmartQuery<T> query)
     {
         // Design-time analyzers/source generators can replace this no-op with FK-aware join suggestions.
         return query;
     }
 
+    /// <summary>
+    /// Initializes or executes the SelectAutomatic operation.
+    /// </summary>
+    /// <param name="query">The query value.</param>
+    /// <returns>The operation result.</returns>
     public static IForgeSmartQuery<T> SelectAutomatic<T>(this IForgeSmartQuery<T> query)
     {
         // Future Roslyn analyzer tracks used properties and emits optimized projection SQL.
         return query;
     }
 
+    /// <summary>
+    /// Initializes or executes the TraceVisualizer operation.
+    /// </summary>
+    /// <param name="query">The query value.</param>
+    /// <param name="visualizer">The visualizer value.</param>
+    /// <returns>The operation result.</returns>
     public static ForgeTraceLink TraceVisualizer<T>(this IForgeSmartQuery<T> query, IForgeTraceVisualizer visualizer)
     {
         var command = query.ExecuteTransparent();

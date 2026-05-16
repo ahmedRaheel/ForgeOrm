@@ -24,36 +24,65 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
     private int? _take;
     private object? _rawParameters;
 
+    /// <summary>
+    /// Initializes or executes the Columns operation.
+    /// </summary>
+    /// <param name="columns">The columns value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> Columns(params Expression<Func<T, object>>[] columns)
     {
         _columns.AddRange(columns.Select(ForgeAstExpression.MemberName));
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the Columns operation.
+    /// </summary>
+    /// <param name="columns">The columns value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> Columns(params string[] columns)
     {
         _columns.AddRange(columns);
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the Distinct operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> Distinct()
     {
         _distinct = true;
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the From operation.
+    /// </summary>
+    /// <param name="tableName">The tableName value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> From(string? tableName = null)
     {
         _table = tableName ?? ResolveTableName(typeof(T));
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the As operation.
+    /// </summary>
+    /// <param name="alias">The alias value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> As(string alias)
     {
         _alias = alias;
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the Where operation.
+    /// </summary>
+    /// <param name="predicate">The predicate value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> Where(Expression<Func<T, bool>> predicate)
     {
         var result = ForgeAstExpression.Translate(predicate, _parameterIndex);
@@ -63,6 +92,12 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the WhereSql operation.
+    /// </summary>
+    /// <param name="condition">The condition value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> WhereSql(string condition, object? parameters = null)
     {
         _where.Add(condition);
@@ -71,9 +106,25 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the And operation.
+    /// </summary>
+    /// <param name="predicate">The predicate value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> And(Expression<Func<T, bool>> predicate) => Where(predicate);
+    /// <summary>
+    /// Initializes or executes the AndSql operation.
+    /// </summary>
+    /// <param name="condition">The condition value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> AndSql(string condition, object? parameters = null) => WhereSql(condition, parameters);
 
+    /// <summary>
+    /// Initializes or executes the Or operation.
+    /// </summary>
+    /// <param name="predicate">The predicate value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> Or(Expression<Func<T, bool>> predicate)
     {
         var result = ForgeAstExpression.Translate(predicate, _parameterIndex);
@@ -88,6 +139,12 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the OrSql operation.
+    /// </summary>
+    /// <param name="condition">The condition value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> OrSql(string condition, object? parameters = null)
     {
         if (_where.Count == 0)
@@ -101,75 +158,178 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the Join operation.
+    /// </summary>
+    /// <param name="table">The table value.</param>
+    /// <param name="on">The on value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> Join(string table, string on) => InnerJoin(table, on);
+    /// <summary>
+    /// Initializes or executes the InnerJoin operation.
+    /// </summary>
+    /// <param name="table">The table value.</param>
+    /// <param name="on">The on value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> InnerJoin(string table, string on) => AddJoin($"INNER JOIN {table} ON {on}");
+    /// <summary>
+    /// Initializes or executes the LeftJoin operation.
+    /// </summary>
+    /// <param name="table">The table value.</param>
+    /// <param name="on">The on value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> LeftJoin(string table, string on) => AddJoin($"LEFT JOIN {table} ON {on}");
+    /// <summary>
+    /// Initializes or executes the RightJoin operation.
+    /// </summary>
+    /// <param name="table">The table value.</param>
+    /// <param name="on">The on value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> RightJoin(string table, string on) => AddJoin($"RIGHT JOIN {table} ON {on}");
+    /// <summary>
+    /// Initializes or executes the FullJoin operation.
+    /// </summary>
+    /// <param name="table">The table value.</param>
+    /// <param name="on">The on value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> FullJoin(string table, string on) => AddJoin($"FULL OUTER JOIN {table} ON {on}");
+    /// <summary>
+    /// Initializes or executes the CrossJoin operation.
+    /// </summary>
+    /// <param name="table">The table value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> CrossJoin(string table) => AddJoin($"CROSS JOIN {table}");
+    /// <summary>
+    /// Initializes or executes the CrossApply operation.
+    /// </summary>
+    /// <param name="tableExpression">The tableExpression value.</param>
+    /// <param name="alias">The alias value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> CrossApply(string tableExpression, string alias) => AddJoin($"CROSS APPLY ({tableExpression}) {alias}");
+    /// <summary>
+    /// Initializes or executes the OuterApply operation.
+    /// </summary>
+    /// <param name="tableExpression">The tableExpression value.</param>
+    /// <param name="alias">The alias value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> OuterApply(string tableExpression, string alias) => AddJoin($"OUTER APPLY ({tableExpression}) {alias}");
 
+    /// <summary>
+    /// Initializes or executes the WithCte operation.
+    /// </summary>
+    /// <param name="name">The name value.</param>
+    /// <param name="sql">The sql value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> WithCte(string name, string sql)
     {
         _ctes.Add(new ForgeCte(name, sql));
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the WithCte operation.
+    /// </summary>
+    /// <param name="cte">The cte value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> WithCte(ForgeCte cte)
     {
         _ctes.Add(cte);
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the GroupBy operation.
+    /// </summary>
+    /// <param name="columns">The columns value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> GroupBy(params Expression<Func<T, object>>[] columns)
     {
         _groupBy.AddRange(columns.Select(ForgeAstExpression.MemberName));
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the GroupBy operation.
+    /// </summary>
+    /// <param name="columns">The columns value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> GroupBy(params string[] columns)
     {
         _groupBy.AddRange(columns);
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the HavingSql operation.
+    /// </summary>
+    /// <param name="condition">The condition value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> HavingSql(string condition)
     {
         _having = condition;
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the OrderBy operation.
+    /// </summary>
+    /// <param name="column">The column value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> OrderBy(Expression<Func<T, object>> column)
     {
         _orderBy = $"{ForgeAstExpression.MemberName(column)} ASC";
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the OrderByDescending operation.
+    /// </summary>
+    /// <param name="column">The column value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> OrderByDescending(Expression<Func<T, object>> column)
     {
         _orderBy = $"{ForgeAstExpression.MemberName(column)} DESC";
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the OrderBySql operation.
+    /// </summary>
+    /// <param name="orderBy">The orderBy value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> OrderBySql(string orderBy)
     {
         _orderBy = orderBy;
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the Skip operation.
+    /// </summary>
+    /// <param name="rows">The rows value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> Skip(int rows)
     {
         _skip = rows;
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the Take operation.
+    /// </summary>
+    /// <param name="rows">The rows value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> Take(int rows)
     {
         _take = rows;
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the Render operation.
+    /// </summary>
+    /// <param name="provider">The provider value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeRenderedSql Render(IForgeDatabaseProvider provider)
     {
         _table ??= ResolveTableName(typeof(T));
@@ -282,30 +442,55 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
         var attr = type.GetCustomAttributes(typeof(ForgeTableAttribute), false).Cast<ForgeTableAttribute>().FirstOrDefault();
         return attr?.Name ?? type.Name;
     }
+    /// <summary>
+    /// Initializes or executes the Join operation.
+    /// </summary>
+    /// <param name="on">The on value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> Join<TJoin>(
     Expression<Func<T, TJoin, bool>> on)
     {
         return InnerJoin(on);
     }
 
+    /// <summary>
+    /// Initializes or executes the InnerJoin operation.
+    /// </summary>
+    /// <param name="on">The on value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> InnerJoin<TJoin>(
         Expression<Func<T, TJoin, bool>> on)
     {
         return AddTypedJoin<TJoin>("INNER JOIN", on);
     }
 
+    /// <summary>
+    /// Initializes or executes the LeftJoin operation.
+    /// </summary>
+    /// <param name="on">The on value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> LeftJoin<TJoin>(
         Expression<Func<T, TJoin, bool>> on)
     {
         return AddTypedJoin<TJoin>("LEFT JOIN", on);
     }
 
+    /// <summary>
+    /// Initializes or executes the RightJoin operation.
+    /// </summary>
+    /// <param name="on">The on value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> RightJoin<TJoin>(
         Expression<Func<T, TJoin, bool>> on)
     {
         return AddTypedJoin<TJoin>("RIGHT JOIN", on);
     }
 
+    /// <summary>
+    /// Initializes or executes the FullJoin operation.
+    /// </summary>
+    /// <param name="on">The on value.</param>
+    /// <returns>The operation result.</returns>
     public IForgeAstSelectBuilder<T> FullJoin<TJoin>(
         Expression<Func<T, TJoin, bool>> on)
     {
@@ -328,6 +513,11 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
     }
     internal static class ParameterObjectReader
     {
+        /// <summary>
+        /// Initializes or executes the Read operation.
+        /// </summary>
+        /// <param name="parameters">The parameters value.</param>
+        /// <returns>The operation result.</returns>
         public static IReadOnlyDictionary<string, object?> Read(object parameters)
         {
             if (parameters is IReadOnlyDictionary<string, object?> readonlyDictionary)

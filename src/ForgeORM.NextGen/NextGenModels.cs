@@ -20,9 +20,25 @@ public sealed class ForgeTransparentCommand
 {
     public required string Sql { get; init; }
     public object? Parameters { get; init; }
+    /// <summary>
+    /// Executes the {JsonSerializer.Serialize operation.
+    /// </summary>
+    /// <param name="Parameters">The Parameters value.</param>
+    /// <returns>The operation result.</returns>
     public string DebugView => Parameters is null ? Sql : $"{Sql}\n-- params: {JsonSerializer.Serialize(Parameters)}";
 
+    /// <summary>
+    /// Initializes or executes the Execute operation.
+    /// </summary>
+    /// <param name="db">The db value.</param>
+    /// <returns>The operation result.</returns>
     public int Execute(IForgeDb db) => db.Execute(Sql, Parameters);
+    /// <summary>
+    /// Initializes or executes the ExecuteAsync operation.
+    /// </summary>
+    /// <param name="db">The db value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public Task<int> ExecuteAsync(IForgeDb db, CancellationToken cancellationToken = default)
         => db.ExecuteAsync(Sql, Parameters, cancellationToken: cancellationToken);
 }
@@ -60,12 +76,21 @@ public sealed class ForgeMockDataSet
 {
     private readonly Dictionary<Type, IList> _tables = [];
 
+    /// <summary>
+    /// Initializes or executes the Add operation.
+    /// </summary>
+    /// <param name="rows">The rows value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeMockDataSet Add<T>(IEnumerable<T> rows)
     {
         _tables[typeof(T)] = rows.ToList();
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the Get operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public IReadOnlyList<T> Get<T>()
     {
         if (_tables.TryGetValue(typeof(T), out var rows))
@@ -79,6 +104,11 @@ public sealed class ForgeShadowRow<T>
 {
     public required T Entity { get; init; }
     public Dictionary<string, object?> ShadowValues { get; init; } = [];
+    /// <summary>
+    /// Initializes or executes the ShadowProperty operation.
+    /// </summary>
+    /// <param name="name">The name value.</param>
+    /// <returns>The operation result.</returns>
     public object? ShadowProperty(string name) => ShadowValues.TryGetValue(name, out var value) ? value : null;
 }
 
@@ -128,6 +158,11 @@ public sealed class ForgeSafeSql
 
 public static class ForgeSqlSafety
 {
+    /// <summary>
+    /// Initializes or executes the From operation.
+    /// </summary>
+    /// <param name="formattable">The formattable value.</param>
+    /// <returns>The operation result.</returns>
     public static ForgeSafeSql From(FormattableString formattable)
     {
         var sql = formattable.Format;

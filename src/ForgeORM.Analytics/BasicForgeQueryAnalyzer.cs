@@ -4,6 +4,11 @@ namespace ForgeORM.Analytics;
 
 public sealed class BasicForgeQueryAnalyzer : IForgeQueryAnalyzer
 {
+    /// <summary>
+    /// Initializes or executes the Analyze operation.
+    /// </summary>
+    /// <param name="sql">The sql value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeQueryAnalysis Analyze(string sql)
     {
         var result = new ForgeQueryAnalysis();

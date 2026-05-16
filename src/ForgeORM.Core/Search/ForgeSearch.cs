@@ -11,7 +11,18 @@ namespace ForgeORM.Core.Search;
 /// </summary>
 public static class ForgeSearchExtensions
 {
+    /// <summary>
+    /// Initializes or executes the Search operation.
+    /// </summary>
+    /// <param name="db">The db value.</param>
+    /// <returns>The operation result.</returns>
     public static ForgeSearch<T> Search<T>(this IForgeDb db) => new(db);
+    /// <summary>
+    /// Initializes or executes the SearchProcedure operation.
+    /// </summary>
+    /// <param name="db">The db value.</param>
+    /// <param name="procedureName">The procedureName value.</param>
+    /// <returns>The operation result.</returns>
     public static ForgeProcedureSearch<T> SearchProcedure<T>(this IForgeDb db, string procedureName) => new(db, procedureName);
 }
 
@@ -28,32 +39,61 @@ public sealed class ForgeSearch<T>
     private int? _page;
     private int? _pageSize;
 
+    /// <summary>
+    /// Initializes or executes the ForgeSearch operation.
+    /// </summary>
+    /// <param name="db">The db value.</param>
     public ForgeSearch(IForgeDb db) => _db = db;
 
+    /// <summary>
+    /// Initializes or executes the Select operation.
+    /// </summary>
+    /// <param name="columns">The columns value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeSearch<T> Select(params string[] columns)
     {
         _columns.AddRange(columns);
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the Select operation.
+    /// </summary>
+    /// <param name="columns">The columns value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeSearch<T> Select(params Expression<Func<T, object?>>[] columns)
     {
         _columns.AddRange(columns.Select(ForgeSearchExpression.MemberName));
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the From operation.
+    /// </summary>
+    /// <param name="table">The table value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeSearch<T> From(string table)
     {
         _table = table;
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the FromSql operation.
+    /// </summary>
+    /// <param name="sql">The sql value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeSearch<T> FromSql(string sql)
     {
         _fromSql = sql;
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the Where operation.
+    /// </summary>
+    /// <param name="predicate">The predicate value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeSearch<T> Where(Expression<Func<T, bool>> predicate)
     {
         var translated = ForgeSearchExpression.Translate(predicate, _parameterIndex);
@@ -63,6 +103,12 @@ public sealed class ForgeSearch<T>
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the WhereIf operation.
+    /// </summary>
+    /// <param name="condition">The condition value.</param>
+    /// <param name="predicate">The predicate value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeSearch<T> WhereIf(bool condition, Expression<Func<T, bool>> predicate)
         => condition ? Where(predicate) : this;
 
@@ -78,12 +124,24 @@ public sealed class ForgeSearch<T>
     public ForgeSearch<T> WhereIf(bool condition, string sql, object? parameters = null)
         => condition ? Where(sql, parameters) : this;
 
+    /// <summary>
+    /// Initializes or executes the Optional operation.
+    /// </summary>
+    /// <param name="column">The column value.</param>
+    /// <param name="value">The value value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeSearch<T> Optional<TValue>(Expression<Func<T, TValue>> column, TValue? value)
     {
         if (value is null) return this;
         return Optional(ForgeSearchExpression.MemberName(column), value);
     }
 
+    /// <summary>
+    /// Initializes or executes the Optional operation.
+    /// </summary>
+    /// <param name="column">The column value.</param>
+    /// <param name="value">The value value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeSearch<T> Optional<TValue>(string column, TValue? value)
     {
         if (value is null) return this;
@@ -93,9 +151,21 @@ public sealed class ForgeSearch<T>
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the OptionalLike operation.
+    /// </summary>
+    /// <param name="column">The column value.</param>
+    /// <param name="value">The value value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeSearch<T> OptionalLike(Expression<Func<T, string?>> column, string? value)
         => OptionalLike(ForgeSearchExpression.MemberName(column), value);
 
+    /// <summary>
+    /// Initializes or executes the OptionalLike operation.
+    /// </summary>
+    /// <param name="column">The column value.</param>
+    /// <param name="value">The value value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeSearch<T> OptionalLike(string column, string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return this;
@@ -105,9 +175,23 @@ public sealed class ForgeSearch<T>
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the OptionalBetween operation.
+    /// </summary>
+    /// <param name="column">The column value.</param>
+    /// <param name="from">The from value.</param>
+    /// <param name="to">The to value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeSearch<T> OptionalBetween<TValue>(Expression<Func<T, TValue>> column, TValue? from, TValue? to)
         => OptionalBetween(ForgeSearchExpression.MemberName(column), from, to);
 
+    /// <summary>
+    /// Initializes or executes the OptionalBetween operation.
+    /// </summary>
+    /// <param name="column">The column value.</param>
+    /// <param name="from">The from value.</param>
+    /// <param name="to">The to value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeSearch<T> OptionalBetween<TValue>(string column, TValue? from, TValue? to)
     {
         if (from is not null)
@@ -125,12 +209,22 @@ public sealed class ForgeSearch<T>
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the OrderBy operation.
+    /// </summary>
+    /// <param name="column">The column value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeSearch<T> OrderBy(Expression<Func<T, object?>> column)
     {
         _orderBy = ForgeSearchExpression.MemberName(column) + " ASC";
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the OrderByDescending operation.
+    /// </summary>
+    /// <param name="column">The column value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeSearch<T> OrderByDescending(Expression<Func<T, object?>> column)
     {
         _orderBy = ForgeSearchExpression.MemberName(column) + " DESC";
@@ -144,6 +238,12 @@ public sealed class ForgeSearch<T>
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the Page operation.
+    /// </summary>
+    /// <param name="page">The page value.</param>
+    /// <param name="pageSize">The pageSize value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeSearch<T> Page(int page, int pageSize)
     {
         _page = Math.Max(page, 1);
@@ -151,6 +251,10 @@ public sealed class ForgeSearch<T>
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the Render operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public ForgeRenderedSearchSql Render()
     {
         var sql = new StringBuilder(BuildBaseSql());
@@ -165,12 +269,22 @@ public sealed class ForgeSearch<T>
         return new ForgeRenderedSearchSql(sql.ToString(), _parameters);
     }
 
+    /// <summary>
+    /// Initializes or executes the ToListAsync operation.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default)
     {
         var query = Render();
         return await _db.QueryAsync<T>(query.Sql, query.Parameters, cancellationToken: cancellationToken);
     }
 
+    /// <summary>
+    /// Initializes or executes the ToPagedAsync operation.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<ForgePagedResult<T>> ToPagedAsync(CancellationToken cancellationToken = default)
     {
         var dataQuery = Render();
@@ -227,33 +341,68 @@ public sealed class ForgeProcedureSearch<T>
     private int? _page;
     private int? _pageSize;
 
+    /// <summary>
+    /// Initializes or executes the ForgeProcedureSearch operation.
+    /// </summary>
+    /// <param name="db">The db value.</param>
+    /// <param name="procedureName">The procedureName value.</param>
     public ForgeProcedureSearch(IForgeDb db, string procedureName)
     {
         _db = db;
         _procedureName = procedureName;
     }
 
+    /// <summary>
+    /// Initializes or executes the With operation.
+    /// </summary>
+    /// <param name="name">The name value.</param>
+    /// <param name="value">The value value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeProcedureSearch<T> With(string name, object? value)
     {
         _parameters[Normalize(name)] = ForgeSearchExpression.NormalizeParameterValue(value);
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the With operation.
+    /// </summary>
+    /// <param name="parameter">The parameter value.</param>
+    /// <param name="value">The value value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeProcedureSearch<T> With<TValue>(Expression<Func<T, TValue>> parameter, TValue? value)
         => With(ForgeSearchExpression.MemberName(parameter), value);
 
+    /// <summary>
+    /// Initializes or executes the WithOptional operation.
+    /// </summary>
+    /// <param name="name">The name value.</param>
+    /// <param name="value">The value value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeProcedureSearch<T> WithOptional(string name, object? value)
     {
         if (value is not null) With(name, value);
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the WithOptional operation.
+    /// </summary>
+    /// <param name="parameter">The parameter value.</param>
+    /// <param name="value">The value value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeProcedureSearch<T> WithOptional<TValue>(Expression<Func<T, TValue>> parameter, TValue? value)
     {
         if (value is not null) With(parameter, value);
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the Page operation.
+    /// </summary>
+    /// <param name="page">The page value.</param>
+    /// <param name="pageSize">The pageSize value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeProcedureSearch<T> Page(int page, int pageSize)
     {
         _page = Math.Max(page, 1);
@@ -263,9 +412,19 @@ public sealed class ForgeProcedureSearch<T>
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the ToListAsync operation.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default)
         => _db.QueryProcedureAsync<T>(_procedureName, _parameters, cancellationToken: cancellationToken);
 
+    /// <summary>
+    /// Initializes or executes the ToPagedAsync operation.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The operation result.</returns>
     public async Task<ForgePagedResult<T>> ToPagedAsync(CancellationToken cancellationToken = default)
     {
         var items = await ToListAsync(cancellationToken);
@@ -287,6 +446,12 @@ internal sealed record ForgeSearchExpressionResult(string Sql, IReadOnlyDictiona
 
 internal static class ForgeSearchExpression
 {
+    /// <summary>
+    /// Initializes or executes the Translate operation.
+    /// </summary>
+    /// <param name="expression">The expression value.</param>
+    /// <param name="startIndex">The startIndex value.</param>
+    /// <returns>The operation result.</returns>
     public static ForgeSearchExpressionResult Translate<T>(Expression<Func<T, bool>> expression, int startIndex)
     {
         var parameters = new Dictionary<string, object?>();
@@ -294,9 +459,19 @@ internal static class ForgeSearchExpression
         return new ForgeSearchExpressionResult(sql, parameters);
     }
 
+    /// <summary>
+    /// Initializes or executes the TValue> operation.
+    /// </summary>
+    /// <param name="expression">The expression value.</param>
+    /// <returns>The operation result.</returns>
     public static string MemberName<T, TValue>(Expression<Func<T, TValue>> expression)
         => MemberName(expression.Body);
 
+    /// <summary>
+    /// Initializes or executes the MemberName operation.
+    /// </summary>
+    /// <param name="expression">The expression value.</param>
+    /// <returns>The operation result.</returns>
     public static string MemberName(Expression expression)
     {
         expression = StripConvert(expression);
@@ -305,6 +480,11 @@ internal static class ForgeSearchExpression
             : throw new NotSupportedException($"Expression must point to a member. Found: {expression.NodeType} - {expression}");
     }
 
+    /// <summary>
+    /// Initializes or executes the ResolveTableName operation.
+    /// </summary>
+    /// <param name="type">The type value.</param>
+    /// <returns>The operation result.</returns>
     public static string ResolveTableName(Type type)
     {
         var attr = type.GetCustomAttribute<ForgeTableAttribute>();
@@ -312,6 +492,12 @@ internal static class ForgeSearchExpression
         return type.Name.EndsWith("s", StringComparison.OrdinalIgnoreCase) ? type.Name : type.Name + "s";
     }
 
+    /// <summary>
+    /// Initializes or executes the NormalizeParameterValue operation.
+    /// </summary>
+    /// <param name="value">The value value.</param>
+    /// <param name="member">The member value.</param>
+    /// <returns>The operation result.</returns>
     public static object? NormalizeParameterValue(object? value, MemberInfo? member = null)
     {
         if (value is null) return null;

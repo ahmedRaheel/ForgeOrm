@@ -17,6 +17,12 @@ public interface IForgeLowCodeEngine
 
 public sealed class ForgeLowCodeEngine : IForgeLowCodeEngine
 {
+    /// <summary>
+    /// Initializes or executes the GenerateErp operation.
+    /// </summary>
+    /// <param name="businessDomain">The businessDomain value.</param>
+    /// <param name="modules">The modules value.</param>
+    /// <returns>The operation result.</returns>
     public GeneratedEnterpriseApp GenerateErp(string businessDomain, IReadOnlyList<string> modules)
     {
         var entities = modules.Select(m => new LowCodeEntity(m.Trim().Replace(" ", ""), [new("Id", "Guid", true), new("Name", "string", true), new("CreatedAt", "DateTimeOffset")])).ToList();
@@ -24,11 +30,21 @@ public sealed class ForgeLowCodeEngine : IForgeLowCodeEngine
         return new GeneratedEnterpriseApp($"{businessDomain} ERP", entities, modules, routes);
     }
 
+    /// <summary>
+    /// Initializes or executes the GenerateMinimalApi operation.
+    /// </summary>
+    /// <param name="entity">The entity value.</param>
+    /// <returns>The operation result.</returns>
     public string GenerateMinimalApi(LowCodeEntity entity) => $$"""
 app.MapGet("/api/{{entity.Name.ToLowerInvariant()}}", async db => Results.Ok());
 app.MapPost("/api/{{entity.Name.ToLowerInvariant()}}", async ({{entity.Name}} request) => Results.Created($"/api/{{entity.Name.ToLowerInvariant()}}/{request.Id}", request));
 """;
 
+    /// <summary>
+    /// Initializes or executes the GenerateReactForm operation.
+    /// </summary>
+    /// <param name="entity">The entity value.</param>
+    /// <returns>The operation result.</returns>
     public string GenerateReactForm(LowCodeEntity entity) => $$"""
 export function {{entity.Name}}Form() {
   return <form>{{string.Join("", entity.Fields.Select(f => $"<label>{f.DisplayName ?? f.Name}<input name=\"{f.Name}\" /></label>"))}}</form>;
@@ -38,6 +54,11 @@ export function {{entity.Name}}Form() {
 
 public static class ForgeLowCodeServiceCollectionExtensions
 {
+    /// <summary>
+    /// Initializes or executes the AddForgeLowCode operation.
+    /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddForgeLowCode(this IServiceCollection services) => services.AddSingleton<IForgeLowCodeEngine, ForgeLowCodeEngine>();
 }
 public sealed record GenerateErpRequest

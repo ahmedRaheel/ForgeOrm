@@ -15,36 +15,69 @@ public sealed class ForgeAdvancedQuery<T>
     private int? _take;
     private int _parameterIndex;
 
+    /// <summary>
+    /// Initializes or executes the From operation.
+    /// </summary>
+    /// <param name="tableOrView">The tableOrView value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeAdvancedQuery<T> From(string tableOrView)
     {
         _from = tableOrView;
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the Select operation.
+    /// </summary>
+    /// <param name="columns">The columns value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeAdvancedQuery<T> Select(params string[] columns)
     {
         _columns.AddRange(columns);
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the Select operation.
+    /// </summary>
+    /// <param name="columns">The columns value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeAdvancedQuery<T> Select(params Expression<Func<T, object>>[] columns)
     {
         _columns.AddRange(columns.Select(GetMemberName));
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the LeftJoin operation.
+    /// </summary>
+    /// <param name="table">The table value.</param>
+    /// <param name="on">The on value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeAdvancedQuery<T> LeftJoin(string table, string on)
     {
         _joins.Add($"LEFT JOIN {table} ON {on}");
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the InnerJoin operation.
+    /// </summary>
+    /// <param name="table">The table value.</param>
+    /// <param name="on">The on value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeAdvancedQuery<T> InnerJoin(string table, string on)
     {
         _joins.Add($"INNER JOIN {table} ON {on}");
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the Where operation.
+    /// </summary>
+    /// <param name="condition">The condition value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeAdvancedQuery<T> Where(string condition, object? parameters = null)
     {
         _where.Add(condition);
@@ -53,9 +86,21 @@ public sealed class ForgeAdvancedQuery<T>
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the WhereIf operation.
+    /// </summary>
+    /// <param name="condition">The condition value.</param>
+    /// <param name="where">The where value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeAdvancedQuery<T> WhereIf(bool condition, string where, object? parameters = null)
         => condition ? Where(where, parameters) : this;
 
+    /// <summary>
+    /// Initializes or executes the Where operation.
+    /// </summary>
+    /// <param name="predicate">The predicate value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeAdvancedQuery<T> Where(Expression<Func<T, bool>> predicate)
     {
         if (predicate.Body is not BinaryExpression binary)
@@ -67,24 +112,45 @@ public sealed class ForgeAdvancedQuery<T>
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the OrderBy operation.
+    /// </summary>
+    /// <param name="orderBy">The orderBy value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeAdvancedQuery<T> OrderBy(string orderBy)
     {
         _orderBy = orderBy;
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the OrderByDescending operation.
+    /// </summary>
+    /// <param name="column">The column value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeAdvancedQuery<T> OrderByDescending(Expression<Func<T, object>> column)
     {
         _orderBy = $"{GetMemberName(column)} DESC";
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the GroupBy operation.
+    /// </summary>
+    /// <param name="columns">The columns value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeAdvancedQuery<T> GroupBy(params string[] columns)
     {
         _groupBy.AddRange(columns);
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the Page operation.
+    /// </summary>
+    /// <param name="page">The page value.</param>
+    /// <param name="pageSize">The pageSize value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeAdvancedQuery<T> Page(int page, int pageSize)
     {
         page = page <= 0 ? 1 : page;
@@ -94,6 +160,11 @@ public sealed class ForgeAdvancedQuery<T>
         return this;
     }
 
+    /// <summary>
+    /// Initializes or executes the Build operation.
+    /// </summary>
+    /// <param name="provider">The provider value.</param>
+    /// <returns>The operation result.</returns>
     public ForgeAdvancedRenderedQuery Build(string provider = "SqlServer")
     {
         var sql = $"SELECT {(_columns.Count == 0 ? "*" : string.Join(", ", _columns))} FROM {_from}";

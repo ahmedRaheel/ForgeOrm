@@ -21,15 +21,41 @@ public sealed class ForgeOrmOptions
     internal string? ConnectionString { get; private set; }
     internal IForgeDatabaseProvider? Provider { get; private set; }
 
+    /// <summary>
+    /// Initializes or executes the UseSqlServer operation.
+    /// </summary>
+    /// <param name="ConnectionString">The ConnectionString value.</param>
     public void UseSqlServer(string connectionString) { ConnectionString = connectionString; Provider = new SqlServerForgeProvider(); }
+    /// <summary>
+    /// Initializes or executes the UsePostgreSql operation.
+    /// </summary>
+    /// <param name="ConnectionString">The ConnectionString value.</param>
     public void UsePostgreSql(string connectionString) { ConnectionString = connectionString; Provider = new PostgreSqlForgeProvider(); }
+    /// <summary>
+    /// Initializes or executes the UseMySql operation.
+    /// </summary>
+    /// <param name="ConnectionString">The ConnectionString value.</param>
     public void UseMySql(string connectionString) { ConnectionString = connectionString; Provider = new MySqlForgeProvider(); }
+    /// <summary>
+    /// Initializes or executes the UseOracle operation.
+    /// </summary>
+    /// <param name="ConnectionString">The ConnectionString value.</param>
     public void UseOracle(string connectionString) { ConnectionString = connectionString; Provider = new OracleForgeProvider(); }
+    /// <summary>
+    /// Initializes or executes the UseSqlite operation.
+    /// </summary>
+    /// <param name="ConnectionString">The ConnectionString value.</param>
     public void UseSqlite(string connectionString) { ConnectionString = connectionString; Provider = new SqliteForgeProvider(); }
 }
 
 public static class ForgeOrmServiceCollectionExtensions
 {
+    /// <summary>
+    /// Initializes or executes the AddForgeOrm operation.
+    /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="configure">The configure value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddForgeOrm(this IServiceCollection services, Action<ForgeOrmOptions> configure)
     {
         var options = new ForgeOrmOptions();

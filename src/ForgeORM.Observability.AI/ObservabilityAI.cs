@@ -12,6 +12,11 @@ public interface IForgeAiObservabilityAnalyzer
 
 public sealed class ForgeAiObservabilityAnalyzer : IForgeAiObservabilityAnalyzer
 {
+    /// <summary>
+    /// Initializes or executes the Analyze operation.
+    /// </summary>
+    /// <param name="snapshot">The snapshot value.</param>
+    /// <returns>The operation result.</returns>
     public IReadOnlyList<ForgeObservabilityInsight> Analyze(ForgeMonitoringSnapshot snapshot)
     {
         var list = new List<ForgeObservabilityInsight>();
@@ -25,5 +30,10 @@ public sealed class ForgeAiObservabilityAnalyzer : IForgeAiObservabilityAnalyzer
 
 public static class ForgeAiObservabilityServiceCollectionExtensions
 {
+    /// <summary>
+    /// Initializes or executes the AddForgeAiObservability operation.
+    /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddForgeAiObservability(this IServiceCollection services) => services.AddSingleton<IForgeAiObservabilityAnalyzer, ForgeAiObservabilityAnalyzer>();
 }

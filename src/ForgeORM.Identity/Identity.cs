@@ -13,6 +13,12 @@ public interface IForgePolicyEngine
 
 public sealed class ForgePolicyEngine : IForgePolicyEngine
 {
+    /// <summary>
+    /// Initializes or executes the Authorize operation.
+    /// </summary>
+    /// <param name="principal">The principal value.</param>
+    /// <param name="requirement">The requirement value.</param>
+    /// <returns>The operation result.</returns>
     public ForgePolicyDecision Authorize(ForgePrincipal principal, ForgePolicyRequirement requirement)
     {
         if (principal.Roles.Contains("Admin", StringComparer.OrdinalIgnoreCase)) return new(true, "Admin role allowed.");
@@ -23,6 +29,11 @@ public sealed class ForgePolicyEngine : IForgePolicyEngine
 
 public static class ForgeIdentityServiceCollectionExtensions
 {
+    /// <summary>
+    /// Initializes or executes the AddForgeIdentityPolicies operation.
+    /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <returns>The operation result.</returns>
     public static IServiceCollection AddForgeIdentityPolicies(this IServiceCollection services) => services.AddSingleton<IForgePolicyEngine, ForgePolicyEngine>();
 }
 
@@ -39,7 +50,15 @@ public sealed record AuthorizeRequest
     public string? UserAgent { get; init; }
     public DateTimeOffset RequestedAt { get; init; } = DateTimeOffset.UtcNow;
 
+    /// <summary>
+    /// Initializes or executes the ToPrincipal operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public ForgePrincipal ToPrincipal() => new(UserId, Roles, Claims);
+    /// <summary>
+    /// Initializes or executes the ToRequirement operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public ForgePolicyRequirement ToRequirement() => new(Resource, Action, TenantId);
 }
 

@@ -32,7 +32,50 @@ var app = builder.Build();
 
 app.UseSwagger();
 app.UseSwaggerUI();
+app.MapPost("/raw/orders/graph", async (
+    ForgeDbContext db,
+    CancellationToken ct) =>
+{
+    var order = new Order
+    {
+        OrderDate = DateTime.Now,
+        CreatedAt = DateTime.Now,
+        CustomerId = 1,
+        GrandTotal = 200,
+        OrderNo = "test",
+        Status = OrderStatus.Pending,
+        TotalAmount = 122,
 
+        Items =
+        [
+            new OrderItem
+            {
+                LineTotal = 1,
+                ProductId = 1,
+                Quantity = 10,
+                UnitPrice = 200
+            }
+        ]
+    };
+
+    var result = await db.InsertGraphAsync<Order, Order, int>(
+        order,
+        graph =>
+        {
+            graph.Parent()
+                .Key(x => x.Id);
+
+            graph.Children<OrderItem, OrderItem>(x => x.Items)
+                .ForeignKey(x => x.OrderId)
+                .UseSqlServerTvp(
+                    tableType: "dbo.OrderItemTvp",
+                    procedure: "dbo.InsertOrderItemsTvp");
+        },
+        ct);
+
+    
+})
+.WithTags("01 Raw SQL");
 app.MapGet("/", () => "ForgeORM Sample Scenarios API");
 
 app.MapGet("/raw/products", async (ForgeDbContext db) =>

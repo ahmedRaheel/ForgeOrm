@@ -1,12 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>ForgeORM.Providers.SqlServer</PackageId>
-      <Version>1.3.2</Version>
+       <Version>1.3.3</Version>
     <Authors>Raheel Ahmed</Authors>
     <Company>Forge Ecosystem</Company>
-    <RepositoryUrl>https://github.com/raaheelahmed/ForgeORM</RepositoryUrl>
+    <RepositoryUrl>https://github.com/ahmedraheel/ForgeORM</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageProjectUrl>https://github.com/raaheelahmed/ForgeORM</PackageProjectUrl>
+    <PackageProjectUrl>https://www.developerslabai.com/#forgeorm-full-wiki</PackageProjectUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>forgeorm-icon.png</PackageIcon>

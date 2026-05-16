@@ -12,6 +12,7 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
     private readonly List<string> _where = [];
     private readonly List<string> _groupBy = [];
     private readonly List<ForgeCte> _ctes = [];
+    private readonly List<ForgeSetOperation> _setOperations = [];
     private readonly Dictionary<string, object?> _parameters = [];
 
     private int _parameterIndex;
@@ -330,6 +331,217 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
     }
 
     /// <summary>
+    /// Adds a HAVING condition generated from an expression.
+    /// </summary>
+    /// <param name="predicate">The expression used to generate the HAVING condition.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> Having(Expression<Func<T, bool>> predicate)
+    {
+        var result = ForgeAstExpression.Translate(predicate, _parameterIndex);
+        _parameterIndex += result.Parameters.Count;
+        MergeParameters(result.Parameters);
+        _having = result.Sql;
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a COUNT aggregate column to the SELECT list.
+    /// </summary>
+    /// <param name="alias">The alias assigned to the aggregate column.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> Count(string alias = "Count")
+        => AggregateSql("COUNT(1)", alias);
+
+    /// <summary>
+    /// Adds a COUNT aggregate column for the selected expression.
+    /// </summary>
+    /// <param name="column">The column expression to count.</param>
+    /// <param name="alias">The alias assigned to the aggregate column.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> Count(Expression<Func<T, object>> column, string alias = "Count")
+        => AggregateSql($"COUNT({ForgeAstExpression.MemberName(column)})", alias);
+
+    /// <summary>
+    /// Adds a SUM aggregate column for the selected expression.
+    /// </summary>
+    /// <param name="column">The numeric column expression to sum.</param>
+    /// <param name="alias">The alias assigned to the aggregate column.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> Sum(Expression<Func<T, object>> column, string alias = "Sum")
+        => AggregateSql($"SUM({ForgeAstExpression.MemberName(column)})", alias);
+
+    /// <summary>
+    /// Adds an AVG aggregate column for the selected expression.
+    /// </summary>
+    /// <param name="column">The numeric column expression to average.</param>
+    /// <param name="alias">The alias assigned to the aggregate column.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> Average(Expression<Func<T, object>> column, string alias = "Average")
+        => AggregateSql($"AVG({ForgeAstExpression.MemberName(column)})", alias);
+
+    /// <summary>
+    /// Adds a MIN aggregate column for the selected expression.
+    /// </summary>
+    /// <param name="column">The column expression used by MIN.</param>
+    /// <param name="alias">The alias assigned to the aggregate column.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> Min(Expression<Func<T, object>> column, string alias = "Min")
+        => AggregateSql($"MIN({ForgeAstExpression.MemberName(column)})", alias);
+
+    /// <summary>
+    /// Adds a MAX aggregate column for the selected expression.
+    /// </summary>
+    /// <param name="column">The column expression used by MAX.</param>
+    /// <param name="alias">The alias assigned to the aggregate column.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> Max(Expression<Func<T, object>> column, string alias = "Max")
+        => AggregateSql($"MAX({ForgeAstExpression.MemberName(column)})", alias);
+
+    /// <summary>
+    /// Adds a SQL aggregate expression to the SELECT list.
+    /// </summary>
+    /// <param name="sqlExpression">The SQL aggregate expression, for example <c>SUM(p.Price)</c>.</param>
+    /// <param name="alias">The alias assigned to the aggregate column.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> AggregateSql(string sqlExpression, string alias)
+    {
+        _columns.Add($"{sqlExpression} AS {alias}");
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a HAVING condition for a COUNT aggregate.
+    /// </summary>
+    /// <param name="operator">The SQL comparison operator, for example <c>&gt;</c>, <c>&gt;=</c>, or <c>=</c>.</param>
+    /// <param name="value">The value compared with the aggregate result.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> HavingCount(string @operator, object value)
+        => HavingAggregateSql("COUNT(1)", @operator, value);
+
+    /// <summary>
+    /// Adds a HAVING condition for a SUM aggregate.
+    /// </summary>
+    /// <param name="column">The numeric column expression to sum.</param>
+    /// <param name="operator">The SQL comparison operator.</param>
+    /// <param name="value">The value compared with the aggregate result.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> HavingSum(Expression<Func<T, object>> column, string @operator, object value)
+        => HavingAggregateSql($"SUM({ForgeAstExpression.MemberName(column)})", @operator, value);
+
+    /// <summary>
+    /// Adds a HAVING condition for an AVG aggregate.
+    /// </summary>
+    /// <param name="column">The numeric column expression to average.</param>
+    /// <param name="operator">The SQL comparison operator.</param>
+    /// <param name="value">The value compared with the aggregate result.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> HavingAverage(Expression<Func<T, object>> column, string @operator, object value)
+        => HavingAggregateSql($"AVG({ForgeAstExpression.MemberName(column)})", @operator, value);
+
+    /// <summary>
+    /// Adds a HAVING condition for a MIN aggregate.
+    /// </summary>
+    /// <param name="column">The column expression used by MIN.</param>
+    /// <param name="operator">The SQL comparison operator.</param>
+    /// <param name="value">The value compared with the aggregate result.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> HavingMin(Expression<Func<T, object>> column, string @operator, object value)
+        => HavingAggregateSql($"MIN({ForgeAstExpression.MemberName(column)})", @operator, value);
+
+    /// <summary>
+    /// Adds a HAVING condition for a MAX aggregate.
+    /// </summary>
+    /// <param name="column">The column expression used by MAX.</param>
+    /// <param name="operator">The SQL comparison operator.</param>
+    /// <param name="value">The value compared with the aggregate result.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> HavingMax(Expression<Func<T, object>> column, string @operator, object value)
+        => HavingAggregateSql($"MAX({ForgeAstExpression.MemberName(column)})", @operator, value);
+
+    /// <summary>
+    /// Adds a SQL HAVING condition for an aggregate expression.
+    /// </summary>
+    /// <param name="aggregateSql">The SQL aggregate expression, for example <c>SUM(TotalAmount)</c>.</param>
+    /// <param name="operator">The SQL comparison operator.</param>
+    /// <param name="value">The value compared with the aggregate result.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> HavingAggregateSql(string aggregateSql, string @operator, object value)
+    {
+        var parameterName = "having" + _parameterIndex++;
+        _parameters[parameterName] = value;
+        _having = $"{aggregateSql} {@operator} @{parameterName}";
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a UNION set operation using another expression-built query.
+    /// </summary>
+    /// <param name="configure">The callback that configures the second query.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> Union(Action<IForgeAstSelectBuilder<T>> configure)
+        => AddSetOperation("UNION", configure);
+
+    /// <summary>
+    /// Adds a UNION set operation using raw SQL.
+    /// </summary>
+    /// <param name="sql">The SQL query to union with the current query.</param>
+    /// <param name="parameters">Optional SQL parameters used by the union query.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> UnionSql(string sql, object? parameters = null)
+        => AddSetOperationSql("UNION", sql, parameters);
+
+    /// <summary>
+    /// Adds a UNION ALL set operation using another expression-built query.
+    /// </summary>
+    /// <param name="configure">The callback that configures the second query.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> UnionAll(Action<IForgeAstSelectBuilder<T>> configure)
+        => AddSetOperation("UNION ALL", configure);
+
+    /// <summary>
+    /// Adds a UNION ALL set operation using raw SQL.
+    /// </summary>
+    /// <param name="sql">The SQL query to union with the current query.</param>
+    /// <param name="parameters">Optional SQL parameters used by the union query.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> UnionAllSql(string sql, object? parameters = null)
+        => AddSetOperationSql("UNION ALL", sql, parameters);
+
+    /// <summary>
+    /// Adds an INTERSECT set operation using another expression-built query.
+    /// </summary>
+    /// <param name="configure">The callback that configures the second query.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> Intersect(Action<IForgeAstSelectBuilder<T>> configure)
+        => AddSetOperation("INTERSECT", configure);
+
+    /// <summary>
+    /// Adds an INTERSECT set operation using raw SQL.
+    /// </summary>
+    /// <param name="sql">The SQL query to intersect with the current query.</param>
+    /// <param name="parameters">Optional SQL parameters used by the intersect query.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> IntersectSql(string sql, object? parameters = null)
+        => AddSetOperationSql("INTERSECT", sql, parameters);
+
+    /// <summary>
+    /// Adds an EXCEPT set operation using another expression-built query.
+    /// </summary>
+    /// <param name="configure">The callback that configures the second query.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> Except(Action<IForgeAstSelectBuilder<T>> configure)
+        => AddSetOperation("EXCEPT", configure);
+
+    /// <summary>
+    /// Adds an EXCEPT set operation using raw SQL.
+    /// </summary>
+    /// <param name="sql">The SQL query to subtract from the current query.</param>
+    /// <param name="parameters">Optional SQL parameters used by the except query.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> ExceptSql(string sql, object? parameters = null)
+        => AddSetOperationSql("EXCEPT", sql, parameters);
+
+    /// <summary>
     /// Executes the OrderBy operation.
     /// </summary>
     /// <param name="column">The column value.</param>
@@ -402,6 +614,7 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
         AppendHaving(sql);
         AppendOrderBy(sql);
         AppendPaging(sql, provider);
+        AppendSetOperations(sql);
         return new ForgeRenderedSql(sql.ToString(), BuildFinalParameters());
     }
 
@@ -712,6 +925,62 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
 
         return this;
     }
+    private IForgeAstSelectBuilder<T> AddSetOperation(string operatorName, Action<IForgeAstSelectBuilder<T>> configure)
+    {
+        var builder = new ForgeAstSelectBuilder<T>();
+        builder._parameterIndex = _parameterIndex;
+        configure(builder);
+        var rendered = builder.Render(new PassthroughForgeDatabaseProvider());
+        _parameterIndex = builder._parameterIndex;
+        return AddSetOperationSql(operatorName, rendered.Sql, rendered.Parameters);
+    }
+
+    private IForgeAstSelectBuilder<T> AddSetOperationSql(string operatorName, string sql, object? parameters)
+    {
+        _setOperations.Add(new ForgeSetOperation(operatorName, sql, parameters));
+        MergeSetOperationParameters(parameters);
+        return this;
+    }
+
+    private void AppendSetOperations(StringBuilder sql)
+    {
+        foreach (var operation in _setOperations)
+            sql.Append(' ').Append(operation.OperatorName).Append(' ').Append(operation.Sql);
+    }
+
+    private void MergeSetOperationParameters(object? parameters)
+    {
+        if (parameters is null) return;
+        foreach (var item in ParameterObjectReader.Read(parameters))
+            _parameters[item.Key] = item.Value;
+    }
+
+    private sealed record ForgeSetOperation(string OperatorName, string Sql, object? Parameters);
+
+    private sealed class PassthroughForgeDatabaseProvider : IForgeDatabaseProvider
+    {
+        public string ProviderName => "Passthrough";
+        public ForgeSqlDialect Dialect => new ForgeSqlDialect { Name = "SqlServer", ParameterPrefix = "@", OpenIdentifier = "[", CloseIdentifier = "]" };
+        public ForgeProviderCapabilities Capabilities => new ForgeProviderCapabilities();
+
+        public System.Data.Common.DbConnection CreateConnection(string connectionString)
+            => throw new NotSupportedException("The pass-through provider is only used to render nested AST queries.");
+
+        public ForgeCommand BuildGetById(ForgeEntityMetadata entity, object id) => throw new NotSupportedException();
+        public ForgeCommand BuildGetByCode(ForgeEntityMetadata entity, string code) => throw new NotSupportedException();
+        public ForgeCommand BuildGetByIds(ForgeEntityMetadata entity, IReadOnlyCollection<int> ids) => throw new NotSupportedException();
+        public ForgeCommand BuildInsert(ForgeEntityMetadata entity, object entityInstance) => throw new NotSupportedException();
+        public ForgeCommand BuildUpdate(ForgeEntityMetadata entity, object entityInstance) => throw new NotSupportedException();
+        public ForgeCommand BuildDelete(ForgeEntityMetadata entity, object id) => throw new NotSupportedException();
+        public ForgeCommand BuildPage(ForgePageRequest request) => throw new NotSupportedException();
+        public ForgeCommand BuildCount(string baseSql, object? parameters = null) => throw new NotSupportedException();
+        public ForgeCommand BuildBulkDelete(string tableName, string keyColumn, IReadOnlyCollection<int> ids) => throw new NotSupportedException();
+        public ForgeCommand BuildFunctionScalar(string functionName, object? parameters = null) => throw new NotSupportedException();
+        public Task BulkInsertAsync<TBulk>(System.Data.Common.DbConnection connection, string tableName, IReadOnlyCollection<TBulk> rows, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task BulkUpdateAsync<TBulk>(System.Data.Common.DbConnection connection, string tableName, IReadOnlyCollection<TBulk> rows, string keyColumn, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task BulkMergeAsync<TBulk>(System.Data.Common.DbConnection connection, string tableName, IReadOnlyCollection<TBulk> rows, string keyColumn, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
     internal static class ParameterObjectReader
     {
         /// <summary>

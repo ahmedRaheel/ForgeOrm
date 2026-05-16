@@ -968,6 +968,76 @@ await db.UpdateByConditionSqlAsync<Product>(
 """
 }));
 
+
+userFriendlyExamples.MapGet("/queryast-union-sql-expression", () => Results.Ok(new
+{
+    title = "QueryAst union, union all, intersect and except",
+    description = "Set operations are available as SQL methods and expression-configured methods.",
+    code = """
+// Expression-configured UNION ALL.
+var expressionUnion = ForgeSql.Select<Product>()
+    .Columns(p => p.Id, p => p.Code, p => p.Name)
+    .Where(p => p.Price > 100)
+    .UnionAll(q => q
+        .Columns(p => p.Id, p => p.Code, p => p.Name)
+        .Where(p => p.Price < 10))
+    .Render(db.Provider);
+
+// SQL UNION / INTERSECT / EXCEPT alternatives.
+var sqlUnion = ForgeSql.Select<Product>()
+    .From("dbo.Products p")
+    .ColumnsSql("p.Id", "p.Code", "p.Name")
+    .WhereSql("p.Price > @MinPrice", new { MinPrice = 100m })
+    .UnionSql("SELECT Id, Code, Name FROM dbo.ArchivedProducts WHERE Price > @MinPrice", new { MinPrice = 100m })
+    .IntersectSql("SELECT Id, Code, Name FROM dbo.Products WHERE IsActive = 1")
+    .ExceptSql("SELECT Id, Code, Name FROM dbo.BlockedProducts")
+    .Render(db.Provider);
+
+return await db.QueryAsync<ProductListItem>(expressionUnion.Sql, expressionUnion.Parameters, cancellationToken: ct);
+"""
+}));
+
+userFriendlyExamples.MapGet("/queryast-group-having-aggregate-expression", () => Results.Ok(new
+{
+    title = "Expression group by, having and aggregates",
+    description = "Aggregate columns and HAVING helpers can be built from expressions without writing raw SQL for common cases.",
+    code = """
+var q = ForgeSql.Select<Order>()
+    .Columns(o => o.CustomerId)
+    .Count("OrderCount")
+    .Sum(o => o.TotalAmount, "TotalSales")
+    .Average(o => o.TotalAmount, "AverageOrderValue")
+    .Min(o => o.TotalAmount, "SmallestOrder")
+    .Max(o => o.TotalAmount, "LargestOrder")
+    .GroupBy(o => o.CustomerId)
+    .HavingSum(o => o.TotalAmount, ">", 5000m)
+    .OrderByDescending(o => o.CustomerId)
+    .Render(db.Provider);
+
+return await db.QueryAsync<CustomerOrderAggregateDto>(q.Sql, q.Parameters, cancellationToken: ct);
+"""
+}));
+
+userFriendlyExamples.MapGet("/queryast-group-having-aggregate-sql", () => Results.Ok(new
+{
+    title = "SQL group by, having and aggregates",
+    description = "SQL alternatives remain available when the user needs aliases, provider-specific functions, or complex HAVING clauses.",
+    code = """
+var q = ForgeSql.Select<Order>()
+    .From("dbo.Orders o")
+    .ColumnsSql("o.CustomerId")
+    .AggregateSql("COUNT(1)", "OrderCount")
+    .AggregateSql("SUM(o.TotalAmount)", "TotalSales")
+    .AggregateSql("AVG(o.TotalAmount)", "AverageOrderValue")
+    .GroupBy("o.CustomerId")
+    .HavingSql("SUM(o.TotalAmount) > @MinSales")
+    .OrderBySql("TotalSales DESC")
+    .Render(db.Provider);
+
+return await db.QueryAsync<CustomerOrderAggregateDto>(q.Sql, new { MinSales = 5000m }, cancellationToken: ct);
+"""
+}));
+
 app.Run();
 
 [ForgeTable("Products")]
@@ -1007,6 +1077,7 @@ public sealed class OrderItem
 public sealed class ProductCategory { public int ProductId { get; set; } public int CategoryId { get; set; } }
 public sealed record ProductListItem(int Id, string Code, string Name, decimal Price, string? CategoryName, string? BrandName);
 public sealed record OrderSummaryRecord(int Id, string OrderNo, OrderStatus Status, decimal GrandTotal, DateTimeOffset CreatedAt);
+public sealed record CustomerOrderAggregateDto(int CustomerId, int OrderCount, decimal TotalSales, decimal AverageOrderValue, decimal SmallestOrder, decimal LargestOrder);
 public enum OrderStatus
 {
     Draft = 0,

@@ -10,15 +10,24 @@ public partial class ForgeDb : IForgeDb
     private readonly IForgeEntityMetadataResolver _metadata;
     private readonly IForgeQueryAnalyzer _analyzer;
 
-    public IForgeDatabaseProvider Provider { get; }
-
     /// <summary>
-    /// Initializes or executes the ForgeDb operation.
+    /// Executes the ForgeDb operation.
     /// </summary>
     /// <param name="connectionString">The connectionString value.</param>
     /// <param name="provider">The provider value.</param>
     /// <param name="metadata">The metadata value.</param>
     /// <param name="analyzer">The analyzer value.</param>
+    /// <returns>The result of the ForgeDb operation.</returns>
+    public IForgeDatabaseProvider Provider { get; }
+
+    /// <summary>
+    /// Executes the ForgeDb operation.
+    /// </summary>
+    /// <param name="connectionString">The connectionString value.</param>
+    /// <param name="provider">The provider value.</param>
+    /// <param name="metadata">The metadata value.</param>
+    /// <param name="analyzer">The analyzer value.</param>
+    /// <returns>The result of the ForgeDb operation.</returns>
     public ForgeDb(string connectionString, IForgeDatabaseProvider provider, IForgeEntityMetadataResolver metadata, IForgeQueryAnalyzer analyzer)
     {
         _connectionString = connectionString;
@@ -30,12 +39,13 @@ public partial class ForgeDb : IForgeDb
     private DbConnection CreateConnection() => Provider.CreateConnection(_connectionString);
 
     /// <summary>
-    /// Initializes or executes the Query operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public IEnumerable<T> Query<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
         using var c = CreateConnection();
@@ -44,13 +54,14 @@ public partial class ForgeDb : IForgeDb
     }
 
     /// <summary>
-    /// Initializes or executes the QueryAsync operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public async Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         await using var c = CreateConnection();
@@ -59,96 +70,104 @@ public partial class ForgeDb : IForgeDb
     }
 
     /// <summary>
-    /// Initializes or executes the QueryFirst operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public T QueryFirst<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
         => Query<T>(sql, parameters, timeoutSeconds).First();
 
     /// <summary>
-    /// Initializes or executes the QueryFirstAsync operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public async Task<T> QueryFirstAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
         => (await QueryAsync<T>(sql, parameters, timeoutSeconds, cancellationToken)).First();
 
     /// <summary>
-    /// Initializes or executes the QueryFirstOrDefault operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public T? QueryFirstOrDefault<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
         => Query<T>(sql, parameters, timeoutSeconds).FirstOrDefault();
 
     /// <summary>
-    /// Initializes or executes the QueryFirstOrDefaultAsync operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public async Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
         => (await QueryAsync<T>(sql, parameters, timeoutSeconds, cancellationToken)).FirstOrDefault();
 
     /// <summary>
-    /// Initializes or executes the QuerySingle operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public T QuerySingle<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
         => Query<T>(sql, parameters, timeoutSeconds).Single();
 
     /// <summary>
-    /// Initializes or executes the QuerySingleAsync operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public async Task<T> QuerySingleAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
         => (await QueryAsync<T>(sql, parameters, timeoutSeconds, cancellationToken)).Single();
 
     /// <summary>
-    /// Initializes or executes the QuerySingleOrDefault operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public T? QuerySingleOrDefault<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
         => Query<T>(sql, parameters, timeoutSeconds).SingleOrDefault();
 
     /// <summary>
-    /// Initializes or executes the QuerySingleOrDefaultAsync operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public async Task<T?> QuerySingleOrDefaultAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
         => (await QueryAsync<T>(sql, parameters, timeoutSeconds, cancellationToken)).SingleOrDefault();
 
     /// <summary>
-    /// Initializes or executes the Execute operation.
+    /// Executes the Execute operation.
     /// </summary>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Execute operation.</returns>
     public int Execute(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
         using var c = CreateConnection();
@@ -157,13 +176,13 @@ public partial class ForgeDb : IForgeDb
     }
 
     /// <summary>
-    /// Initializes or executes the ExecuteAsync operation.
+    /// Executes the ExecuteAsync operation.
     /// </summary>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ExecuteAsync operation.</returns>
     public async Task<int> ExecuteAsync(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         await using var c = CreateConnection();
@@ -172,12 +191,13 @@ public partial class ForgeDb : IForgeDb
     }
 
     /// <summary>
-    /// Initializes or executes the ExecuteScalar operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public T? ExecuteScalar<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
         using var c = CreateConnection();
@@ -186,13 +206,14 @@ public partial class ForgeDb : IForgeDb
     }
 
     /// <summary>
-    /// Initializes or executes the ExecuteScalarAsync operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public async Task<T?> ExecuteScalarAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         await using var c = CreateConnection();
@@ -201,12 +222,12 @@ public partial class ForgeDb : IForgeDb
     }
 
     /// <summary>
-    /// Initializes or executes the QueryMultiple operation.
+    /// Executes the QueryMultiple operation.
     /// </summary>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the QueryMultiple operation.</returns>
     public IForgeGridReader QueryMultiple(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
         var c = CreateConnection();
@@ -216,13 +237,13 @@ public partial class ForgeDb : IForgeDb
     }
 
     /// <summary>
-    /// Initializes or executes the QueryMultipleAsync operation.
+    /// Executes the QueryMultipleAsync operation.
     /// </summary>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the QueryMultipleAsync operation.</returns>
     public async Task<IForgeGridReader> QueryMultipleAsync(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         var c = CreateConnection();
@@ -232,12 +253,13 @@ public partial class ForgeDb : IForgeDb
     }
 
     /// <summary>
-    /// Initializes or executes the QueryProcedure operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="procedureName">The procedureName value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public IEnumerable<T> QueryProcedure<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null)
     {
         using var c = CreateConnection();
@@ -246,13 +268,14 @@ public partial class ForgeDb : IForgeDb
     }
 
     /// <summary>
-    /// Initializes or executes the QueryProcedureAsync operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="procedureName">The procedureName value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public async Task<IReadOnlyList<T>> QueryProcedureAsync<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         await using var c = CreateConnection();
@@ -261,33 +284,35 @@ public partial class ForgeDb : IForgeDb
     }
 
     /// <summary>
-    /// Initializes or executes the QueryProcedureSingleOrDefault operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="procedureName">The procedureName value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public T? QueryProcedureSingleOrDefault<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null)
         => QueryProcedure<T>(procedureName, parameters, timeoutSeconds).SingleOrDefault();
 
     /// <summary>
-    /// Initializes or executes the QueryProcedureSingleOrDefaultAsync operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="procedureName">The procedureName value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public async Task<T?> QueryProcedureSingleOrDefaultAsync<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
         => (await QueryProcedureAsync<T>(procedureName, parameters, timeoutSeconds, cancellationToken)).SingleOrDefault();
 
     /// <summary>
-    /// Initializes or executes the ExecuteProcedure operation.
+    /// Executes the ExecuteProcedure operation.
     /// </summary>
     /// <param name="procedureName">The procedureName value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ExecuteProcedure operation.</returns>
     public int ExecuteProcedure(string procedureName, object? parameters = null, int? timeoutSeconds = null)
     {
         using var c = CreateConnection();
@@ -296,13 +321,13 @@ public partial class ForgeDb : IForgeDb
     }
 
     /// <summary>
-    /// Initializes or executes the ExecuteProcedureAsync operation.
+    /// Executes the ExecuteProcedureAsync operation.
     /// </summary>
     /// <param name="procedureName">The procedureName value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ExecuteProcedureAsync operation.</returns>
     public async Task<int> ExecuteProcedureAsync(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         await using var c = CreateConnection();
@@ -311,12 +336,13 @@ public partial class ForgeDb : IForgeDb
     }
 
     /// <summary>
-    /// Initializes or executes the ExecuteProcedureScalar operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="procedureName">The procedureName value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public T? ExecuteProcedureScalar<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null)
     {
         using var c = CreateConnection();
@@ -325,13 +351,14 @@ public partial class ForgeDb : IForgeDb
     }
 
     /// <summary>
-    /// Initializes or executes the ExecuteProcedureScalarAsync operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="procedureName">The procedureName value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public async Task<T?> ExecuteProcedureScalarAsync<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         await using var c = CreateConnection();
@@ -340,12 +367,12 @@ public partial class ForgeDb : IForgeDb
     }
 
     /// <summary>
-    /// Initializes or executes the QueryProcedureMultiple operation.
+    /// Executes the QueryProcedureMultiple operation.
     /// </summary>
     /// <param name="procedureName">The procedureName value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the QueryProcedureMultiple operation.</returns>
     public IForgeGridReader QueryProcedureMultiple(string procedureName, object? parameters = null, int? timeoutSeconds = null)
     {
         var c = CreateConnection();
@@ -355,13 +382,13 @@ public partial class ForgeDb : IForgeDb
     }
 
     /// <summary>
-    /// Initializes or executes the QueryProcedureMultipleAsync operation.
+    /// Executes the QueryProcedureMultipleAsync operation.
     /// </summary>
     /// <param name="procedureName">The procedureName value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the QueryProcedureMultipleAsync operation.</returns>
     public async Task<IForgeGridReader> QueryProcedureMultipleAsync(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         var c = CreateConnection();
@@ -371,12 +398,13 @@ public partial class ForgeDb : IForgeDb
     }
 
     /// <summary>
-    /// Initializes or executes the ExecuteFunction operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="functionName">The functionName value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public T? ExecuteFunction<T>(string functionName, object? parameters = null, int? timeoutSeconds = null)
     {
         var cmd = Provider.BuildFunctionScalar(functionName, parameters);
@@ -384,13 +412,14 @@ public partial class ForgeDb : IForgeDb
     }
 
     /// <summary>
-    /// Initializes or executes the ExecuteFunctionAsync operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="functionName">The functionName value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public Task<T?> ExecuteFunctionAsync<T>(string functionName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         var cmd = Provider.BuildFunctionScalar(functionName, parameters);
@@ -398,32 +427,34 @@ public partial class ForgeDb : IForgeDb
     }
 
     /// <summary>
-    /// Initializes or executes the QueryFunction operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="functionSql">The functionSql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public IReadOnlyList<T> QueryFunction<T>(string functionSql, object? parameters = null, int? timeoutSeconds = null)
         => Query<T>(functionSql, parameters, timeoutSeconds).ToList();
 
     /// <summary>
-    /// Initializes or executes the QueryFunctionAsync operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="functionSql">The functionSql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public Task<IReadOnlyList<T>> QueryFunctionAsync<T>(string functionSql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
         => QueryAsync<T>(functionSql, parameters, timeoutSeconds, cancellationToken);
     /// <summary>
-    /// Initializes or executes the QueryDynamicAsync operation.
+    /// Executes the QueryDynamicAsync operation.
     /// </summary>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the QueryDynamicAsync operation.</returns>
     public async Task<IReadOnlyList<IDictionary<string, object?>>> QueryDynamicAsync(
     string sql,
     object? parameters = null,

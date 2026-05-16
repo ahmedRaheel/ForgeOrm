@@ -5,11 +5,11 @@ namespace ForgeORM.Intelligence;
 public sealed class ForgeAiAssistant : IForgeAiQueryClient, IForgeApiGenerator, IForgeMigrationPlanner, IForgeSchemaScaffolder
 {
     /// <summary>
-    /// Initializes or executes the GenerateSqlAsync operation.
+    /// Executes the GenerateSqlAsync operation.
     /// </summary>
     /// <param name="request">The request value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the GenerateSqlAsync operation.</returns>
     public Task<ForgeAiQueryResult> GenerateSqlAsync(ForgeAiQueryRequest request, CancellationToken cancellationToken = default)
     {
         var entity = string.IsNullOrWhiteSpace(request.EntityName) ? "Records" : request.EntityName;
@@ -46,10 +46,10 @@ public sealed class ForgeAiAssistant : IForgeAiQueryClient, IForgeApiGenerator, 
     }
 
     /// <summary>
-    /// Initializes or executes the GenerateCrudApi operation.
+    /// Executes the GenerateCrudApi operation.
     /// </summary>
     /// <param name="request">The request value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the GenerateCrudApi operation.</returns>
     public IReadOnlyList<ForgeGeneratedFile> GenerateCrudApi(ForgeApiGenerationRequest request)
     {
         var route = request.RoutePrefix.Trim('/');
@@ -58,11 +58,6 @@ public sealed class ForgeAiAssistant : IForgeAiQueryClient, IForgeApiGenerator, 
 
         public static class {{request.EntityName}}Endpoints
         {
-            /// <summary>
-            /// Initializes or executes the Map{{request.EntityName}}Endpoints operation.
-            /// </summary>
-            /// <param name="app">The app value.</param>
-            /// <returns>The operation result.</returns>
             public static IEndpointRouteBuilder Map{{request.EntityName}}Endpoints(this IEndpointRouteBuilder app)
             {
                 var group = app.MapGroup("/{{route}}").WithTags("{{request.EntityName}}");
@@ -80,12 +75,12 @@ public sealed class ForgeAiAssistant : IForgeAiQueryClient, IForgeApiGenerator, 
     }
 
     /// <summary>
-    /// Initializes or executes the Plan operation.
+    /// Executes the Plan operation.
     /// </summary>
     /// <param name="name">The name value.</param>
     /// <param name="currentSchema">The currentSchema value.</param>
     /// <param name="targetSchema">The targetSchema value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Plan operation.</returns>
     public ForgeMigrationPlan Plan(string name, IReadOnlyList<string> currentSchema, IReadOnlyList<string> targetSchema)
     {
         var up = targetSchema.Except(currentSchema, StringComparer.OrdinalIgnoreCase).ToList();
@@ -98,11 +93,11 @@ public sealed class ForgeAiAssistant : IForgeAiQueryClient, IForgeApiGenerator, 
     }
 
     /// <summary>
-    /// Initializes or executes the ScaffoldAsync operation.
+    /// Executes the ScaffoldAsync operation.
     /// </summary>
     /// <param name="request">The request value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ScaffoldAsync operation.</returns>
     public Task<IReadOnlyList<ForgeGeneratedFile>> ScaffoldAsync(ForgeScaffoldRequest request, CancellationToken cancellationToken = default)
     {
         IReadOnlyList<ForgeGeneratedFile> files =

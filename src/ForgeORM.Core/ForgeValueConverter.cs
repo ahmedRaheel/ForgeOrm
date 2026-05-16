@@ -1,15 +1,15 @@
-using System.Reflection;
+﻿using System.Reflection;
 
 namespace ForgeORM.Core;
 
 internal static class ForgeValueConverter
 {
     /// <summary>
-    /// Initializes or executes the ToDatabase operation.
+    /// Executes the ToDatabase operation.
     /// </summary>
     /// <param name="value">The value value.</param>
     /// <param name="declaredType">The declaredType value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ToDatabase operation.</returns>
     public static object? ToDatabase(object? value, Type? declaredType = null)
     {
         if (value is null)
@@ -38,20 +38,21 @@ internal static class ForgeValueConverter
     }
 
     /// <summary>
-    /// Initializes or executes the FromDatabase operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="value">The value value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public static T? FromDatabase<T>(object? value)
     {
         return (T?)FromDatabase(value, typeof(T));
     }
     /// <summary>
-    /// Initializes or executes the FromDatabase operation.
+    /// Executes the FromDatabase operation.
     /// </summary>
     /// <param name="value">The value value.</param>
     /// <param name="targetType">The targetType value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the FromDatabase operation.</returns>
     public static object? FromDatabase(object? value, Type targetType)
     {
         if (value is null || value == DBNull.Value)
@@ -180,12 +181,18 @@ public enum ForgeEnumStorage
 [AttributeUsage(AttributeTargets.Enum)]
 public sealed class ForgeEnumStorageAttribute : Attribute
 {
+    /// <summary>
+    /// Executes the ForgeEnumStorageAttribute operation.
+    /// </summary>
+    /// <param name="storage">The storage value.</param>
+    /// <returns>The result of the ForgeEnumStorageAttribute operation.</returns>
     public ForgeEnumStorage Storage { get; }
 
     /// <summary>
-    /// Initializes or executes the ForgeEnumStorageAttribute operation.
+    /// Executes the ForgeEnumStorageAttribute operation.
     /// </summary>
     /// <param name="storage">The storage value.</param>
+    /// <returns>The result of the ForgeEnumStorageAttribute operation.</returns>
     public ForgeEnumStorageAttribute(ForgeEnumStorage storage)
     {
         Storage = storage;

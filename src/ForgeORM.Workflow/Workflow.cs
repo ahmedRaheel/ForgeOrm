@@ -11,19 +11,36 @@ public sealed record VisualWorkflowEdge(string From, string To, string Label = "
 public sealed record VisualWorkflowDesignerModel(IReadOnlyList<VisualWorkflowNode> Nodes, IReadOnlyList<VisualWorkflowEdge> Edges);
 
 public interface IForgeWorkflowEngine
+/// <summary>
+/// Defines the RunAsync operation.
+/// </summary>
+/// <param name="workflow">The workflow value.</param>
+/// <param name="cancellationToken">The cancellationToken value.</param>
+/// <returns>The result of the RunAsync operation.</returns>
 {
+    /// <summary>
+    /// Defines the RunAsync operation.
+    /// </summary>
+    /// <param name="workflow">The workflow value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the RunAsync operation.</returns>
     Task<ForgeWorkflowExecution> RunAsync(ForgeWorkflowDefinition workflow, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Defines the ToDesignerModel operation.
+    /// </summary>
+    /// <param name="workflow">The workflow value.</param>
+    /// <returns>The result of the ToDesignerModel operation.</returns>
     VisualWorkflowDesignerModel ToDesignerModel(ForgeWorkflowDefinition workflow);
 }
 
 public sealed class ForgeWorkflowEngine : IForgeWorkflowEngine
 {
     /// <summary>
-    /// Initializes or executes the RunAsync operation.
+    /// Executes the RunAsync operation.
     /// </summary>
     /// <param name="workflow">The workflow value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the RunAsync operation.</returns>
     public async Task<ForgeWorkflowExecution> RunAsync(ForgeWorkflowDefinition workflow, CancellationToken cancellationToken = default)
     {
         var results = new List<ForgeWorkflowStepResult>();
@@ -45,10 +62,10 @@ public sealed class ForgeWorkflowEngine : IForgeWorkflowEngine
     }
 
     /// <summary>
-    /// Initializes or executes the ToDesignerModel operation.
+    /// Executes the ToDesignerModel operation.
     /// </summary>
     /// <param name="workflow">The workflow value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ToDesignerModel operation.</returns>
     public VisualWorkflowDesignerModel ToDesignerModel(ForgeWorkflowDefinition workflow)
     {
         var nodes = workflow.Steps.Select((s, i) => new VisualWorkflowNode(s.Name, s.Name, s.Kind, 120 + i * 220, 120)).ToList();
@@ -60,9 +77,9 @@ public sealed class ForgeWorkflowEngine : IForgeWorkflowEngine
 public static class ForgeWorkflowServiceCollectionExtensions
 {
     /// <summary>
-    /// Initializes or executes the AddForgeWorkflow operation.
+    /// Executes the AddForgeWorkflow operation.
     /// </summary>
     /// <param name="services">The services value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the AddForgeWorkflow operation.</returns>
     public static IServiceCollection AddForgeWorkflow(this IServiceCollection services) => services.AddSingleton<IForgeWorkflowEngine, ForgeWorkflowEngine>();
 }

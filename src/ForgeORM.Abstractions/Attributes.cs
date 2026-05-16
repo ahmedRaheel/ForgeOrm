@@ -3,11 +3,17 @@ namespace ForgeORM.Abstractions;
 [AttributeUsage(AttributeTargets.Class)]
 public sealed class ForgeTableAttribute : Attribute
 {
-    public string Name { get; }
     /// <summary>
-    /// Initializes or executes the ForgeTableAttribute operation.
+    /// Executes the ForgeTableAttribute operation.
     /// </summary>
     /// <param name="name">The name value.</param>
+    /// <returns>The result of the ForgeTableAttribute operation.</returns>
+    public string Name { get; }
+    /// <summary>
+    /// Executes the ForgeTableAttribute operation.
+    /// </summary>
+    /// <param name="name">The name value.</param>
+    /// <returns>The result of the ForgeTableAttribute operation.</returns>
     public ForgeTableAttribute(string name) => Name = name;
 }
 
@@ -20,11 +26,17 @@ public sealed class ForgeCodeAttribute : Attribute { }
 [AttributeUsage(AttributeTargets.Property)]
 public sealed class ForgeColumnAttribute : Attribute
 {
-    public string Name { get; }
     /// <summary>
-    /// Initializes or executes the ForgeColumnAttribute operation.
+    /// Executes the ForgeColumnAttribute operation.
     /// </summary>
     /// <param name="name">The name value.</param>
+    /// <returns>The result of the ForgeColumnAttribute operation.</returns>
+    public string Name { get; }
+    /// <summary>
+    /// Executes the ForgeColumnAttribute operation.
+    /// </summary>
+    /// <param name="name">The name value.</param>
+    /// <returns>The result of the ForgeColumnAttribute operation.</returns>
     public ForgeColumnAttribute(string name) => Name = name;
 }
 
@@ -41,10 +53,16 @@ public enum ForgeEnumStorage
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Parameter)]
 public sealed class ForgeEnumStorageAttribute : Attribute
 {
-    public ForgeEnumStorage Storage { get; }
     /// <summary>
-    /// Initializes or executes the ForgeEnumStorageAttribute operation.
+    /// Executes the ForgeEnumStorageAttribute operation.
     /// </summary>
     /// <param name="storage">The storage value.</param>
+    /// <returns>The result of the ForgeEnumStorageAttribute operation.</returns>
+    public ForgeEnumStorage Storage { get; }
+    /// <summary>
+    /// Executes the ForgeEnumStorageAttribute operation.
+    /// </summary>
+    /// <param name="storage">The storage value.</param>
+    /// <returns>The result of the ForgeEnumStorageAttribute operation.</returns>
     public ForgeEnumStorageAttribute(ForgeEnumStorage storage) => Storage = storage;
 }

@@ -7,26 +7,27 @@ namespace ForgeORM.QueryAst;
 public static class ForgeSql
 {
     /// <summary>
-    /// Initializes or executes the Select operation.
+    /// Executes the T operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <returns>The result of the T operation.</returns>
     public static IForgeAstSelectBuilder<T> Select<T>() => new ForgeAstSelectBuilder<T>();
     /// <summary>
-    /// Initializes or executes the Script operation.
+    /// Executes the Script operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Script operation.</returns>
     public static IForgeAstScriptBuilder Script() => new ForgeAstScriptBuilder();
     /// <summary>
-    /// Initializes or executes the TempTable operation.
+    /// Executes the TempTable operation.
     /// </summary>
     /// <param name="name">The name value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the TempTable operation.</returns>
     public static IForgeAstTempTableBuilder TempTable(string name) => new ForgeAstTempTableBuilder(name);
     /// <summary>
-    /// Initializes or executes the Cte operation.
+    /// Executes the Cte operation.
     /// </summary>
     /// <param name="name">The name value.</param>
     /// <param name="sql">The sql value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Cte operation.</returns>
     public static ForgeCte Cte(string name, string sql) => new(name, sql);
 }

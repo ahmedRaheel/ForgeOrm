@@ -13,30 +13,26 @@ public sealed class ForgeDataFrame
     private readonly List<Dictionary<string, object?>> _rows;
 
     /// <summary>
-    /// Initializes or executes the ForgeDataFrame operation.
+    /// Executes the ForgeDataFrame operation.
     /// </summary>
     /// <param name="rows">The rows value.</param>
+    /// <returns>The result of the ForgeDataFrame operation.</returns>
     public ForgeDataFrame(IEnumerable<IDictionary<string, object?>> rows)
     {
         _rows = rows.Select(r => new Dictionary<string, object?>(r, StringComparer.OrdinalIgnoreCase)).ToList();
     }
 
     public IReadOnlyList<IReadOnlyDictionary<string, object?>> Rows => _rows;
-    /// <summary>
-    /// Executes the _rows.SelectMany operation.
-    /// </summary>
-    /// <param name="x">The x value.</param>
-    /// <returns>The operation result.</returns>
     public IReadOnlyList<string> Columns => _rows.SelectMany(x => x.Keys).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     public int RowCount => _rows.Count;
 
     public static ForgeDataFrame Empty { get; } = new([]);
     /// <summary>
-    /// Initializes or executes the FromCsvAsync operation.
+    /// Executes the FromCsvAsync operation.
     /// </summary>
     /// <param name="stream">The stream value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the FromCsvAsync operation.</returns>
     public static async Task<ForgeDataFrame> FromCsvAsync(
     Stream stream,
     CancellationToken cancellationToken = default)
@@ -47,11 +43,11 @@ public sealed class ForgeDataFrame
     }
 
     /// <summary>
-    /// Initializes or executes the FromJsonAsync operation.
+    /// Executes the FromJsonAsync operation.
     /// </summary>
     /// <param name="stream">The stream value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the FromJsonAsync operation.</returns>
     public static async Task<ForgeDataFrame> FromJsonAsync(
         Stream stream,
         CancellationToken cancellationToken = default)
@@ -61,34 +57,34 @@ public sealed class ForgeDataFrame
         return FromJsonText(json);
     }
     /// <summary>
-    /// Initializes or executes the FromCsv operation.
+    /// Executes the FromCsv operation.
     /// </summary>
     /// <param name="path">The path value.</param>
     /// <param name="hasHeader">The hasHeader value.</param>
     /// <param name="delimiter">The delimiter value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the FromCsv operation.</returns>
     public static ForgeDataFrame FromCsv(string path, bool hasHeader = true, char delimiter = ',')
         => FromCsvText(File.ReadAllText(path), hasHeader, delimiter);
 
     /// <summary>
-    /// Initializes or executes the FromCsvAsync operation.
+    /// Executes the FromCsvAsync operation.
     /// </summary>
     /// <param name="path">The path value.</param>
     /// <param name="hasHeader">The hasHeader value.</param>
     /// <param name="delimiter">The delimiter value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the FromCsvAsync operation.</returns>
     public static async Task<ForgeDataFrame> FromCsvAsync(string path, bool hasHeader = true, char delimiter = ',', CancellationToken cancellationToken = default)
         => FromCsvText(await File.ReadAllTextAsync(path, cancellationToken), hasHeader, delimiter);
 
     /// <summary>
-    /// Initializes or executes the FromCsvAsync operation.
+    /// Executes the FromCsvAsync operation.
     /// </summary>
     /// <param name="stream">The stream value.</param>
     /// <param name="hasHeader">The hasHeader value.</param>
     /// <param name="delimiter">The delimiter value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the FromCsvAsync operation.</returns>
     public static async Task<ForgeDataFrame> FromCsvAsync(Stream stream, bool hasHeader = true, char delimiter = ',', CancellationToken cancellationToken = default)
     {
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
@@ -97,12 +93,12 @@ public sealed class ForgeDataFrame
     }
 
     /// <summary>
-    /// Initializes or executes the FromCsvText operation.
+    /// Executes the FromCsvText operation.
     /// </summary>
     /// <param name="csv">The csv value.</param>
     /// <param name="hasHeader">The hasHeader value.</param>
     /// <param name="delimiter">The delimiter value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the FromCsvText operation.</returns>
     public static ForgeDataFrame FromCsvText(string csv, bool hasHeader = true, char delimiter = ',')
     {
         var lines = csv.Replace("\r\n", "\n").Replace('\r', '\n')
@@ -134,28 +130,28 @@ public sealed class ForgeDataFrame
     }
 
     /// <summary>
-    /// Initializes or executes the FromJson operation.
+    /// Executes the FromJson operation.
     /// </summary>
     /// <param name="path">The path value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the FromJson operation.</returns>
     public static ForgeDataFrame FromJson(string path)
         => FromJsonText(File.ReadAllText(path));
 
     /// <summary>
-    /// Initializes or executes the FromJsonAsync operation.
+    /// Executes the FromJsonAsync operation.
     /// </summary>
     /// <param name="path">The path value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the FromJsonAsync operation.</returns>
     public static async Task<ForgeDataFrame> FromJsonAsync(string path, CancellationToken cancellationToken = default)
         => FromJsonText(await File.ReadAllTextAsync(path, cancellationToken));
 
     /// <summary>
-    /// Initializes or executes the FromJsonv1Async operation.
+    /// Executes the FromJsonv1Async operation.
     /// </summary>
     /// <param name="stream">The stream value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the FromJsonv1Async operation.</returns>
     public static async Task<ForgeDataFrame> FromJsonv1Async(Stream stream, CancellationToken cancellationToken = default)
     {
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
@@ -164,10 +160,10 @@ public sealed class ForgeDataFrame
     }
 
     /// <summary>
-    /// Initializes or executes the FromJsonText operation.
+    /// Executes the FromJsonText operation.
     /// </summary>
     /// <param name="json">The json value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the FromJsonText operation.</returns>
     public static ForgeDataFrame FromJsonText(string json)
     {
         using var doc = JsonDocument.Parse(json);
@@ -193,11 +189,11 @@ public sealed class ForgeDataFrame
         return new ForgeDataFrame(rows);
     }
     /// <summary>
-    /// Initializes or executes the FromCsvAsync operation.
+    /// Executes the FromCsvAsync operation.
     /// </summary>
     /// <param name="path">The path value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the FromCsvAsync operation.</returns>
     public static async Task<ForgeDataFrame> FromCsvAsync(
     string path,
     CancellationToken cancellationToken = default)
@@ -207,27 +203,27 @@ public sealed class ForgeDataFrame
     }
     
     /// <summary>
-    /// Initializes or executes the ToTable operation.
+    /// Executes the ToTable operation.
     /// </summary>
     /// <param name="db">The db value.</param>
     /// <param name="tableName">The tableName value.</param>
     /// <param name="createIfNotExists">The createIfNotExists value.</param>
     /// <param name="dropIfExists">The dropIfExists value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ToTable operation.</returns>
     public int ToTable(ForgeDb db, string tableName, bool createIfNotExists = true, bool dropIfExists = false)
     {
         return ToTableAsync(db, tableName, createIfNotExists, dropIfExists).GetAwaiter().GetResult();
     }
 
     /// <summary>
-    /// Initializes or executes the ToTableAsync operation.
+    /// Executes the ToTableAsync operation.
     /// </summary>
     /// <param name="db">The db value.</param>
     /// <param name="tableName">The tableName value.</param>
     /// <param name="createIfNotExists">The createIfNotExists value.</param>
     /// <param name="dropIfExists">The dropIfExists value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ToTableAsync operation.</returns>
     public async Task<int> ToTableAsync(
         ForgeDb db,
         string tableName,
@@ -275,40 +271,40 @@ public sealed class ForgeDataFrame
     }
 
     /// <summary>
-    /// Initializes or executes the ToDictionaries operation.
+    /// Executes the ToDictionaries operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ToDictionaries operation.</returns>
     public IReadOnlyList<IDictionary<string, object?>> ToDictionaries()
         => _rows.Select(r => new Dictionary<string, object?>(r, StringComparer.OrdinalIgnoreCase)).Cast<IDictionary<string, object?>>().ToList();
 
 
     /// <summary>
-    /// Initializes or executes the Head operation.
+    /// Executes the Head operation.
     /// </summary>
     /// <param name="count">The count value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Head operation.</returns>
     public ForgeDataFrame Head(int count = 5) => new(_rows.Take(Math.Max(count, 0)));
     /// <summary>
-    /// Initializes or executes the Tail operation.
+    /// Executes the Tail operation.
     /// </summary>
     /// <param name="count">The count value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Tail operation.</returns>
     public ForgeDataFrame Tail(int count = 5) => new(_rows.Skip(Math.Max(0, _rows.Count - Math.Max(count, 0))));
 
     /// <summary>
-    /// Initializes or executes the Select operation.
+    /// Executes the Select operation.
     /// </summary>
-    /// <param name="columns">The columns value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="stringcolumns">The stringcolumns value.</param>
+    /// <returns>The result of the Select operation.</returns>
     public ForgeDataFrame Select(params string[] columns)
         => new(_rows.Select(row => columns.ToDictionary(c => c, c => row.TryGetValue(c, out var v) ? v : null, StringComparer.OrdinalIgnoreCase)));
 
     /// <summary>
-    /// Initializes or executes the Rename operation.
+    /// Executes the Rename operation.
     /// </summary>
     /// <param name="oldName">The oldName value.</param>
     /// <param name="newName">The newName value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Rename operation.</returns>
     public ForgeDataFrame Rename(string oldName, string newName)
     {
         foreach (var row in _rows)
@@ -321,19 +317,19 @@ public sealed class ForgeDataFrame
     }
 
     /// <summary>
-    /// Initializes or executes the Where operation.
+    /// Executes the Where operation.
     /// </summary>
     /// <param name="predicate">The predicate value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Where operation.</returns>
     public ForgeDataFrame Where(Func<IReadOnlyDictionary<string, object?>, bool> predicate)
         => new(_rows.Where(r => predicate(r)));
 
     /// <summary>
-    /// Initializes or executes the SortBy operation.
+    /// Executes the SortBy operation.
     /// </summary>
     /// <param name="column">The column value.</param>
     /// <param name="descending">The descending value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the SortBy operation.</returns>
     public ForgeDataFrame SortBy(string column, bool descending = false)
     {
         var sorted = descending
@@ -343,11 +339,11 @@ public sealed class ForgeDataFrame
     }
 
     /// <summary>
-    /// Initializes or executes the Assign operation.
+    /// Executes the Assign operation.
     /// </summary>
     /// <param name="column">The column value.</param>
     /// <param name="valueFactory">The valueFactory value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Assign operation.</returns>
     public ForgeDataFrame Assign(string column, Func<IReadOnlyDictionary<string, object?>, object?> valueFactory)
     {
         foreach (var row in _rows)
@@ -356,11 +352,11 @@ public sealed class ForgeDataFrame
     }
 
     /// <summary>
-    /// Initializes or executes the FillNa operation.
+    /// Executes the FillNa operation.
     /// </summary>
     /// <param name="value">The value value.</param>
-    /// <param name="columns">The columns value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="stringcolumns">The stringcolumns value.</param>
+    /// <returns>The result of the FillNa operation.</returns>
     public ForgeDataFrame FillNa(object? value, params string[] columns)
     {
         var targetColumns = columns.Length == 0 ? Columns : columns;
@@ -372,10 +368,10 @@ public sealed class ForgeDataFrame
     }
 
     /// <summary>
-    /// Initializes or executes the DropNa operation.
+    /// Executes the DropNa operation.
     /// </summary>
-    /// <param name="columns">The columns value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="stringcolumns">The stringcolumns value.</param>
+    /// <returns>The result of the DropNa operation.</returns>
     public ForgeDataFrame DropNa(params string[] columns)
     {
         var targetColumns = columns.Length == 0 ? Columns : columns;
@@ -383,10 +379,10 @@ public sealed class ForgeDataFrame
     }
 
     /// <summary>
-    /// Initializes or executes the DropDuplicates operation.
+    /// Executes the DropDuplicates operation.
     /// </summary>
-    /// <param name="columns">The columns value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="stringcolumns">The stringcolumns value.</param>
+    /// <returns>The result of the DropDuplicates operation.</returns>
     public ForgeDataFrame DropDuplicates(params string[] columns)
     {
         var targetColumns = columns.Length == 0 ? Columns : columns;
@@ -395,20 +391,20 @@ public sealed class ForgeDataFrame
     }
 
     /// <summary>
-    /// Initializes or executes the GroupBy operation.
+    /// Executes the GroupBy operation.
     /// </summary>
-    /// <param name="columns">The columns value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="stringcolumns">The stringcolumns value.</param>
+    /// <returns>The result of the GroupBy operation.</returns>
     public ForgeGroupBy GroupBy(params string[] columns) => new(this, columns);
 
     /// <summary>
-    /// Initializes or executes the PivotTable operation.
+    /// Executes the PivotTable operation.
     /// </summary>
     /// <param name="rows">The rows value.</param>
     /// <param name="columns">The columns value.</param>
     /// <param name="values">The values value.</param>
     /// <param name="aggregate">The aggregate value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the PivotTable operation.</returns>
     public ForgeDataFrame PivotTable(string rows, string columns, string values, ForgeAgg aggregate)
     {
         var columnKeys = _rows.Select(r => ToKey(Get(r, columns))).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
@@ -430,13 +426,13 @@ public sealed class ForgeDataFrame
     }
 
     /// <summary>
-    /// Initializes or executes the Melt operation.
+    /// Executes the Melt operation.
     /// </summary>
-    /// <param name="idVars">The idVars value.</param>
-    /// <param name="valueVars">The valueVars value.</param>
+    /// <param name="stringidVars">The stringidVars value.</param>
+    /// <param name="stringvalueVars">The stringvalueVars value.</param>
     /// <param name="variableName">The variableName value.</param>
     /// <param name="valueName">The valueName value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Melt operation.</returns>
     public ForgeDataFrame Melt(string[] idVars, string[] valueVars, string variableName = "variable", string valueName = "value")
     {
         var result = new List<IDictionary<string, object?>>();
@@ -455,13 +451,13 @@ public sealed class ForgeDataFrame
     }
 
     /// <summary>
-    /// Initializes or executes the Merge operation.
+    /// Executes the Merge operation.
     /// </summary>
     /// <param name="right">The right value.</param>
     /// <param name="leftOn">The leftOn value.</param>
     /// <param name="rightOn">The rightOn value.</param>
     /// <param name="join">The join value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Merge operation.</returns>
     public ForgeDataFrame Merge(ForgeDataFrame right, string leftOn, string rightOn, ForgeJoinKind join = ForgeJoinKind.Inner)
     {
         var result = new List<IDictionary<string, object?>>();
@@ -492,13 +488,13 @@ public sealed class ForgeDataFrame
     }
 
     /// <summary>
-    /// Initializes or executes the Rolling operation.
+    /// Executes the Rolling operation.
     /// </summary>
     /// <param name="valueColumn">The valueColumn value.</param>
     /// <param name="window">The window value.</param>
     /// <param name="outputColumn">The outputColumn value.</param>
     /// <param name="aggregate">The aggregate value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Rolling operation.</returns>
     public ForgeDataFrame Rolling(string valueColumn, int window, string outputColumn, ForgeAgg aggregate)
     {
         var result = _rows.Select(r => new Dictionary<string, object?>(r, StringComparer.OrdinalIgnoreCase)).ToList();
@@ -511,10 +507,10 @@ public sealed class ForgeDataFrame
     }
 
     /// <summary>
-    /// Initializes or executes the Describe operation.
+    /// Executes the Describe operation.
     /// </summary>
-    /// <param name="numericColumns">The numericColumns value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="stringnumericColumns">The stringnumericColumns value.</param>
+    /// <returns>The result of the Describe operation.</returns>
     public ForgeDataFrame Describe(params string[] numericColumns)
     {
         var cols = numericColumns.Length == 0 ? Columns.ToArray() : numericColumns;
@@ -540,9 +536,9 @@ public sealed class ForgeDataFrame
     }
 
     /// <summary>
-    /// Initializes or executes the ToMicrosoftDataFrame operation.
+    /// Executes the ToMicrosoftDataFrame operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ToMicrosoftDataFrame operation.</returns>
     public Microsoft.Data.Analysis.DataFrame ToMicrosoftDataFrame()
     {
         var columns = new List<DataFrameColumn>();
@@ -555,11 +551,11 @@ public sealed class ForgeDataFrame
     }
 
     /// <summary>
-    /// Initializes or executes the Get operation.
+    /// Executes the Get operation.
     /// </summary>
     /// <param name="row">The row value.</param>
     /// <param name="column">The column value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Get operation.</returns>
     public static object? Get(IReadOnlyDictionary<string, object?> row, string column)
         => row.TryGetValue(column, out var value) ? value : null;
 

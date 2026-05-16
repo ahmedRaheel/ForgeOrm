@@ -11,12 +11,13 @@ namespace ForgeORM.Core;
 public class ForgeDbContext : ForgeDb
 {
     /// <summary>
-    /// Initializes or executes the ForgeDbContext operation.
+    /// Executes the ForgeDbContext operation.
     /// </summary>
     /// <param name="connectionString">The connectionString value.</param>
     /// <param name="provider">The provider value.</param>
     /// <param name="metadata">The metadata value.</param>
     /// <param name="analyzer">The analyzer value.</param>
+    /// <returns>The result of the ForgeDbContext operation.</returns>
     public ForgeDbContext(
         string connectionString,
         IForgeDatabaseProvider provider,

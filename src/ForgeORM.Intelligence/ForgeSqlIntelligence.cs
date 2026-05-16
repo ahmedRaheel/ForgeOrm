@@ -1,9 +1,34 @@
 namespace ForgeORM.Intelligence;
 
 public interface IForgeSqlIntelligence
+/// <summary>
+/// Defines the Suggest operation.
+/// </summary>
+/// <param name="partialSql">The partialSql value.</param>
+/// <param name="context">The context value.</param>
+/// <returns>The result of the Suggest operation.</returns>
 {
+    /// <summary>
+    /// Defines the Suggest operation.
+    /// </summary>
+    /// <param name="partialSql">The partialSql value.</param>
+    /// <param name="context">The context value.</param>
+    /// <returns>The result of the Suggest operation.</returns>
     ForgeSqlSuggestionResult Suggest(string partialSql, ForgeSqlContext context);
+    /// <summary>
+    /// Defines the Correct operation.
+    /// </summary>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="context">The context value.</param>
+    /// <returns>The result of the Correct operation.</returns>
     ForgeSqlCorrectionResult Correct(string sql, ForgeSqlContext context);
+    /// <summary>
+    /// Defines the Complete operation.
+    /// </summary>
+    /// <param name="partialSql">The partialSql value.</param>
+    /// <param name="cursorPosition">The cursorPosition value.</param>
+    /// <param name="context">The context value.</param>
+    /// <returns>The result of the Complete operation.</returns>
     ForgeSqlCompletionResult Complete(string partialSql, int cursorPosition, ForgeSqlContext context);
 }
 
@@ -50,11 +75,11 @@ public sealed class BasicForgeSqlIntelligence : IForgeSqlIntelligence
     private static readonly string[] Keywords = ["SELECT","FROM","WHERE","JOIN","LEFT JOIN","INNER JOIN","ORDER BY","GROUP BY","HAVING","INSERT","UPDATE","DELETE","COUNT","SUM","AVG","OFFSET","FETCH NEXT"];
 
     /// <summary>
-    /// Initializes or executes the Suggest operation.
+    /// Executes the Suggest operation.
     /// </summary>
     /// <param name="partialSql">The partialSql value.</param>
     /// <param name="context">The context value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Suggest operation.</returns>
     public ForgeSqlSuggestionResult Suggest(string partialSql, ForgeSqlContext context)
     {
         var warnings = new List<string>();
@@ -65,11 +90,11 @@ public sealed class BasicForgeSqlIntelligence : IForgeSqlIntelligence
     }
 
     /// <summary>
-    /// Initializes or executes the Correct operation.
+    /// Executes the Correct operation.
     /// </summary>
     /// <param name="sql">The sql value.</param>
     /// <param name="context">The context value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Correct operation.</returns>
     public ForgeSqlCorrectionResult Correct(string sql, ForgeSqlContext context)
     {
         var fixes = new List<string>();
@@ -79,12 +104,12 @@ public sealed class BasicForgeSqlIntelligence : IForgeSqlIntelligence
     }
 
     /// <summary>
-    /// Initializes or executes the Complete operation.
+    /// Executes the Complete operation.
     /// </summary>
     /// <param name="partialSql">The partialSql value.</param>
     /// <param name="cursorPosition">The cursorPosition value.</param>
     /// <param name="context">The context value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Complete operation.</returns>
     public ForgeSqlCompletionResult Complete(string partialSql, int cursorPosition, ForgeSqlContext context)
     {
         var items = Keywords.Select(x => new ForgeSqlCompletionItem { Label = x, InsertText = x, Kind = "Keyword" }).ToList();

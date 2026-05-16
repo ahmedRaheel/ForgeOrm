@@ -6,25 +6,27 @@ namespace ForgeORM.NextGen;
 public static class ForgeNextGenExtensions
 {
     /// <summary>
-    /// Initializes or executes the SmartSql operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="db">The db value.</param>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="cache">The cache value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public static IForgeSmartQuery<T> SmartSql<T>(this IForgeDb db, string sql, object? parameters = null, IMemoryCache? cache = null)
     {
         return new ForgeSmartQuery<T>(db, sql, parameters, cache);
     }
 
     /// <summary>
-    /// Initializes or executes the SmartSql operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="db">The db value.</param>
     /// <param name="sql">The sql value.</param>
     /// <param name="cache">The cache value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public static IForgeSmartQuery<T> SmartSql<T>(this IForgeDb db, FormattableString sql, IMemoryCache? cache = null)
     {
         var safe = ForgeSqlSafety.From(sql);
@@ -32,20 +34,23 @@ public static class ForgeNextGenExtensions
     }
 
     /// <summary>
-    /// Initializes or executes the ToSmartQuery operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="db">The db value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public static IForgeSmartQuery<T> ToSmartQuery<T>(this IForgeDb db)
     {
         return new ForgeSmartQuery<T>(db, $"SELECT * FROM {typeof(T).Name}");
     }
 
     /// <summary>
-    /// Initializes or executes the TShape> operation.
+    /// Executes the TShape operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <typeparam name="TShape">The type used by the operation.</typeparam>
     /// <param name="query">The query value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the TShape operation.</returns>
     public static IReadOnlyList<TShape> ToShape<T, TShape>(this IForgeQuery<T> query)
     {
         // Future: source generator projection. Current MVP uses query output materialization.
@@ -53,12 +58,12 @@ public static class ForgeNextGenExtensions
     }
 
     /// <summary>
-    /// Initializes or executes the ExecuteTransparent operation.
+    /// Executes the ExecuteTransparent operation.
     /// </summary>
     /// <param name="db">The db value.</param>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ExecuteTransparent operation.</returns>
     public static string ExecuteTransparent(this IForgeDb db, string sql, object? parameters = null)
     {
         return parameters is null

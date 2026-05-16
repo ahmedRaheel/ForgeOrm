@@ -10,11 +10,11 @@ internal sealed class ForgeAstScriptBuilder : IForgeAstScriptBuilder
     private readonly List<string> _statements = [];
 
     /// <summary>
-    /// Initializes or executes the WithCte operation.
+    /// Executes the WithCte operation.
     /// </summary>
     /// <param name="name">The name value.</param>
     /// <param name="sql">The sql value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the WithCte operation.</returns>
     public IForgeAstScriptBuilder WithCte(string name, string sql)
     {
         _ctes.Add(new ForgeCte(name, sql));
@@ -22,11 +22,11 @@ internal sealed class ForgeAstScriptBuilder : IForgeAstScriptBuilder
     }
 
     /// <summary>
-    /// Initializes or executes the CreateTempTable operation.
+    /// Executes the CreateTempTable operation.
     /// </summary>
     /// <param name="name">The name value.</param>
     /// <param name="configure">The configure value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the CreateTempTable operation.</returns>
     public IForgeAstScriptBuilder CreateTempTable(string name, Action<IForgeAstTempTableBuilder> configure)
     {
         var builder = new ForgeAstTempTableBuilder(name);
@@ -36,11 +36,11 @@ internal sealed class ForgeAstScriptBuilder : IForgeAstScriptBuilder
     }
 
     /// <summary>
-    /// Initializes or executes the InsertIntoTemp operation.
+    /// Executes the InsertIntoTemp operation.
     /// </summary>
     /// <param name="tempTable">The tempTable value.</param>
     /// <param name="selectSql">The selectSql value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the InsertIntoTemp operation.</returns>
     public IForgeAstScriptBuilder InsertIntoTemp(string tempTable, string selectSql)
     {
         _statements.Add($"INSERT INTO {tempTable} {selectSql}");
@@ -48,10 +48,10 @@ internal sealed class ForgeAstScriptBuilder : IForgeAstScriptBuilder
     }
 
     /// <summary>
-    /// Initializes or executes the Statement operation.
+    /// Executes the Statement operation.
     /// </summary>
     /// <param name="sql">The sql value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Statement operation.</returns>
     public IForgeAstScriptBuilder Statement(string sql)
     {
         _statements.Add(sql);
@@ -59,10 +59,10 @@ internal sealed class ForgeAstScriptBuilder : IForgeAstScriptBuilder
     }
 
     /// <summary>
-    /// Initializes or executes the Render operation.
+    /// Executes the Render operation.
     /// </summary>
     /// <param name="provider">The provider value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Render operation.</returns>
     public ForgeRenderedSql Render(IForgeDatabaseProvider provider)
     {
         var sql = new StringBuilder();
@@ -115,21 +115,22 @@ internal sealed class ForgeAstTempTableBuilder : IForgeAstTempTableBuilder
     private readonly ForgeTempTable _table;
 
     /// <summary>
-    /// Initializes or executes the ForgeAstTempTableBuilder operation.
+    /// Executes the ForgeAstTempTableBuilder operation.
     /// </summary>
     /// <param name="name">The name value.</param>
+    /// <returns>The result of the ForgeAstTempTableBuilder operation.</returns>
     public ForgeAstTempTableBuilder(string name)
     {
         _table = new ForgeTempTable { Name = name };
     }
 
     /// <summary>
-    /// Initializes or executes the Column operation.
+    /// Executes the Column operation.
     /// </summary>
     /// <param name="name">The name value.</param>
     /// <param name="dbType">The dbType value.</param>
     /// <param name="nullable">The nullable value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Column operation.</returns>
     public IForgeAstTempTableBuilder Column(string name, string dbType, bool nullable = true)
     {
         _table.Columns.Add(new ForgeTempColumn(name, dbType, nullable));
@@ -137,10 +138,10 @@ internal sealed class ForgeAstTempTableBuilder : IForgeAstTempTableBuilder
     }
 
     /// <summary>
-    /// Initializes or executes the PrimaryKey operation.
+    /// Executes the PrimaryKey operation.
     /// </summary>
-    /// <param name="columns">The columns value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="stringcolumns">The stringcolumns value.</param>
+    /// <returns>The result of the PrimaryKey operation.</returns>
     public IForgeAstTempTableBuilder PrimaryKey(params string[] columns)
     {
         _table.PrimaryKeyColumns.AddRange(columns);
@@ -148,8 +149,8 @@ internal sealed class ForgeAstTempTableBuilder : IForgeAstTempTableBuilder
     }
 
     /// <summary>
-    /// Initializes or executes the Build operation.
+    /// Executes the Build operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Build operation.</returns>
     public ForgeTempTable Build() => _table;
 }

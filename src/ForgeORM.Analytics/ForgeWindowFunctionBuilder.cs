@@ -14,10 +14,10 @@ public sealed class ForgeWindowFunctionBuilder<T>
     }
 
     /// <summary>
-    /// Initializes or executes the PartitionBy operation.
+    /// Executes the PartitionBy operation.
     /// </summary>
-    /// <param name="columns">The columns value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="object">The object value.</param>
+    /// <returns>The result of the PartitionBy operation.</returns>
     public ForgeWindowFunctionBuilder<T> PartitionBy(params Expression<Func<T, object?>>[] columns)
     {
         _metric.PartitionBy(columns);
@@ -25,10 +25,10 @@ public sealed class ForgeWindowFunctionBuilder<T>
     }
 
     /// <summary>
-    /// Initializes or executes the OrderBy operation.
+    /// Executes the OrderBy operation.
     /// </summary>
-    /// <param name="columns">The columns value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="object">The object value.</param>
+    /// <returns>The result of the OrderBy operation.</returns>
     public ForgeWindowFunctionBuilder<T> OrderBy(params Expression<Func<T, object?>>[] columns)
     {
         _metric.OrderBy(columns);
@@ -36,10 +36,10 @@ public sealed class ForgeWindowFunctionBuilder<T>
     }
 
     /// <summary>
-    /// Initializes or executes the OrderByDescending operation.
+    /// Executes the OrderByDescending operation.
     /// </summary>
-    /// <param name="columns">The columns value.</param>
-    /// <returns>The operation result.</returns>
+    /// <param name="object">The object value.</param>
+    /// <returns>The result of the OrderByDescending operation.</returns>
     public ForgeWindowFunctionBuilder<T> OrderByDescending(params Expression<Func<T, object?>>[] columns)
     {
         _metric.OrderByDescending(columns);
@@ -47,9 +47,9 @@ public sealed class ForgeWindowFunctionBuilder<T>
     }
 
     /// <summary>
-    /// Initializes or executes the RowsBetweenUnboundedPrecedingAndCurrentRow operation.
+    /// Executes the RowsBetweenUnboundedPrecedingAndCurrentRow operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the RowsBetweenUnboundedPrecedingAndCurrentRow operation.</returns>
     public ForgeWindowFunctionBuilder<T> RowsBetweenUnboundedPrecedingAndCurrentRow()
     {
         _metric.RowsBetweenUnboundedPrecedingAndCurrentRow();
@@ -57,9 +57,9 @@ public sealed class ForgeWindowFunctionBuilder<T>
     }
 
     /// <summary>
-    /// Initializes or executes the RowsBetweenUnboundedPrecedingAndUnboundedFollowing operation.
+    /// Executes the RowsBetweenUnboundedPrecedingAndUnboundedFollowing operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the RowsBetweenUnboundedPrecedingAndUnboundedFollowing operation.</returns>
     public ForgeWindowFunctionBuilder<T> RowsBetweenUnboundedPrecedingAndUnboundedFollowing()
     {
         _metric.RowsBetweenUnboundedPrecedingAndUnboundedFollowing();
@@ -67,10 +67,10 @@ public sealed class ForgeWindowFunctionBuilder<T>
     }
 
     /// <summary>
-    /// Initializes or executes the RowsBetweenPrecedingAndCurrentRow operation.
+    /// Executes the RowsBetweenPrecedingAndCurrentRow operation.
     /// </summary>
     /// <param name="preceding">The preceding value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the RowsBetweenPrecedingAndCurrentRow operation.</returns>
     public ForgeWindowFunctionBuilder<T> RowsBetweenPrecedingAndCurrentRow(int preceding)
     {
         _metric.RowsBetweenPrecedingAndCurrentRow(preceding);
@@ -78,10 +78,10 @@ public sealed class ForgeWindowFunctionBuilder<T>
     }
 
     /// <summary>
-    /// Initializes or executes the RowsBetweenCurrentRowAndFollowing operation.
+    /// Executes the RowsBetweenCurrentRowAndFollowing operation.
     /// </summary>
     /// <param name="following">The following value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the RowsBetweenCurrentRowAndFollowing operation.</returns>
     public ForgeWindowFunctionBuilder<T> RowsBetweenCurrentRowAndFollowing(int following)
     {
         _metric.RowsBetweenCurrentRowAndFollowing(following);
@@ -89,9 +89,9 @@ public sealed class ForgeWindowFunctionBuilder<T>
     }
 
     /// <summary>
-    /// Initializes or executes the As operation.
+    /// Executes the As operation.
     /// </summary>
     /// <param name="alias">The alias value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the As operation.</returns>
     public ForgeAnalyticsQuery<T> As(string alias) => _metric.As(alias);
 }

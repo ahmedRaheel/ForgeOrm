@@ -7,81 +7,84 @@ namespace ForgeORM.DataFrame;
 public static class ForgeFrameExtensions
 {
     /// <summary>
-    /// Initializes or executes the Frame operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="db">The db value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public static ForgeFrameQuery<T> Frame<T>(this ForgeDb db) => new(db);
     /// <summary>
-    /// Initializes or executes the Frame operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="db">The db value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public static ForgeFrameQuery<T> Frame<T>(this ForgeDbContext db) => new(db);
 
     /// <summary>
-    /// Initializes or executes the ToForgeFrame operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="rows">The rows value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public static ForgeDataFrame ToForgeFrame<T>(this IEnumerable<T> rows)
         => new(rows.Select(ToDictionary));
 
     /// <summary>
-    /// Initializes or executes the ReadCsv operation.
+    /// Executes the ReadCsv operation.
     /// </summary>
     /// <param name="path">The path value.</param>
     /// <param name="hasHeader">The hasHeader value.</param>
     /// <param name="delimiter">The delimiter value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ReadCsv operation.</returns>
     public static ForgeDataFrame ReadCsv(string path, bool hasHeader = true, char delimiter = ',')
         => ForgeDataFrame.FromCsv(path, hasHeader, delimiter);
 
     /// <summary>
-    /// Initializes or executes the ReadCsvAsync operation.
+    /// Executes the ReadCsvAsync operation.
     /// </summary>
     /// <param name="path">The path value.</param>
     /// <param name="hasHeader">The hasHeader value.</param>
     /// <param name="delimiter">The delimiter value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ReadCsvAsync operation.</returns>
     public static Task<ForgeDataFrame> ReadCsvAsync(string path, bool hasHeader = true, char delimiter = ',', CancellationToken cancellationToken = default)
         => ForgeDataFrame.FromCsvAsync(path, hasHeader, delimiter, cancellationToken);
 
     /// <summary>
-    /// Initializes or executes the ReadCsvAsync operation.
+    /// Executes the ReadCsvAsync operation.
     /// </summary>
     /// <param name="stream">The stream value.</param>
     /// <param name="hasHeader">The hasHeader value.</param>
     /// <param name="delimiter">The delimiter value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ReadCsvAsync operation.</returns>
     public static Task<ForgeDataFrame> ReadCsvAsync(Stream stream, bool hasHeader = true, char delimiter = ',', CancellationToken cancellationToken = default)
         => ForgeDataFrame.FromCsvAsync(stream, hasHeader, delimiter, cancellationToken);
 
     /// <summary>
-    /// Initializes or executes the ReadJson operation.
+    /// Executes the ReadJson operation.
     /// </summary>
     /// <param name="path">The path value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ReadJson operation.</returns>
     public static ForgeDataFrame ReadJson(string path)
         => ForgeDataFrame.FromJson(path);
 
     /// <summary>
-    /// Initializes or executes the ReadJsonAsync operation.
+    /// Executes the ReadJsonAsync operation.
     /// </summary>
     /// <param name="path">The path value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ReadJsonAsync operation.</returns>
     public static Task<ForgeDataFrame> ReadJsonAsync(string path, CancellationToken cancellationToken = default)
         => ForgeDataFrame.FromJsonAsync(path, cancellationToken);
 
     /// <summary>
-    /// Initializes or executes the ReadJsonAsync operation.
+    /// Executes the ReadJsonAsync operation.
     /// </summary>
     /// <param name="stream">The stream value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ReadJsonAsync operation.</returns>
     public static Task<ForgeDataFrame> ReadJsonAsync(Stream stream, CancellationToken cancellationToken = default)
         => ForgeDataFrame.FromJsonAsync(stream, cancellationToken);
 
@@ -113,36 +116,36 @@ public sealed class ForgeFrameQuery<T>
     internal ForgeFrameQuery(ForgeDb db) => _db = db;
 
     /// <summary>
-    /// Initializes or executes the From operation.
+    /// Executes the From operation.
     /// </summary>
     /// <param name="table">The table value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the From operation.</returns>
     public ForgeFrameQuery<T> From(string table) { _table = table; return this; }
     /// <summary>
-    /// Initializes or executes the FromSql operation.
+    /// Executes the FromSql operation.
     /// </summary>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the FromSql operation.</returns>
     public ForgeFrameQuery<T> FromSql(string sql, object? parameters = null) { _sql = sql; _parameters = parameters; return this; }
     /// <summary>
-    /// Initializes or executes the WhereSql operation.
+    /// Executes the WhereSql operation.
     /// </summary>
     /// <param name="_where">The _where value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the WhereSql operation.</returns>
     public ForgeFrameQuery<T> WhereSql(string condition) { _where.Add(condition); return this; }
     /// <summary>
-    /// Initializes or executes the OrderBy operation.
+    /// Executes the OrderBy operation.
     /// </summary>
     /// <param name="orderBy">The orderBy value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the OrderBy operation.</returns>
     public ForgeFrameQuery<T> OrderBy(string orderBy) { _orderBy = orderBy; return this; }
 
     /// <summary>
-    /// Initializes or executes the ToFrameAsync operation.
+    /// Executes the ToFrameAsync operation.
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ToFrameAsync operation.</returns>
     public async Task<ForgeDataFrame> ToFrameAsync(CancellationToken cancellationToken = default)
     {
         var sql = BuildSql();
@@ -151,9 +154,9 @@ public sealed class ForgeFrameQuery<T>
     }
 
     /// <summary>
-    /// Initializes or executes the ToFrame operation.
+    /// Executes the ToFrame operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ToFrame operation.</returns>
     public ForgeDataFrame ToFrame()
     {
         var rows = _db.QueryDynamicAsync(sql: BuildSql(), parameters: _parameters).GetAwaiter().GetResult();

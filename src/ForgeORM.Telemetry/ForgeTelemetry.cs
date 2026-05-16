@@ -10,9 +10,34 @@ public sealed record ForgeQueryTelemetryEvent(string Operation, string Sql, long
 public sealed record ForgeMonitoringSnapshot(int TotalQueries, int FailedQueries, double AverageMilliseconds, IReadOnlyList<ForgeQueryTelemetryEvent> SlowQueries);
 
 public interface IForgeTelemetry
+/// <summary>
+/// Defines the StartQueryActivity operation.
+/// </summary>
+/// <param name="operation">The operation value.</param>
+/// <param name="sql">The sql value.</param>
+/// <returns>The result of the StartQueryActivity operation.</returns>
 {
+    /// <summary>
+    /// Defines the StartQueryActivity operation.
+    /// </summary>
+    /// <param name="operation">The operation value.</param>
+    /// <param name="sql">The sql value.</param>
+    /// <returns>The result of the StartQueryActivity operation.</returns>
     Activity? StartQueryActivity(string operation, string sql);
+    /// <summary>
+    /// Defines the RecordQuery operation.
+    /// </summary>
+    /// <param name="operation">The operation value.</param>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="elapsed">The elapsed value.</param>
+    /// <param name="success">The success value.</param>
+    /// <param name="exception">The exception value.</param>
     void RecordQuery(string operation, string sql, TimeSpan elapsed, bool success, Exception? exception = null);
+    /// <summary>
+    /// Defines the Snapshot operation.
+    /// </summary>
+    /// <param name="slowQueryLimit">The slowQueryLimit value.</param>
+    /// <returns>The result of the Snapshot operation.</returns>
     ForgeMonitoringSnapshot Snapshot(int slowQueryLimit = 20);
 }
 
@@ -28,17 +53,18 @@ public sealed class ForgeTelemetry : IForgeTelemetry
     private readonly ILogger<ForgeTelemetry>? _logger;
 
     /// <summary>
-    /// Initializes or executes the ForgeTelemetry operation.
+    /// Executes the ForgeTelemetry operation.
     /// </summary>
     /// <param name="logger">The logger value.</param>
+    /// <returns>The result of the ForgeTelemetry operation.</returns>
     public ForgeTelemetry(ILogger<ForgeTelemetry>? logger = null) => _logger = logger;
 
     /// <summary>
-    /// Initializes or executes the StartQueryActivity operation.
+    /// Executes the StartQueryActivity operation.
     /// </summary>
     /// <param name="operation">The operation value.</param>
     /// <param name="sql">The sql value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the StartQueryActivity operation.</returns>
     public Activity? StartQueryActivity(string operation, string sql)
     {
         var activity = ActivitySource.StartActivity($"ForgeORM {operation}");
@@ -49,7 +75,7 @@ public sealed class ForgeTelemetry : IForgeTelemetry
     }
 
     /// <summary>
-    /// Initializes or executes the RecordQuery operation.
+    /// Executes the RecordQuery operation.
     /// </summary>
     /// <param name="operation">The operation value.</param>
     /// <param name="sql">The sql value.</param>
@@ -68,10 +94,10 @@ public sealed class ForgeTelemetry : IForgeTelemetry
     }
 
     /// <summary>
-    /// Initializes or executes the Snapshot operation.
+    /// Executes the Snapshot operation.
     /// </summary>
     /// <param name="slowQueryLimit">The slowQueryLimit value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Snapshot operation.</returns>
     public ForgeMonitoringSnapshot Snapshot(int slowQueryLimit = 20)
     {
         var rows = _events.ToArray();
@@ -86,10 +112,10 @@ public sealed class ForgeTelemetry : IForgeTelemetry
 public static class ForgeTelemetryServiceCollectionExtensions
 {
     /// <summary>
-    /// Initializes or executes the AddForgeTelemetry operation.
+    /// Executes the AddForgeTelemetry operation.
     /// </summary>
     /// <param name="services">The services value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the AddForgeTelemetry operation.</returns>
     public static IServiceCollection AddForgeTelemetry(this IServiceCollection services)
     {
         services.AddSingleton<IForgeTelemetry, ForgeTelemetry>();

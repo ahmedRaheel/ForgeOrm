@@ -6,8 +6,26 @@ public sealed record ForgeAgentTask(string Goal, IReadOnlyDictionary<string,stri
 public sealed record ForgeAgentResult(string Agent, string Summary, IReadOnlyList<string> Actions, IReadOnlyList<string> Warnings);
 
 public interface IForgeAiAgent
+/// <summary>
+/// Defines the RunAsync operation.
+/// </summary>
+/// <param name="task">The task value.</param>
+/// <param name="cancellationToken">The cancellationToken value.</param>
+/// <returns>The result of the RunAsync operation.</returns>
 {
+    /// <summary>
+    /// Defines the RunAsync operation.
+    /// </summary>
+    /// <param name="task">The task value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the RunAsync operation.</returns>
     string Name { get; }
+    /// <summary>
+    /// Defines the RunAsync operation.
+    /// </summary>
+    /// <param name="task">The task value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the RunAsync operation.</returns>
     Task<ForgeAgentResult> RunAsync(ForgeAgentTask task, CancellationToken cancellationToken = default);
 }
 
@@ -15,11 +33,11 @@ public sealed class ForgeOptimizationAgent : IForgeAiAgent
 {
     public string Name => "OptimizationAgent";
     /// <summary>
-    /// Initializes or executes the RunAsync operation.
+    /// Executes the RunAsync operation.
     /// </summary>
     /// <param name="task">The task value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the RunAsync operation.</returns>
     public Task<ForgeAgentResult> RunAsync(ForgeAgentTask task, CancellationToken cancellationToken = default)
     {
         var actions = new[] { "Analyze slow SQL", "Recommend covering indexes", "Check cache candidates", "Check tenant filters" };
@@ -30,11 +48,11 @@ public sealed class ForgeOptimizationAgent : IForgeAiAgent
 public sealed class ForgeAgentRunner(IEnumerable<IForgeAiAgent> agents)
 {
     /// <summary>
-    /// Initializes or executes the RunAllAsync operation.
+    /// Executes the RunAllAsync operation.
     /// </summary>
     /// <param name="task">The task value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the RunAllAsync operation.</returns>
     public async Task<IReadOnlyList<ForgeAgentResult>> RunAllAsync(ForgeAgentTask task, CancellationToken cancellationToken = default)
     {
         var results = new List<ForgeAgentResult>();
@@ -46,10 +64,10 @@ public sealed class ForgeAgentRunner(IEnumerable<IForgeAiAgent> agents)
 public static class ForgeAiAgentsServiceCollectionExtensions
 {
     /// <summary>
-    /// Initializes or executes the AddForgeAiAgents operation.
+    /// Executes the AddForgeAiAgents operation.
     /// </summary>
     /// <param name="services">The services value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the AddForgeAiAgents operation.</returns>
     public static IServiceCollection AddForgeAiAgents(this IServiceCollection services)
     {
         services.AddSingleton<IForgeAiAgent, ForgeOptimizationAgent>();

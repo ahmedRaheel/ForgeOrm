@@ -11,17 +11,27 @@ public sealed record ForgeGeneratedFile(string Path, string Content);
 public sealed record ForgeMigrationPlan(string Name, IReadOnlyList<string> UpSql, IReadOnlyList<string> DownSql, IReadOnlyList<string> Warnings);
 
 public interface IForgeAiOptimizer
+/// <summary>
+/// Defines the Optimize operation.
+/// </summary>
+/// <param name="request">The request value.</param>
+/// <returns>The result of the Optimize operation.</returns>
 {
+    /// <summary>
+    /// Defines the Optimize operation.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <returns>The result of the Optimize operation.</returns>
     ForgeAiOptimizationResult Optimize(ForgeAiOptimizationRequest request);
 }
 
 public sealed class RuleBasedForgeAiOptimizer : IForgeAiOptimizer
 {
     /// <summary>
-    /// Initializes or executes the Optimize operation.
+    /// Executes the Optimize operation.
     /// </summary>
     /// <param name="request">The request value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Optimize operation.</returns>
     public ForgeAiOptimizationResult Optimize(ForgeAiOptimizationRequest request)
     {
         var sql = request.Sql.Trim();
@@ -41,19 +51,33 @@ public sealed class RuleBasedForgeAiOptimizer : IForgeAiOptimizer
 }
 
 public interface IForgeAiDiagnostics
+/// <summary>
+/// Defines the Diagnose operation.
+/// </summary>
+/// <param name="sql">The sql value.</param>
+/// <param name="elapsed">The elapsed value.</param>
+/// <param name="rowCount">The rowCount value.</param>
+/// <returns>The result of the Diagnose operation.</returns>
 {
+    /// <summary>
+    /// Defines the Diagnose operation.
+    /// </summary>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="elapsed">The elapsed value.</param>
+    /// <param name="rowCount">The rowCount value.</param>
+    /// <returns>The result of the Diagnose operation.</returns>
     ForgeAiDiagnosticResult Diagnose(string sql, TimeSpan elapsed, int rowCount);
 }
 
 public sealed class ForgeAiDiagnostics : IForgeAiDiagnostics
 {
     /// <summary>
-    /// Initializes or executes the Diagnose operation.
+    /// Executes the Diagnose operation.
     /// </summary>
     /// <param name="sql">The sql value.</param>
     /// <param name="elapsed">The elapsed value.</param>
     /// <param name="rowCount">The rowCount value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Diagnose operation.</returns>
     public ForgeAiDiagnosticResult Diagnose(string sql, TimeSpan elapsed, int rowCount)
     {
         var findings = new List<string>();
@@ -67,28 +91,35 @@ public sealed class ForgeAiDiagnostics : IForgeAiDiagnostics
 }
 
 public interface IForgeAiCodeGenerator
+/// <summary>
+/// Defines the GenerateMinimalApiCrud operation.
+/// </summary>
+/// <param name="entityName">The entityName value.</param>
+/// <param name="routePrefix">The routePrefix value.</param>
+/// <returns>The result of the GenerateMinimalApiCrud operation.</returns>
 {
+    /// <summary>
+    /// Defines the GenerateMinimalApiCrud operation.
+    /// </summary>
+    /// <param name="entityName">The entityName value.</param>
+    /// <param name="routePrefix">The routePrefix value.</param>
+    /// <returns>The result of the GenerateMinimalApiCrud operation.</returns>
     IReadOnlyList<ForgeGeneratedFile> GenerateMinimalApiCrud(string entityName, string routePrefix);
 }
 
 public sealed class ForgeAiCodeGenerator : IForgeAiCodeGenerator
 {
     /// <summary>
-    /// Initializes or executes the GenerateMinimalApiCrud operation.
+    /// Executes the GenerateMinimalApiCrud operation.
     /// </summary>
     /// <param name="entityName">The entityName value.</param>
     /// <param name="routePrefix">The routePrefix value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the GenerateMinimalApiCrud operation.</returns>
     public IReadOnlyList<ForgeGeneratedFile> GenerateMinimalApiCrud(string entityName, string routePrefix)
     {
         var code = $$"""
         public static class {{entityName}}Endpoints
         {
-            /// <summary>
-            /// Initializes or executes the Map{{entityName}}Endpoints operation.
-            /// </summary>
-            /// <param name="app">The app value.</param>
-            /// <returns>The operation result.</returns>
             public static IEndpointRouteBuilder Map{{entityName}}Endpoints(this IEndpointRouteBuilder app)
             {
                 var group = app.MapGroup("{{routePrefix}}").WithTags("{{entityName}}");
@@ -103,20 +134,36 @@ public sealed class ForgeAiCodeGenerator : IForgeAiCodeGenerator
 }
 
 public interface IForgeAiMigrationPlanner
+/// <summary>
+/// Defines the PlanAddColumn operation.
+/// </summary>
+/// <param name="table">The table value.</param>
+/// <param name="column">The column value.</param>
+/// <param name="sqlType">The sqlType value.</param>
+/// <param name="nullable">The nullable value.</param>
+/// <returns>The result of the PlanAddColumn operation.</returns>
 {
+    /// <summary>
+    /// Defines the PlanAddColumn operation.
+    /// </summary>
+    /// <param name="table">The table value.</param>
+    /// <param name="column">The column value.</param>
+    /// <param name="sqlType">The sqlType value.</param>
+    /// <param name="nullable">The nullable value.</param>
+    /// <returns>The result of the PlanAddColumn operation.</returns>
     ForgeMigrationPlan PlanAddColumn(string table, string column, string sqlType, bool nullable = true);
 }
 
 public sealed class ForgeAiMigrationPlanner : IForgeAiMigrationPlanner
 {
     /// <summary>
-    /// Initializes or executes the PlanAddColumn operation.
+    /// Executes the PlanAddColumn operation.
     /// </summary>
     /// <param name="table">The table value.</param>
     /// <param name="column">The column value.</param>
     /// <param name="sqlType">The sqlType value.</param>
     /// <param name="nullable">The nullable value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the PlanAddColumn operation.</returns>
     public ForgeMigrationPlan PlanAddColumn(string table, string column, string sqlType, bool nullable = true)
     {
         var nullability = nullable ? "NULL" : "NOT NULL";
@@ -129,7 +176,19 @@ public sealed class ForgeAiMigrationPlanner : IForgeAiMigrationPlanner
 }
 
 public interface IForgeAiSemanticQueryService
+/// <summary>
+/// Defines the SearchKnowledgeAsync operation.
+/// </summary>
+/// <param name="text">The text value.</param>
+/// <param name="cancellationToken">The cancellationToken value.</param>
+/// <returns>The result of the SearchKnowledgeAsync operation.</returns>
 {
+    /// <summary>
+    /// Defines the SearchKnowledgeAsync operation.
+    /// </summary>
+    /// <param name="text">The text value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the SearchKnowledgeAsync operation.</returns>
     Task<IReadOnlyList<ForgeVectorSearchResult>> SearchKnowledgeAsync(string text, CancellationToken cancellationToken = default);
 }
 
@@ -137,17 +196,18 @@ public sealed class ForgeAiSemanticQueryService : IForgeAiSemanticQueryService
 {
     private readonly IForgeVectorStore _store;
     /// <summary>
-    /// Initializes or executes the ForgeAiSemanticQueryService operation.
+    /// Executes the ForgeAiSemanticQueryService operation.
     /// </summary>
     /// <param name="store">The store value.</param>
+    /// <returns>The result of the ForgeAiSemanticQueryService operation.</returns>
     public ForgeAiSemanticQueryService(IForgeVectorStore store) => _store = store;
 
     /// <summary>
-    /// Initializes or executes the SearchKnowledgeAsync operation.
+    /// Executes the SearchKnowledgeAsync operation.
     /// </summary>
     /// <param name="text">The text value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the SearchKnowledgeAsync operation.</returns>
     public Task<IReadOnlyList<ForgeVectorSearchResult>> SearchKnowledgeAsync(string text, CancellationToken cancellationToken = default)
     {
         var vector = LocalEmbedding(text, 64);
@@ -169,10 +229,10 @@ public sealed class ForgeAiSemanticQueryService : IForgeAiSemanticQueryService
 public static class ForgeAiAdvancedServiceCollectionExtensions
 {
     /// <summary>
-    /// Initializes or executes the AddForgeAdvancedAi operation.
+    /// Executes the AddForgeAdvancedAi operation.
     /// </summary>
     /// <param name="services">The services value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the AddForgeAdvancedAi operation.</returns>
     public static IServiceCollection AddForgeAdvancedAi(this IServiceCollection services)
     {
         services.AddSingleton<IForgeAiOptimizer, RuleBasedForgeAiOptimizer>();

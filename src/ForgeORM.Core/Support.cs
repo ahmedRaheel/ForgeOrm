@@ -14,11 +14,12 @@ internal sealed class ForgeGridReader : IForgeGridReader
     private bool _hasConsumedCurrentResult;
 
     /// <summary>
-    /// Initializes or executes the ForgeGridReader operation.
+    /// Executes the ForgeGridReader operation.
     /// </summary>
     /// <param name="connection">The connection value.</param>
     /// <param name="command">The command value.</param>
     /// <param name="reader">The reader value.</param>
+    /// <returns>The result of the ForgeGridReader operation.</returns>
     public ForgeGridReader(DbConnection connection, DbCommand command, DbDataReader reader)
     {
         _connection = connection;
@@ -27,15 +28,17 @@ internal sealed class ForgeGridReader : IForgeGridReader
     }
 
     /// <summary>
-    /// Initializes or executes the Read operation.
+    /// Executes the T operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <returns>The result of the T operation.</returns>
     public IEnumerable<T> Read<T>() => ReadAsync<T>().GetAwaiter().GetResult();
 
     /// <summary>
-    /// Initializes or executes the ReadAsync operation.
+    /// Executes the T operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <returns>The result of the T operation.</returns>
     public async Task<IReadOnlyList<T>> ReadAsync<T>()
     {
         if (_hasConsumedCurrentResult)
@@ -50,7 +53,7 @@ internal sealed class ForgeGridReader : IForgeGridReader
     }
 
     /// <summary>
-    /// Initializes or executes the Dispose operation.
+    /// Executes the Dispose operation.
     /// </summary>
     public void Dispose()
     {
@@ -64,15 +67,16 @@ public sealed class ReflectionForgeEntityMetadataResolver : IForgeEntityMetadata
 {
     private readonly Dictionary<Type, ForgeEntityMetadata> _cache = [];
     /// <summary>
-    /// Initializes or executes the Resolve operation.
+    /// Executes the T operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <returns>The result of the T operation.</returns>
     public ForgeEntityMetadata Resolve<T>() => Resolve(typeof(T));
     /// <summary>
-    /// Initializes or executes the Resolve operation.
+    /// Executes the Resolve operation.
     /// </summary>
     /// <param name="type">The type value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Resolve operation.</returns>
     public ForgeEntityMetadata Resolve(Type type)
     {
         if (_cache.TryGetValue(type, out var cached)) return cached;
@@ -103,101 +107,205 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     private readonly IForgeDb _db;
     private readonly ForgeEntityMetadata _meta;
     private readonly string? _baseSql;
-    private readonly object? _parameters;
+    private readonly object? _baseParameters;
     private readonly List<string> _where = [];
+    private readonly Dictionary<string, object?> _parameters = new(StringComparer.OrdinalIgnoreCase);
     private string? _orderBy;
     private int? _skip;
     private int? _take;
 
     /// <summary>
-    /// Initializes or executes the ForgeQuery operation.
+    /// Executes the ForgeQuery operation.
     /// </summary>
     /// <param name="db">The db value.</param>
     /// <param name="meta">The meta value.</param>
     /// <param name="baseSql">The baseSql value.</param>
     /// <param name="parameters">The parameters value.</param>
+    /// <returns>The result of the ForgeQuery operation.</returns>
     public ForgeQuery(IForgeDb db, ForgeEntityMetadata meta, string? baseSql = null, object? parameters = null)
     {
-        _db = db; _meta = meta; _baseSql = baseSql; _parameters = parameters;
+        _db = db;
+        _meta = meta;
+        _baseSql = baseSql;
+        _baseParameters = parameters;
+        MergeParameters(parameters);
     }
 
     /// <summary>
-    /// Initializes or executes the Where operation.
+    /// Executes the Where operation.
     /// </summary>
-    /// <param name="_where">The _where value.</param>
-    /// <returns>The operation result.</returns>
-    public IForgeQuery<T> Where(Expression<Func<T, bool>> predicate) { _where.Add(ForgeExpressionTranslator.Translate(predicate)); return this; }
+    /// <param name="predicate">The predicate value.</param>
+    /// <returns>The result of the Where operation.</returns>
+    public IForgeQuery<T> Where(Expression<Func<T, bool>> predicate)
+    {
+        _where.Add(ForgeExpressionTranslator.Translate(predicate));
+        return this;
+    }
+
     /// <summary>
-    /// Initializes or executes the Where operation.
+    /// Executes the Where operation.
     /// </summary>
     /// <param name="condition">The condition value.</param>
     /// <param name="parameters">The parameters value.</param>
-    /// <returns>The operation result.</returns>
-    public IForgeQuery<T> Where(string condition, object? parameters = null) { _where.Add(condition); return this; }
+    /// <returns>The result of the Where operation.</returns>
+    public IForgeQuery<T> Where(string condition, object? parameters = null) => WhereSql(condition, parameters);
+
     /// <summary>
-    /// Initializes or executes the OrderBy operation.
+    /// Executes the WhereSql operation.
     /// </summary>
-    /// <param name="_orderBy">The _orderBy value.</param>
-    /// <returns>The operation result.</returns>
-    public IForgeQuery<T> OrderBy(Expression<Func<T, object>> keySelector) { _orderBy = ForgeExpressionTranslator.MemberName(keySelector) + " ASC"; return this; }
+    /// <param name="condition">The condition value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <returns>The result of the WhereSql operation.</returns>
+    public IForgeQuery<T> WhereSql(string condition, object? parameters = null)
+    {
+        _where.Add(condition);
+        MergeParameters(parameters);
+        return this;
+    }
+
     /// <summary>
-    /// Initializes or executes the OrderByDescending operation.
+    /// Executes the WhereIf operation.
     /// </summary>
-    /// <param name="_orderBy">The _orderBy value.</param>
-    /// <returns>The operation result.</returns>
-    public IForgeQuery<T> OrderByDescending(Expression<Func<T, object>> keySelector) { _orderBy = ForgeExpressionTranslator.MemberName(keySelector) + " DESC"; return this; }
+    /// <param name="condition">The condition value.</param>
+    /// <param name="predicate">The predicate value.</param>
+    /// <returns>The result of the WhereIf operation.</returns>
+    public IForgeQuery<T> WhereIf(bool condition, Expression<Func<T, bool>> predicate)
+        => condition ? Where(predicate) : this;
+
     /// <summary>
-    /// Initializes or executes the OrderBy operation.
+    /// Executes the WhereSqlIf operation.
+    /// </summary>
+    /// <param name="condition">The condition value.</param>
+    /// <param name="sqlCondition">The sqlCondition value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <returns>The result of the WhereSqlIf operation.</returns>
+    public IForgeQuery<T> WhereSqlIf(bool condition, string sqlCondition, object? parameters = null)
+        => condition ? WhereSql(sqlCondition, parameters) : this;
+
+    /// <summary>
+    /// Executes the OrderBy operation.
+    /// </summary>
+    /// <param name="keySelector">The keySelector value.</param>
+    /// <returns>The result of the OrderBy operation.</returns>
+    public IForgeQuery<T> OrderBy(Expression<Func<T, object>> keySelector)
+    {
+        _orderBy = ForgeExpressionTranslator.MemberName(keySelector) + " ASC";
+        return this;
+    }
+
+    /// <summary>
+    /// Executes the OrderByDescending operation.
+    /// </summary>
+    /// <param name="keySelector">The keySelector value.</param>
+    /// <returns>The result of the OrderByDescending operation.</returns>
+    public IForgeQuery<T> OrderByDescending(Expression<Func<T, object>> keySelector)
+    {
+        _orderBy = ForgeExpressionTranslator.MemberName(keySelector) + " DESC";
+        return this;
+    }
+
+    /// <summary>
+    /// Executes the OrderBy operation.
     /// </summary>
     /// <param name="orderBy">The orderBy value.</param>
-    /// <returns>The operation result.</returns>
-    public IForgeQuery<T> OrderBy(string orderBy) { _orderBy = orderBy; return this; }
+    /// <returns>The result of the OrderBy operation.</returns>
+    public IForgeQuery<T> OrderBy(string orderBy) => OrderBySql(orderBy);
+
     /// <summary>
-    /// Initializes or executes the Skip operation.
+    /// Executes the OrderBySql operation.
+    /// </summary>
+    /// <param name="orderBy">The orderBy value.</param>
+    /// <returns>The result of the OrderBySql operation.</returns>
+    public IForgeQuery<T> OrderBySql(string orderBy)
+    {
+        _orderBy = orderBy;
+        return this;
+    }
+
+    /// <summary>
+    /// Executes the Skip operation.
     /// </summary>
     /// <param name="count">The count value.</param>
-    /// <returns>The operation result.</returns>
-    public IForgeQuery<T> Skip(int count) { _skip = count; return this; }
+    /// <returns>The result of the Skip operation.</returns>
+    public IForgeQuery<T> Skip(int count)
+    {
+        _skip = count;
+        return this;
+    }
+
     /// <summary>
-    /// Initializes or executes the Take operation.
+    /// Executes the Take operation.
     /// </summary>
     /// <param name="count">The count value.</param>
-    /// <returns>The operation result.</returns>
-    public IForgeQuery<T> Take(int count) { _take = count; return this; }
+    /// <returns>The result of the Take operation.</returns>
+    public IForgeQuery<T> Take(int count)
+    {
+        _take = count;
+        return this;
+    }
+
     /// <summary>
-    /// Initializes or executes the ToList operation.
+    /// Executes the Any operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
-    public IReadOnlyList<T> ToList() => _db.Query<T>(BuildSql(), _parameters).ToList();
+    /// <returns>The result of the Any operation.</returns>
+    public bool Any() => _db.ExecuteScalar<int>(BuildAnySql(), BuildParameters()) > 0;
+
     /// <summary>
-    /// Initializes or executes the ToListAsync operation.
-    /// </summary>
-    /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
-    public Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default) => _db.QueryAsync<T>(BuildSql(), _parameters, cancellationToken: cancellationToken);
-    /// <summary>
-    /// Initializes or executes the FirstOrDefault operation.
-    /// </summary>
-    /// <param name="_parameters">The _parameters value.</param>
-    /// <returns>The operation result.</returns>
-    public T? FirstOrDefault() { Take(1); return _db.QueryFirstOrDefault<T>(BuildSql(), _parameters); }
-    /// <summary>
-    /// Initializes or executes the FirstOrDefaultAsync operation.
+    /// Executes the AnyAsync operation.
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
-    public Task<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default) { Take(1); return _db.QueryFirstOrDefaultAsync<T>(BuildSql(), _parameters, cancellationToken: cancellationToken); }
+    /// <returns>The result of the AnyAsync operation.</returns>
+    public async Task<bool> AnyAsync(CancellationToken cancellationToken = default)
+        => await _db.ExecuteScalarAsync<int>(BuildAnySql(), BuildParameters(), cancellationToken: cancellationToken) > 0;
+
     /// <summary>
-    /// Initializes or executes the Count operation.
+    /// Executes the ToList operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
-    public int Count() => _db.ExecuteScalar<int>("SELECT COUNT(1) FROM (" + BuildBaseSql() + ") ForgeCount");
+    /// <returns>The result of the ToList operation.</returns>
+    public IReadOnlyList<T> ToList() => _db.Query<T>(BuildSql(), BuildParameters()).ToList();
+
     /// <summary>
-    /// Initializes or executes the CountAsync operation.
+    /// Executes the ToListAsync operation.
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
-    public async Task<int> CountAsync(CancellationToken cancellationToken = default) => await _db.ExecuteScalarAsync<int>("SELECT COUNT(1) FROM (" + BuildBaseSql() + ") ForgeCount", cancellationToken: cancellationToken);
+    /// <returns>The result of the ToListAsync operation.</returns>
+    public Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default)
+        => _db.QueryAsync<T>(BuildSql(), BuildParameters(), cancellationToken: cancellationToken);
+
+    /// <summary>
+    /// Executes the FirstOrDefault operation.
+    /// </summary>
+    /// <returns>The result of the FirstOrDefault operation.</returns>
+    public T? FirstOrDefault()
+    {
+        Take(1);
+        return _db.QueryFirstOrDefault<T>(BuildSql(), BuildParameters());
+    }
+
+    /// <summary>
+    /// Executes the FirstOrDefaultAsync operation.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the FirstOrDefaultAsync operation.</returns>
+    public Task<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default)
+    {
+        Take(1);
+        return _db.QueryFirstOrDefaultAsync<T>(BuildSql(), BuildParameters(), cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Executes the Count operation.
+    /// </summary>
+    /// <returns>The result of the Count operation.</returns>
+    public int Count() => _db.ExecuteScalar<int>(BuildCountSql(), BuildParameters());
+
+    /// <summary>
+    /// Executes the CountAsync operation.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the CountAsync operation.</returns>
+    public async Task<int> CountAsync(CancellationToken cancellationToken = default)
+        => await _db.ExecuteScalarAsync<int>(BuildCountSql(), BuildParameters(), cancellationToken: cancellationToken);
 
     private string BuildSql()
     {
@@ -206,31 +314,57 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
         if (_take.HasValue) sql += $" OFFSET {_skip ?? 0} ROWS FETCH NEXT {_take.Value} ROWS ONLY";
         return sql;
     }
+
     private string BuildBaseSql()
     {
         var sql = _baseSql ?? $"SELECT * FROM {_meta.TableName}";
         if (_where.Count > 0) sql += " WHERE " + string.Join(" AND ", _where);
         return sql;
     }
+
+    private string BuildCountSql() => "SELECT COUNT(1) FROM (" + BuildBaseSql() + ") ForgeCount";
+
+    private string BuildAnySql() => "SELECT CASE WHEN EXISTS (" + BuildBaseSql() + ") THEN 1 ELSE 0 END";
+
+    private object? BuildParameters() => _parameters.Count == 0 ? _baseParameters : _parameters;
+
+    private void MergeParameters(object? parameters)
+    {
+        if (parameters is null) return;
+        if (parameters is IReadOnlyDictionary<string, object?> readonlyDictionary)
+        {
+            foreach (var item in readonlyDictionary) _parameters[item.Key] = item.Value;
+            return;
+        }
+        if (parameters is IDictionary<string, object?> dictionary)
+        {
+            foreach (var item in dictionary) _parameters[item.Key] = item.Value;
+            return;
+        }
+        foreach (var property in parameters.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(x => x.CanRead))
+            _parameters[property.Name] = property.GetValue(parameters);
+    }
 }
 
 internal static class ForgeExpressionTranslator
 {
     /// <summary>
-    /// Initializes or executes the Translate operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="expression">The expression value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public static string Translate<T>(Expression<Func<T, bool>> expression)
     {
         if (expression.Body is not BinaryExpression b) throw new NotSupportedException("Only simple binary expressions are supported in MVP.");
         return $"{Member(b.Left)} {Operator(b.NodeType)} {Value(b.Right)}";
     }
     /// <summary>
-    /// Initializes or executes the MemberName operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="expression">The expression value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public static string MemberName<T>(Expression<Func<T, object>> expression)
     {
         Expression body = expression.Body is UnaryExpression u ? u.Operand : expression.Body;
@@ -249,52 +383,212 @@ internal sealed class ForgeSplitQuery<TParent> : IForgeSplitQuery<TParent>
 {
     private readonly IForgeDb _db;
     private readonly List<Func<IReadOnlyList<TParent>, CancellationToken, Task>> _includes = [];
+
     /// <summary>
-    /// Initializes or executes the ForgeSplitQuery operation.
+    /// Executes the ForgeSplitQuery operation.
     /// </summary>
     /// <param name="db">The db value.</param>
+    /// <returns>The result of the ForgeSplitQuery operation.</returns>
     public ForgeSplitQuery(IForgeDb db) => _db = db;
 
     /// <summary>
-    /// Initializes or executes the TKey> operation.
+    /// Executes the TKey operation.
     /// </summary>
+    /// <typeparam name="TChild">The type used by the operation.</typeparam>
+    /// <typeparam name="TKey">The type used by the operation.</typeparam>
     /// <param name="childSqlFactory">The childSqlFactory value.</param>
     /// <param name="parentKey">The parentKey value.</param>
     /// <param name="childForeignKey">The childForeignKey value.</param>
     /// <param name="assign">The assign value.</param>
-    /// <returns>The operation result.</returns>
-    public IForgeSplitQuery<TParent> IncludeMany<TChild, TKey>(Func<IReadOnlyCollection<TKey>, string> childSqlFactory, Func<TParent, TKey> parentKey, Func<TChild, TKey> childForeignKey, Action<TParent, IReadOnlyList<TChild>> assign) where TKey : notnull
+    /// <returns>The result of the TKey operation.</returns>
+    public IForgeSplitQuery<TParent> IncludeMany<TChild, TKey>(
+        Func<IReadOnlyCollection<TKey>, string> childSqlFactory,
+        Func<TParent, TKey> parentKey,
+        Func<TChild, TKey> childForeignKey,
+        Action<TParent, IReadOnlyList<TChild>> assign)
+        where TKey : notnull
     {
         _includes.Add(async (parents, ct) =>
         {
             var ids = parents.Select(parentKey).Distinct().ToList();
             if (ids.Count == 0) return;
+
             var children = await _db.QueryAsync<TChild>(childSqlFactory(ids), new { Ids = ids }, cancellationToken: ct);
             var lookup = children.GroupBy(childForeignKey).ToDictionary(x => x.Key, x => (IReadOnlyList<TChild>)x.ToList());
-            foreach (var p in parents) assign(p, lookup.TryGetValue(parentKey(p), out var rows) ? rows : []);
+
+            foreach (var parent in parents)
+                assign(parent, lookup.TryGetValue(parentKey(parent), out var rows) ? rows : Array.Empty<TChild>());
         });
+
         return this;
     }
 
     /// <summary>
-    /// Initializes or executes the ToList operation.
+    /// Executes the TChild operation.
+    /// </summary>
+    /// <typeparam name="TChild">The type used by the operation.</typeparam>
+    /// <param name="childTable">The childTable value.</param>
+    /// <param name="parentKey">The parentKey value.</param>
+    /// <param name="childForeignKey">The childForeignKey value.</param>
+    /// <param name="target">The target value.</param>
+    /// <param name="backingField">The backingField value.</param>
+    /// <param name="childWhereSql">The childWhereSql value.</param>
+    /// <returns>The result of the TChild operation.</returns>
+    public IForgeSplitQuery<TParent> IncludeMany<TChild>(
+        string childTable,
+        string parentKey = "Id",
+        string childForeignKey = "ParentId",
+        Expression<Func<TParent, IEnumerable<TChild>>>? target = null,
+        string? backingField = null,
+        string? childWhereSql = null)
+    {
+        var parentKeyProperty = FindProperty(typeof(TParent), parentKey);
+        var childForeignKeyProperty = FindProperty(typeof(TChild), childForeignKey);
+
+        _includes.Add(async (parents, ct) =>
+        {
+            var ids = parents
+                .Select(x => parentKeyProperty.GetValue(x))
+                .Where(x => x is not null)
+                .Distinct()
+                .ToList();
+
+            if (ids.Count == 0) return;
+
+            var sql = $"SELECT * FROM {childTable} WHERE {childForeignKey} IN @Ids";
+            if (!string.IsNullOrWhiteSpace(childWhereSql))
+                sql += " AND " + childWhereSql;
+
+            var children = await _db.QueryAsync<TChild>(sql, new { Ids = ids }, cancellationToken: ct);
+            var lookup = children
+                .GroupBy(x => childForeignKeyProperty.GetValue(x))
+                .ToDictionary(x => x.Key, x => (IReadOnlyList<TChild>)x.ToList());
+
+            foreach (var parent in parents)
+            {
+                var key = parentKeyProperty.GetValue(parent);
+                var rows = key is not null && lookup.TryGetValue(key, out var found) ? found : Array.Empty<TChild>();
+                AssignChildren(parent, rows, target, backingField);
+            }
+        });
+
+        return this;
+    }
+
+    /// <summary>
+    /// Executes the Any operation.
     /// </summary>
     /// <param name="parentSql">The parentSql value.</param>
     /// <param name="parameters">The parameters value.</param>
-    /// <returns>The operation result.</returns>
-    public IReadOnlyList<TParent> ToList(string parentSql, object? parameters = null) => ToListAsync(parentSql, parameters).GetAwaiter().GetResult();
+    /// <returns>The result of the Any operation.</returns>
+    public bool Any(string parentSql, object? parameters = null)
+        => _db.ExecuteScalar<int>($"SELECT CASE WHEN EXISTS ({parentSql}) THEN 1 ELSE 0 END", parameters) > 0;
+
     /// <summary>
-    /// Initializes or executes the ToListAsync operation.
+    /// Executes the AnyAsync operation.
     /// </summary>
     /// <param name="parentSql">The parentSql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the AnyAsync operation.</returns>
+    public async Task<bool> AnyAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
+        => await _db.ExecuteScalarAsync<int>($"SELECT CASE WHEN EXISTS ({parentSql}) THEN 1 ELSE 0 END", parameters, cancellationToken: cancellationToken) > 0;
+
+    /// <summary>
+    /// Executes the FirstOrDefault operation.
+    /// </summary>
+    /// <param name="parentSql">The parentSql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <returns>The result of the FirstOrDefault operation.</returns>
+    public TParent? FirstOrDefault(string parentSql, object? parameters = null)
+        => FirstOrDefaultAsync(parentSql, parameters).GetAwaiter().GetResult();
+
+    /// <summary>
+    /// Executes the FirstOrDefaultAsync operation.
+    /// </summary>
+    /// <param name="parentSql">The parentSql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the FirstOrDefaultAsync operation.</returns>
+    public async Task<TParent?> FirstOrDefaultAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
+        => (await ToListAsync(parentSql, parameters, cancellationToken)).FirstOrDefault();
+
+    /// <summary>
+    /// Executes the ToList operation.
+    /// </summary>
+    /// <param name="parentSql">The parentSql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <returns>The result of the ToList operation.</returns>
+    public IReadOnlyList<TParent> ToList(string parentSql, object? parameters = null)
+        => ToListAsync(parentSql, parameters).GetAwaiter().GetResult();
+
+    /// <summary>
+    /// Executes the ToListAsync operation.
+    /// </summary>
+    /// <param name="parentSql">The parentSql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the ToListAsync operation.</returns>
     public async Task<IReadOnlyList<TParent>> ToListAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
     {
         var parents = (await _db.QueryAsync<TParent>(parentSql, parameters, cancellationToken: cancellationToken)).ToList();
-        foreach (var include in _includes) await include(parents, cancellationToken);
+        foreach (var include in _includes)
+            await include(parents, cancellationToken);
         return parents;
+    }
+
+    private static PropertyInfo FindProperty(Type type, string name)
+        => type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase)
+           ?? throw new InvalidOperationException($"Property '{name}' was not found on {type.Name}.");
+
+    private static void AssignChildren<TChild>(
+        TParent parent,
+        IReadOnlyList<TChild> children,
+        Expression<Func<TParent, IEnumerable<TChild>>>? target,
+        string? backingField)
+    {
+        if (!string.IsNullOrWhiteSpace(backingField))
+        {
+            var field = typeof(TParent).GetField(backingField, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+                ?? throw new InvalidOperationException($"Backing field '{backingField}' was not found on {typeof(TParent).Name}.");
+
+            if (field.GetValue(parent) is IList<TChild> list)
+            {
+                list.Clear();
+                foreach (var child in children) list.Add(child);
+                return;
+            }
+
+            field.SetValue(parent, children.ToList());
+            return;
+        }
+
+        if (target is null)
+            return;
+
+        var member = target.Body is MemberExpression m ? m : null;
+        if (member?.Member is not PropertyInfo property)
+            throw new InvalidOperationException("Target must be a collection property expression, for example x => x.Items.");
+
+        if (property.CanWrite)
+        {
+            property.SetValue(parent, ConvertChildren(children, property.PropertyType));
+            return;
+        }
+
+        if (property.GetValue(parent) is IList<TChild> existing)
+        {
+            existing.Clear();
+            foreach (var child in children) existing.Add(child);
+        }
+    }
+
+    private static object ConvertChildren<TChild>(IReadOnlyList<TChild> children, Type targetType)
+    {
+        if (targetType.IsAssignableFrom(children.GetType())) return children;
+        if (targetType.IsAssignableFrom(typeof(List<TChild>))) return children.ToList();
+        if (targetType.IsArray) return children.ToArray();
+        return children.ToList();
     }
 }
 
@@ -309,110 +603,114 @@ internal sealed class ForgeTransaction : IForgeTransaction
     }
 
     /// <summary>
-    /// Initializes or executes the Begin operation.
+    /// Executes the Begin operation.
     /// </summary>
     /// <param name="connection">The connection value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Begin operation.</returns>
     public static ForgeTransaction Begin(DbConnection connection) => new(connection, connection.BeginTransaction());
     /// <summary>
-    /// Initializes or executes the BeginAsync operation.
+    /// Executes the BeginAsync operation.
     /// </summary>
     /// <param name="connection">The connection value.</param>
     /// <param name="ct">The ct value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the BeginAsync operation.</returns>
     public static async Task<ForgeTransaction> BeginAsync(DbConnection connection, CancellationToken ct) => new(connection, await connection.BeginTransactionAsync(ct));
 
     /// <summary>
-    /// Initializes or executes the Query operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public IEnumerable<T> Query<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
         => ForgeAdo.Query<T>(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds).ToList();
 
     /// <summary>
-    /// Initializes or executes the QueryAsync operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken  = default)
         => ForgeAdo.QueryAsync<T>(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
 
     /// <summary>
-    /// Initializes or executes the Execute operation.
+    /// Executes the Execute operation.
     /// </summary>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Execute operation.</returns>
     public int Execute(string sql, object? parameters = null, int? timeoutSeconds = null)
         => ForgeAdo.Execute(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds);
 
     /// <summary>
-    /// Initializes or executes the ExecuteAsync operation.
+    /// Executes the ExecuteAsync operation.
     /// </summary>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ExecuteAsync operation.</returns>
     public Task<int> ExecuteAsync(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
         => ForgeAdo.ExecuteAsync(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
 
     /// <summary>
-    /// Initializes or executes the ExecuteScalar operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public T? ExecuteScalar<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
         => ForgeAdo.ExecuteScalar<T>(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds);
 
     /// <summary>
-    /// Initializes or executes the ExecuteScalarAsync operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public Task<T?> ExecuteScalarAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
         => ForgeAdo.ExecuteScalarAsync<T>(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     /// <summary>
-    /// Initializes or executes the Commit operation.
+    /// Executes the Commit operation.
     /// </summary>
     public void Commit() => _transaction.Commit();
     /// <summary>
-    /// Initializes or executes the CommitAsync operation.
+    /// Executes the CommitAsync operation.
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the CommitAsync operation.</returns>
     public Task CommitAsync(CancellationToken cancellationToken = default) => _transaction.CommitAsync(cancellationToken);
     /// <summary>
-    /// Initializes or executes the Rollback operation.
+    /// Executes the Rollback operation.
     /// </summary>
     public void Rollback() => _transaction.Rollback();
     /// <summary>
-    /// Initializes or executes the RollbackAsync operation.
+    /// Executes the RollbackAsync operation.
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the RollbackAsync operation.</returns>
     public Task RollbackAsync(CancellationToken cancellationToken = default) => _transaction.RollbackAsync(cancellationToken);
     /// <summary>
-    /// Initializes or executes the Dispose operation.
+    /// Executes the Dispose operation.
     /// </summary>
     /// <param name="_connection">The _connection value.</param>
     public void Dispose() { _transaction.Dispose(); _connection.Dispose(); }
     /// <summary>
-    /// Initializes or executes the DisposeAsync operation.
+    /// Executes the DisposeAsync operation.
     /// </summary>
     /// <param name="_connection">The _connection value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the DisposeAsync operation.</returns>
     public async ValueTask DisposeAsync() { await _transaction.DisposeAsync(); await _connection.DisposeAsync(); }
 }

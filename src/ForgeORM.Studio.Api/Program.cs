@@ -197,10 +197,10 @@ public sealed record ErdDiagram(IReadOnlyList<ErdEntity> Entities, IReadOnlyList
 public static class QueryVisualizer
 {
     /// <summary>
-    /// Initializes or executes the ExtractNodes operation.
+    /// Executes the ExtractNodes operation.
     /// </summary>
     /// <param name="sql">The sql value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ExtractNodes operation.</returns>
     public static IReadOnlyList<object> ExtractNodes(string sql)
     {
         var tokens = sql.Split([' ', '\r', '\n', '\t', ',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -214,10 +214,10 @@ public static class QueryVisualizer
     }
 
     /// <summary>
-    /// Initializes or executes the ExtractEdges operation.
+    /// Executes the ExtractEdges operation.
     /// </summary>
     /// <param name="sql">The sql value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ExtractEdges operation.</returns>
     public static IReadOnlyList<object> ExtractEdges(string sql)
     {
         var nodes = ExtractNodes(sql).Select(x => x.ToString()).ToList();

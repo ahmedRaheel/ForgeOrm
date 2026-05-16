@@ -76,20 +76,43 @@ public sealed record FederatedExecutionStep
 }
 
 public interface IForgeFederatedQueryPlanner
+/// <summary>
+/// Defines the Plan operation.
+/// </summary>
+/// <param name="query">The query value.</param>
+/// <param name="sources">The sources value.</param>
+/// <returns>The result of the Plan operation.</returns>
 {
+    /// <summary>
+    /// Defines the Plan operation.
+    /// </summary>
+    /// <param name="query">The query value.</param>
+    /// <param name="sources">The sources value.</param>
+    /// <returns>The result of the Plan operation.</returns>
     FederatedQueryPlan Plan(FederatedQuery query, IReadOnlyList<VirtualDataSource> sources);
+    /// <summary>
+    /// Defines the Plan operation.
+    /// </summary>
+    /// <param name="query">The query value.</param>
+    /// <param name="sources">The sources value.</param>
+    /// <returns>The result of the Plan operation.</returns>
     FederatedPlanResult Plan(string query, IReadOnlyList<FederatedDataSource> sources);
+    /// <summary>
+    /// Defines the Plan operation.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <returns>The result of the Plan operation.</returns>
     FederatedPlanResult Plan(FederatedPlanRequest request);
 }
 
 public sealed class ForgeFederatedQueryPlanner : IForgeFederatedQueryPlanner
 {
     /// <summary>
-    /// Initializes or executes the Plan operation.
+    /// Executes the Plan operation.
     /// </summary>
     /// <param name="query">The query value.</param>
     /// <param name="sources">The sources value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Plan operation.</returns>
     public FederatedQueryPlan Plan(FederatedQuery query, IReadOnlyList<VirtualDataSource> sources)
     {
         var sourcePlans = query.Sources.Select(s => $"Route '{query.Query}' to {s}").ToList();
@@ -97,19 +120,19 @@ public sealed class ForgeFederatedQueryPlanner : IForgeFederatedQueryPlanner
     }
 
     /// <summary>
-    /// Initializes or executes the Plan operation.
+    /// Executes the Plan operation.
     /// </summary>
     /// <param name="query">The query value.</param>
     /// <param name="sources">The sources value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Plan operation.</returns>
     public FederatedPlanResult Plan(string query, IReadOnlyList<FederatedDataSource> sources)
         => Plan(new FederatedPlanRequest { Query = query, Sources = sources });
 
     /// <summary>
-    /// Initializes or executes the Plan operation.
+    /// Executes the Plan operation.
     /// </summary>
     /// <param name="request">The request value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Plan operation.</returns>
     public FederatedPlanResult Plan(FederatedPlanRequest request)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Query);
@@ -169,9 +192,9 @@ public sealed class ForgeFederatedQueryPlanner : IForgeFederatedQueryPlanner
 public static class ForgeDataVirtualizationServiceCollectionExtensions
 {
     /// <summary>
-    /// Initializes or executes the AddForgeDataVirtualization operation.
+    /// Executes the AddForgeDataVirtualization operation.
     /// </summary>
     /// <param name="services">The services value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the AddForgeDataVirtualization operation.</returns>
     public static IServiceCollection AddForgeDataVirtualization(this IServiceCollection services) => services.AddSingleton<IForgeFederatedQueryPlanner, ForgeFederatedQueryPlanner>();
 }

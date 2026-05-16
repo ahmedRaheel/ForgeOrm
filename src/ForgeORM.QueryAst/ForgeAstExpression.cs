@@ -10,10 +10,11 @@ internal sealed class ForgeExpressionResult
 internal static class ForgeAstExpression
 {
     /// <summary>
-    /// Initializes or executes the MemberName operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="expression">The expression value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public static string MemberName<T>(Expression<Func<T, object>> expression)
     {
         Expression body = expression.Body;
@@ -26,11 +27,12 @@ internal static class ForgeAstExpression
             : throw new NotSupportedException("Only simple member expressions are supported.");
     }
     /// <summary>
-    /// Initializes or executes the Translate operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="expression">The expression value.</param>
     /// <param name="startIndex">The startIndex value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public static ForgeExpressionResult Translate<T>(Expression<Func<T, bool>> expression, int startIndex = 0)
     {
         var parameters = new Dictionary<string, object?>();
@@ -59,10 +61,11 @@ internal static class ForgeAstExpression
         throw new NotSupportedException("Only simple binary expressions are supported in the AST MVP.");
     }
     /// <summary>
-    /// Initializes or executes the Translate operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="expression">The expression value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public static string Translate<T>(Expression<Func<T, bool>> expression)
     {
         if (expression.Body is not BinaryExpression binary)

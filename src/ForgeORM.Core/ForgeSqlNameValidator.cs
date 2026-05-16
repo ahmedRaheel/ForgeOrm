@@ -9,18 +9,18 @@ public static class ForgeSqlNameValidator
         RegexOptions.Compiled);
 
     /// <summary>
-    /// Initializes or executes the IsSafeIdentifier operation.
+    /// Executes the IsSafeIdentifier operation.
     /// </summary>
     /// <param name="name">The name value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the IsSafeIdentifier operation.</returns>
     public static bool IsSafeIdentifier(string name)
         => !string.IsNullOrWhiteSpace(name) && SafeName.IsMatch(name);
 
     /// <summary>
-    /// Initializes or executes the EscapeIdentifier operation.
+    /// Executes the EscapeIdentifier operation.
     /// </summary>
     /// <param name="name">The name value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the EscapeIdentifier operation.</returns>
     public static string EscapeIdentifier(string name)
     {
         if (!IsSafeIdentifier(name))

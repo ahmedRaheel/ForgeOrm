@@ -19,12 +19,13 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
     private int? _includeGraphDepth;
 
     /// <summary>
-    /// Initializes or executes the ForgeSmartQuery operation.
+    /// Executes the ForgeSmartQuery operation.
     /// </summary>
     /// <param name="db">The db value.</param>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="cache">The cache value.</param>
+    /// <returns>The result of the ForgeSmartQuery operation.</returns>
     public ForgeSmartQuery(IForgeDb db, string sql, object? parameters = null, IMemoryCache? cache = null)
     {
         _db = db;
@@ -34,10 +35,10 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
     }
 
     /// <summary>
-    /// Initializes or executes the WhereSql operation.
+    /// Executes the WhereSql operation.
     /// </summary>
     /// <param name="sql">The sql value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the WhereSql operation.</returns>
     public IForgeSmartQuery<T> WhereSql(FormattableString sql)
     {
         var safe = ForgeSqlSafety.From(sql);
@@ -48,10 +49,10 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
     }
 
     /// <summary>
-    /// Initializes or executes the WithPolicy operation.
+    /// Executes the WithPolicy operation.
     /// </summary>
     /// <param name="policy">The policy value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the WithPolicy operation.</returns>
     public IForgeSmartQuery<T> WithPolicy(ForgeResiliencePolicy policy)
     {
         _policy = policy;
@@ -59,11 +60,11 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
     }
 
     /// <summary>
-    /// Initializes or executes the AsCached operation.
+    /// Executes the AsCached operation.
     /// </summary>
     /// <param name="duration">The duration value.</param>
     /// <param name="key">The key value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the AsCached operation.</returns>
     public IForgeSmartQuery<T> AsCached(TimeSpan duration, string? key = null)
     {
         _cacheOptions = new ForgeCacheOptions { Duration = duration, Key = key };
@@ -71,10 +72,10 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
     }
 
     /// <summary>
-    /// Initializes or executes the Mock operation.
+    /// Executes the Mock operation.
     /// </summary>
     /// <param name="rows">The rows value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Mock operation.</returns>
     public IForgeSmartQuery<T> Mock(IEnumerable<T> rows)
     {
         _mockRows = rows.ToList();
@@ -82,10 +83,10 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
     }
 
     /// <summary>
-    /// Initializes or executes the IncludeGraph operation.
+    /// Executes the IncludeGraph operation.
     /// </summary>
     /// <param name="maxDepth">The maxDepth value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the IncludeGraph operation.</returns>
     public IForgeSmartQuery<T> IncludeGraph(int maxDepth = 2)
     {
         _includeGraphDepth = maxDepth;
@@ -93,10 +94,10 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
     }
 
     /// <summary>
-    /// Initializes or executes the ShadowProperty operation.
+    /// Executes the ShadowProperty operation.
     /// </summary>
     /// <param name="name">The name value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ShadowProperty operation.</returns>
     public IForgeSmartQuery<T> ShadowProperty(string name)
     {
         _shadowProperties.Add(name);
@@ -104,9 +105,9 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
     }
 
     /// <summary>
-    /// Initializes or executes the ExecuteTransparent operation.
+    /// Executes the ExecuteTransparent operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ExecuteTransparent operation.</returns>
     public ForgeTransparentCommand ExecuteTransparent()
     {
         return new ForgeTransparentCommand
@@ -117,9 +118,9 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
     }
 
     /// <summary>
-    /// Initializes or executes the Explain operation.
+    /// Executes the Explain operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Explain operation.</returns>
     public ForgeExplainResult Explain()
     {
         var sql = BuildSql();
@@ -135,69 +136,73 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
     }
 
     /// <summary>
-    /// Initializes or executes the ExplainAsync operation.
+    /// Executes the ExplainAsync operation.
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ExplainAsync operation.</returns>
     public Task<ForgeExplainResult> ExplainAsync(CancellationToken cancellationToken = default)
     {
         return Task.FromResult(Explain());
     }
 
     /// <summary>
-    /// Initializes or executes the ToShape operation.
+    /// Executes the TShape operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <typeparam name="TShape">The type used by the operation.</typeparam>
+    /// <returns>The result of the TShape operation.</returns>
     public IReadOnlyList<TShape> ToShape<TShape>()
     {
         return ExecuteWithPolicy(() => _db.Query<TShape>(BuildSql(), BuildParameters()).ToList());
     }
 
     /// <summary>
-    /// Initializes or executes the ToShapeAsync operation.
+    /// Executes the TShape operation.
     /// </summary>
+    /// <typeparam name="TShape">The type used by the operation.</typeparam>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the TShape operation.</returns>
     public Task<IReadOnlyList<TShape>> ToShapeAsync<TShape>(CancellationToken cancellationToken = default)
     {
         return ExecuteWithPolicyAsync(() => _db.QueryAsync<TShape>(BuildSql(), BuildParameters(), cancellationToken: cancellationToken));
     }
 
     /// <summary>
-    /// Initializes or executes the MapStatic operation.
+    /// Executes the TShape operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <typeparam name="TShape">The type used by the operation.</typeparam>
+    /// <returns>The result of the TShape operation.</returns>
     public IReadOnlyList<TShape> MapStatic<TShape>() => ToShape<TShape>();
     /// <summary>
-    /// Initializes or executes the MapStaticAsync operation.
+    /// Executes the TShape operation.
     /// </summary>
+    /// <typeparam name="TShape">The type used by the operation.</typeparam>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the TShape operation.</returns>
     public Task<IReadOnlyList<TShape>> MapStaticAsync<TShape>(CancellationToken cancellationToken = default) => ToShapeAsync<TShape>(cancellationToken);
 
     /// <summary>
-    /// Initializes or executes the IntoJsonDocument operation.
+    /// Executes the IntoJsonDocument operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the IntoJsonDocument operation.</returns>
     public JsonDocument IntoJsonDocument()
     {
         return JsonDocument.Parse(IntoJson());
     }
 
     /// <summary>
-    /// Initializes or executes the IntoJsonDocumentAsync operation.
+    /// Executes the IntoJsonDocumentAsync operation.
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the IntoJsonDocumentAsync operation.</returns>
     public async Task<JsonDocument> IntoJsonDocumentAsync(CancellationToken cancellationToken = default)
     {
         return JsonDocument.Parse(await IntoJsonAsync(cancellationToken));
     }
 
     /// <summary>
-    /// Initializes or executes the IntoJson operation.
+    /// Executes the IntoJson operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the IntoJson operation.</returns>
     public string IntoJson()
     {
         var rows = ToList();
@@ -205,10 +210,10 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
     }
 
     /// <summary>
-    /// Initializes or executes the IntoJsonAsync operation.
+    /// Executes the IntoJsonAsync operation.
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the IntoJsonAsync operation.</returns>
     public async Task<string> IntoJsonAsync(CancellationToken cancellationToken = default)
     {
         var rows = await ToListAsync(cancellationToken);
@@ -216,10 +221,10 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
     }
 
     /// <summary>
-    /// Initializes or executes the StreamAllAsync operation.
+    /// Executes the StreamAllAsync operation.
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the StreamAllAsync operation.</returns>
     public async IAsyncEnumerable<T> StreamAllAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var rows = await ToListAsync(cancellationToken);
@@ -228,9 +233,9 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
     }
 
     /// <summary>
-    /// Initializes or executes the ToList operation.
+    /// Executes the ToList operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ToList operation.</returns>
     public IReadOnlyList<T> ToList()
     {
         if (_mockRows is not null)
@@ -249,10 +254,10 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
     }
 
     /// <summary>
-    /// Initializes or executes the ToListAsync operation.
+    /// Executes the ToListAsync operation.
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ToListAsync operation.</returns>
     public async Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default)
     {
         if (_mockRows is not null)

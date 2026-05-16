@@ -7,18 +7,20 @@ public sealed class ForgeSchemaManager : IForgeSchemaManager
     private readonly IForgeDb _db;
 
     /// <summary>
-    /// Initializes or executes the ForgeSchemaManager operation.
+    /// Executes the ForgeSchemaManager operation.
     /// </summary>
     /// <param name="db">The db value.</param>
+    /// <returns>The result of the ForgeSchemaManager operation.</returns>
     public ForgeSchemaManager(IForgeDb db)
     {
         _db = db;
     }
 
     /// <summary>
-    /// Initializes or executes the GenerateDiff operation.
+    /// Executes the T operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <returns>The result of the T operation.</returns>
     public ForgeSchemaDiff GenerateDiff<T>()
     {
         var table = typeof(T).Name;
@@ -30,19 +32,21 @@ public sealed class ForgeSchemaManager : IForgeSchemaManager
     }
 
     /// <summary>
-    /// Initializes or executes the GenerateDiffAsync operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public Task<ForgeSchemaDiff> GenerateDiffAsync<T>(CancellationToken cancellationToken = default)
     {
         return Task.FromResult(GenerateDiff<T>());
     }
 
     /// <summary>
-    /// Initializes or executes the VerifySchema operation.
+    /// Executes the T operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <returns>The result of the T operation.</returns>
     public ForgeSchemaVerificationResult VerifySchema<T>()
     {
         var diff = GenerateDiff<T>();
@@ -54,29 +58,32 @@ public sealed class ForgeSchemaManager : IForgeSchemaManager
     }
 
     /// <summary>
-    /// Initializes or executes the VerifySchemaAsync operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public Task<ForgeSchemaVerificationResult> VerifySchemaAsync<T>(CancellationToken cancellationToken = default)
     {
         return Task.FromResult(VerifySchema<T>());
     }
 
     /// <summary>
-    /// Initializes or executes the SyncSchema operation.
+    /// Executes the T operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <returns>The result of the T operation.</returns>
     public string SyncSchema<T>()
     {
         return GenerateDiff<T>().FixScript;
     }
 
     /// <summary>
-    /// Initializes or executes the SyncSchemaAsync operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public Task<string> SyncSchemaAsync<T>(CancellationToken cancellationToken = default)
     {
         return Task.FromResult(SyncSchema<T>());

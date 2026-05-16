@@ -10,11 +10,13 @@ namespace ForgeORM.Core;
 public partial class ForgeDb
 {
     /// <summary>
-    /// Initializes or executes the TDto> operation.
+    /// Executes the TDto operation.
     /// </summary>
+    /// <typeparam name="TEntity">The type used by the operation.</typeparam>
+    /// <typeparam name="TDto">The type used by the operation.</typeparam>
     /// <param name="dto">The dto value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the TDto operation.</returns>
     public Task<int> InsertAsync<TEntity, TDto>(TDto dto, CancellationToken cancellationToken = default)
         where TEntity : new()
     {
@@ -23,12 +25,15 @@ public partial class ForgeDb
     }
 
     /// <summary>
-    /// Initializes or executes the TKey> operation.
+    /// Executes the TKey operation.
     /// </summary>
+    /// <typeparam name="TParent">The type used by the operation.</typeparam>
+    /// <typeparam name="TDto">The type used by the operation.</typeparam>
+    /// <typeparam name="TKey">The type used by the operation.</typeparam>
     /// <param name="dto">The dto value.</param>
     /// <param name="configure">The configure value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the TKey operation.</returns>
     public async Task<TKey> InsertGraphAsync<TParent, TDto, TKey>(
         TDto dto,
         Action<ForgeGraphInsertOptions<TParent, TDto>> configure,
@@ -61,12 +66,14 @@ public partial class ForgeDb
     }
 
     /// <summary>
-    /// Initializes or executes the TDto> operation.
+    /// Executes the TDto operation.
     /// </summary>
+    /// <typeparam name="TParent">The type used by the operation.</typeparam>
+    /// <typeparam name="TDto">The type used by the operation.</typeparam>
     /// <param name="dto">The dto value.</param>
     /// <param name="configure">The configure value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the TDto operation.</returns>
     public async Task<object?> InsertGraphAsync<TParent, TDto>(
         TDto dto,
         Action<ForgeGraphInsertOptions<TParent, TDto>> configure,
@@ -75,6 +82,129 @@ public partial class ForgeDb
     {
         var key = await InsertGraphAsync<TParent, TDto, object>(dto, configure, cancellationToken);
         return key;
+    }
+
+
+    /// <summary>
+    /// Executes the TKey operation.
+    /// </summary>
+    /// <typeparam name="TParent">The type used by the operation.</typeparam>
+    /// <typeparam name="TChild">The type used by the operation.</typeparam>
+    /// <typeparam name="TKey">The type used by the operation.</typeparam>
+    /// <param name="parent">The parent value.</param>
+    /// <param name="children">The children value.</param>
+    /// <param name="parentKey">The parentKey value.</param>
+    /// <param name="childForeignKey">The childForeignKey value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the TKey operation.</returns>
+    public async Task<TKey> InsertGraphAsync<TParent, TChild, TKey>(
+        TParent parent,
+        Expression<Func<TParent, IEnumerable<TChild>>> children,
+        Expression<Func<TParent, TKey>> parentKey,
+        Expression<Func<TChild, TKey>> childForeignKey,
+        CancellationToken cancellationToken = default)
+    {
+        if (parent is null) throw new ArgumentNullException(nameof(parent));
+
+        var parentKeyProperty = ForgeExpression.Property(parentKey.Body);
+        var childForeignKeyProperty = ForgeExpression.Property(childForeignKey.Body);
+        var childAccessor = children.Compile();
+        var childRows = childAccessor(parent)?.ToList() ?? [];
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            var options = new ForgeGraphInsertOptions<TParent, TParent>();
+            options.ParentOptions.KeyProperty = parentKeyProperty;
+            var key = await InsertParentAndReturnKeyAsync<TParent, TParent, TKey>(
+                connection,
+                transaction,
+                parent,
+                options,
+                cancellationToken);
+
+            foreach (var child in childRows)
+            {
+                if (child is null) continue;
+                if (childForeignKeyProperty.CanWrite)
+                    childForeignKeyProperty.SetValue(child, ForgeObjectMapper.ConvertTo(key, childForeignKeyProperty.PropertyType));
+
+                ForgeEntityShape.EnsureGeneratedKey(child);
+            }
+
+            await InsertChildrenRowByRowAsync(connection, transaction, childRows, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return key;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Executes the TKey operation.
+    /// </summary>
+    /// <typeparam name="TDto">The type used by the operation.</typeparam>
+    /// <typeparam name="TParent">The type used by the operation.</typeparam>
+    /// <typeparam name="TChildDto">The type used by the operation.</typeparam>
+    /// <typeparam name="TChild">The type used by the operation.</typeparam>
+    /// <typeparam name="TKey">The type used by the operation.</typeparam>
+    /// <param name="dto">The dto value.</param>
+    /// <param name="parentFactory">The parentFactory value.</param>
+    /// <param name="children">The children value.</param>
+    /// <param name="childFactory">The childFactory value.</param>
+    /// <param name="parentKey">The parentKey value.</param>
+    /// <param name="childForeignKey">The childForeignKey value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the TKey operation.</returns>
+    public Task<TKey> InsertGraphAsync<TDto, TParent, TChildDto, TChild, TKey>(
+        TDto dto,
+        Func<TDto, TParent> parentFactory,
+        Func<TDto, IEnumerable<TChildDto>> children,
+        Func<TParent, TChildDto, TChild> childFactory,
+        Expression<Func<TParent, TKey>> parentKey,
+        Expression<Func<TChild, TKey>> childForeignKey,
+        CancellationToken cancellationToken = default)
+    {
+        if (dto is null) throw new ArgumentNullException(nameof(dto));
+        if (parentFactory is null) throw new ArgumentNullException(nameof(parentFactory));
+        if (children is null) throw new ArgumentNullException(nameof(children));
+        if (childFactory is null) throw new ArgumentNullException(nameof(childFactory));
+
+        var parent = parentFactory(dto);
+        var childRows = children(dto).Select(child => childFactory(parent, child)).ToList();
+        return InsertGraphAsync(
+            parent,
+            _ => childRows,
+            parentKey,
+            childForeignKey,
+            cancellationToken);
+    }
+
+    private static async Task InsertChildrenRowByRowAsync<TChild>(
+        DbConnection connection,
+        DbTransaction transaction,
+        IReadOnlyList<TChild> children,
+        CancellationToken cancellationToken)
+    {
+        if (children.Count == 0) return;
+
+        var shape = ForgeEntityShape.For(typeof(TChild));
+        var props = shape.ScalarProperties.Where(p => p.CanRead && !ForgeEntityShape.IsComputed(p)).ToList();
+        var sql = $"INSERT INTO {shape.TableName} ({string.Join(", ", props.Select(ForgeEntityShape.ColumnName))}) VALUES ({string.Join(", ", props.Select(p => "@" + p.Name))})";
+
+        foreach (var child in children)
+        {
+            if (child is null) continue;
+            var parameters = props.ToDictionary(p => p.Name, p => p.GetValue(child), StringComparer.OrdinalIgnoreCase);
+            await using var command = ForgeAdo.CreateCommand(connection, sql, parameters, transaction);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
     }
 
     private static async Task<TKey> InsertParentAndReturnKeyAsync<TParent, TDto, TKey>(
@@ -140,16 +270,18 @@ public sealed class ForgeGraphInsertOptions<TParent, TDto>
     internal List<IForgeGraphChildInsert<TDto>> ChildMappings { get; } = [];
 
     /// <summary>
-    /// Initializes or executes the Parent operation.
+    /// Executes the Parent operation.
     /// </summary>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Parent operation.</returns>
     public ForgeGraphParentOptions<TParent> Parent() => ParentOptions;
 
     /// <summary>
-    /// Initializes or executes the TChildDto> operation.
+    /// Executes the TChildDto operation.
     /// </summary>
+    /// <typeparam name="TChildEntity">The type used by the operation.</typeparam>
+    /// <typeparam name="TChildDto">The type used by the operation.</typeparam>
     /// <param name="selector">The selector value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the TChildDto operation.</returns>
     public ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> ChildrenOf<TChildEntity, TChildDto>(
         Expression<Func<TDto, IEnumerable<TChildDto>>> selector)
         where TChildEntity : new()
@@ -160,10 +292,12 @@ public sealed class ForgeGraphInsertOptions<TParent, TDto>
     }
 
     /// <summary>
-    /// Initializes or executes the TChildDto> operation.
+    /// Executes the TChildDto operation.
     /// </summary>
+    /// <typeparam name="TChildEntity">The type used by the operation.</typeparam>
+    /// <typeparam name="TChildDto">The type used by the operation.</typeparam>
     /// <param name="selector">The selector value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the TChildDto operation.</returns>
     public ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> Children<TChildEntity, TChildDto>(
         Expression<Func<TDto, IEnumerable<TChildDto>>> selector)
         where TChildEntity : new()
@@ -172,13 +306,14 @@ public sealed class ForgeGraphInsertOptions<TParent, TDto>
 
 public sealed class ForgeGraphParentOptions<TParent>
 {
-    internal PropertyInfo? KeyProperty { get; private set; }
+    internal PropertyInfo? KeyProperty { get; set; }
 
     /// <summary>
-    /// Initializes or executes the Key operation.
+    /// Executes the TKey operation.
     /// </summary>
+    /// <typeparam name="TKey">The type used by the operation.</typeparam>
     /// <param name="key">The key value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the TKey operation.</returns>
     public ForgeGraphParentOptions<TParent> Key<TKey>(Expression<Func<TParent, TKey>> key)
     {
         KeyProperty = ForgeExpression.Property(key.Body);
@@ -198,10 +333,11 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
     internal ForgeGraphChildOptions(Func<TDto, IEnumerable<TChildDto>> selector) => _selector = selector;
 
     /// <summary>
-    /// Initializes or executes the ForeignKey operation.
+    /// Executes the TKey operation.
     /// </summary>
+    /// <typeparam name="TKey">The type used by the operation.</typeparam>
     /// <param name="foreignKey">The foreignKey value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the TKey operation.</returns>
     public ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> ForeignKey<TKey>(Expression<Func<TChildEntity, TKey>> foreignKey)
     {
         _foreignKey = ForgeExpression.Property(foreignKey.Body);
@@ -209,12 +345,12 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
     }
 
     /// <summary>
-    /// Initializes or executes the UseSqlServerTvp operation.
+    /// Executes the UseSqlServerTvp operation.
     /// </summary>
     /// <param name="tableType">The tableType value.</param>
     /// <param name="procedure">The procedure value.</param>
     /// <param name="parameterName">The parameterName value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the UseSqlServerTvp operation.</returns>
     public ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> UseSqlServerTvp(
         string tableType,
         string procedure,
@@ -227,14 +363,14 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
     }
 
     /// <summary>
-    /// Initializes or executes the InsertAsync operation.
+    /// Executes the InsertAsync operation.
     /// </summary>
     /// <param name="connection">The connection value.</param>
     /// <param name="transaction">The transaction value.</param>
     /// <param name="dto">The dto value.</param>
     /// <param name="parentKey">The parentKey value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the InsertAsync operation.</returns>
     public async Task InsertAsync(DbConnection connection, DbTransaction transaction, TDto dto, object parentKey, CancellationToken cancellationToken)
     {
         var rows = _selector(dto)?.ToList() ?? [];
@@ -291,17 +427,35 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
 }
 
 internal interface IForgeGraphChildInsert<TDto>
+/// <summary>
+/// Defines the InsertAsync operation.
+/// </summary>
+/// <param name="connection">The connection value.</param>
+/// <param name="transaction">The transaction value.</param>
+/// <param name="dto">The dto value.</param>
+/// <param name="parentKey">The parentKey value.</param>
+/// <param name="cancellationToken">The cancellationToken value.</param>
+/// <returns>The result of the InsertAsync operation.</returns>
 {
+    /// <summary>
+    /// Defines the InsertAsync operation.
+    /// </summary>
+    /// <param name="connection">The connection value.</param>
+    /// <param name="transaction">The transaction value.</param>
+    /// <param name="dto">The dto value.</param>
+    /// <param name="parentKey">The parentKey value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the InsertAsync operation.</returns>
     Task InsertAsync(DbConnection connection, DbTransaction transaction, TDto dto, object parentKey, CancellationToken cancellationToken);
 }
 
 internal static class ForgeEnumConversion
 {
     /// <summary>
-    /// Initializes or executes the StorageType operation.
+    /// Executes the StorageType operation.
     /// </summary>
     /// <param name="property">The property value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the StorageType operation.</returns>
     public static Type StorageType(PropertyInfo property)
     {
         var type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
@@ -314,11 +468,11 @@ internal static class ForgeEnumConversion
     }
 
     /// <summary>
-    /// Initializes or executes the ToDatabaseValue operation.
+    /// Executes the ToDatabaseValue operation.
     /// </summary>
     /// <param name="value">The value value.</param>
     /// <param name="property">The property value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ToDatabaseValue operation.</returns>
     public static object? ToDatabaseValue(object? value, PropertyInfo? property = null)
     {
         if (value is null || value is DBNull) return value;
@@ -334,11 +488,11 @@ internal static class ForgeEnumConversion
     }
 
     /// <summary>
-    /// Initializes or executes the ToEnumOrValue operation.
+    /// Executes the ToEnumOrValue operation.
     /// </summary>
     /// <param name="value">The value value.</param>
     /// <param name="targetType">The targetType value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ToEnumOrValue operation.</returns>
     public static object? ToEnumOrValue(object? value, Type targetType)
     {
         if (value is null || value is DBNull)
@@ -358,10 +512,11 @@ internal static class ForgeEnumConversion
 internal static class ForgeTvpDataTable
 {
     /// <summary>
-    /// Initializes or executes the Create operation.
+    /// Executes the T operation.
     /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="rows">The rows value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the T operation.</returns>
     public static DataTable Create<T>(IReadOnlyList<T> rows)
     {
         var shape = ForgeEntityShape.For(typeof(T));
@@ -384,7 +539,7 @@ internal static class ForgeTvpDataTable
 internal static class ForgeSqlServerParameterConfigurator
 {
     /// <summary>
-    /// Initializes or executes the ConfigureStructured operation.
+    /// Executes the ConfigureStructured operation.
     /// </summary>
     /// <param name="parameter">The parameter value.</param>
     /// <param name="tableType">The tableType value.</param>
@@ -405,10 +560,11 @@ internal static class ForgeSqlServerParameterConfigurator
 internal static class ForgeObjectMapper
 {
     /// <summary>
-    /// Initializes or executes the Map operation.
+    /// Executes the TTarget operation.
     /// </summary>
+    /// <typeparam name="TTarget">The type used by the operation.</typeparam>
     /// <param name="new">The new value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the TTarget operation.</returns>
     public static TTarget Map<TTarget>(object source) where TTarget : new()
     {
         if (source is TTarget typed) return typed;
@@ -418,7 +574,7 @@ internal static class ForgeObjectMapper
     }
 
     /// <summary>
-    /// Initializes or executes the Copy operation.
+    /// Executes the Copy operation.
     /// </summary>
     /// <param name="source">The source value.</param>
     /// <param name="target">The target value.</param>
@@ -438,11 +594,11 @@ internal static class ForgeObjectMapper
     }
 
     /// <summary>
-    /// Initializes or executes the ConvertTo operation.
+    /// Executes the ConvertTo operation.
     /// </summary>
     /// <param name="value">The value value.</param>
     /// <param name="targetType">The targetType value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ConvertTo operation.</returns>
     public static object? ConvertTo(object? value, Type targetType)
     {
         if (value is null || value is DBNull)
@@ -471,15 +627,30 @@ internal static class ForgeObjectMapper
 
 internal sealed class ForgeEntityShape
 {
+    /// <summary>
+    /// Executes the For operation.
+    /// </summary>
+    /// <param name="type">The type value.</param>
+    /// <returns>The result of the For operation.</returns>
     public required string TableName { get; init; }
+    /// <summary>
+    /// Executes the For operation.
+    /// </summary>
+    /// <param name="type">The type value.</param>
+    /// <returns>The result of the For operation.</returns>
     public required PropertyInfo? KeyProperty { get; init; }
+    /// <summary>
+    /// Executes the For operation.
+    /// </summary>
+    /// <param name="type">The type value.</param>
+    /// <returns>The result of the For operation.</returns>
     public required IReadOnlyList<PropertyInfo> ScalarProperties { get; init; }
 
     /// <summary>
-    /// Initializes or executes the For operation.
+    /// Executes the For operation.
     /// </summary>
     /// <param name="type">The type value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the For operation.</returns>
     public static ForgeEntityShape For(Type type)
     {
         var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
@@ -496,10 +667,10 @@ internal sealed class ForgeEntityShape
     }
 
     /// <summary>
-    /// Initializes or executes the ResolveTableName operation.
+    /// Executes the ResolveTableName operation.
     /// </summary>
     /// <param name="type">The type value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ResolveTableName operation.</returns>
     public static string ResolveTableName(Type type)
     {
         var attr = type.GetCustomAttribute<ForgeTableAttribute>();
@@ -508,23 +679,23 @@ internal sealed class ForgeEntityShape
     }
 
     /// <summary>
-    /// Initializes or executes the ColumnName operation.
+    /// Executes the ColumnName operation.
     /// </summary>
     /// <param name="property">The property value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the ColumnName operation.</returns>
     public static string ColumnName(PropertyInfo property)
         => property.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? property.Name;
 
     /// <summary>
-    /// Initializes or executes the IsComputed operation.
+    /// Executes the IsComputed operation.
     /// </summary>
     /// <param name="property">The property value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the IsComputed operation.</returns>
     public static bool IsComputed(PropertyInfo property)
         => property.GetCustomAttribute<ForgeComputedAttribute>() is not null;
 
     /// <summary>
-    /// Initializes or executes the EnsureGeneratedKey operation.
+    /// Executes the EnsureGeneratedKey operation.
     /// </summary>
     /// <param name="entity">The entity value.</param>
     public static void EnsureGeneratedKey(object entity)
@@ -545,10 +716,10 @@ internal sealed class ForgeEntityShape
 internal static class ForgeExpression
 {
     /// <summary>
-    /// Initializes or executes the Property operation.
+    /// Executes the Property operation.
     /// </summary>
     /// <param name="expression">The expression value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Property operation.</returns>
     public static PropertyInfo Property(Expression expression)
     {
         while (expression is UnaryExpression unary &&

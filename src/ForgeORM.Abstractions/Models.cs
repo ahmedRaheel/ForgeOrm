@@ -4,43 +4,91 @@ namespace ForgeORM.Abstractions;
 
 public sealed class ForgeCommand
 {
-    public required string CommandText { get; init; }
-    public object? Parameters { get; init; }
-    public CommandType CommandType { get; init; } = CommandType.Text;
-    public int? TimeoutSeconds { get; init; }
-
     /// <summary>
-    /// Initializes or executes the Text operation.
+    /// Executes the Text operation.
     /// </summary>
     /// <param name="sql">The sql value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Text operation.</returns>
+    public required string CommandText { get; init; }
+    /// <summary>
+    /// Executes the Text operation.
+    /// </summary>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
+    /// <returns>The result of the Text operation.</returns>
+    public object? Parameters { get; init; }
+    /// <summary>
+    /// Executes the Text operation.
+    /// </summary>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
+    /// <returns>The result of the Text operation.</returns>
+    public CommandType CommandType { get; init; } = CommandType.Text;
+    /// <summary>
+    /// Executes the Text operation.
+    /// </summary>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
+    /// <returns>The result of the Text operation.</returns>
+    public int? TimeoutSeconds { get; init; }
+
+    /// <summary>
+    /// Executes the Text operation.
+    /// </summary>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
+    /// <returns>The result of the Text operation.</returns>
     public static ForgeCommand Text(string sql, object? parameters = null, int? timeoutSeconds = null)
         => new() { CommandText = sql, Parameters = parameters, TimeoutSeconds = timeoutSeconds, CommandType = CommandType.Text };
 
     /// <summary>
-    /// Initializes or executes the StoredProcedure operation.
+    /// Executes the StoredProcedure operation.
     /// </summary>
     /// <param name="name">The name value.</param>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the StoredProcedure operation.</returns>
     public static ForgeCommand StoredProcedure(string name, object? parameters = null, int? timeoutSeconds = null)
         => new() { CommandText = name, Parameters = parameters, TimeoutSeconds = timeoutSeconds, CommandType = CommandType.StoredProcedure };
 }
 
 public sealed class ForgeSqlDialect
 {
-    public required string Name { get; init; }
-    public required string ParameterPrefix { get; init; }
-    public required string OpenIdentifier { get; init; }
-    public required string CloseIdentifier { get; init; }
     /// <summary>
-    /// Initializes or executes the Parameter operation.
+    /// Executes the Parameter operation.
     /// </summary>
     /// <param name="name">The name value.</param>
-    /// <returns>The operation result.</returns>
+    /// <returns>The result of the Parameter operation.</returns>
+    public required string Name { get; init; }
+    /// <summary>
+    /// Executes the Parameter operation.
+    /// </summary>
+    /// <param name="name">The name value.</param>
+    /// <returns>The result of the Parameter operation.</returns>
+    public required string ParameterPrefix { get; init; }
+    /// <summary>
+    /// Executes the Parameter operation.
+    /// </summary>
+    /// <param name="name">The name value.</param>
+    /// <returns>The result of the Parameter operation.</returns>
+    public required string OpenIdentifier { get; init; }
+    /// <summary>
+    /// Executes the Parameter operation.
+    /// </summary>
+    /// <param name="name">The name value.</param>
+    /// <returns>The result of the Parameter operation.</returns>
+    public required string CloseIdentifier { get; init; }
+    /// <summary>
+    /// Executes the Parameter operation.
+    /// </summary>
+    /// <param name="name">The name value.</param>
+    /// <returns>The result of the Parameter operation.</returns>
     public string Parameter(string name) => $"{ParameterPrefix}{name}";
 }
 
@@ -86,12 +134,6 @@ public sealed class ForgePageRequest
     public int Page { get; init; } = 1;
     public int PageSize { get; init; } = 20;
     public required string OrderBy { get; init; }
-    /// <summary>
-    /// Initializes or executes the Math.Max operation.
-    /// </summary>
-    /// <param name="1">The 1 value.</param>
-    /// <param name="0">The 0 value.</param>
-    /// <returns>The operation result.</returns>
     public int Skip => Math.Max(Page - 1, 0) * PageSize;
 }
 
@@ -101,10 +143,6 @@ public sealed class ForgePagedResult<T>
     public int Page { get; init; }
     public int PageSize { get; init; }
     public int TotalRecords { get; init; }
-    /// <summary>
-    /// Executes the : operation.
-    /// </summary>
-    /// <returns>The operation result.</returns>
     public int TotalPages => PageSize <= 0 ? 0 : (int)Math.Ceiling(TotalRecords / (double)PageSize);
 }
 

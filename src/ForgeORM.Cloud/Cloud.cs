@@ -6,12 +6,27 @@ public sealed record CloudDeploymentRequest(string AppName, string Provider, str
 public sealed record CloudDeploymentArtifacts(string Dockerfile, string KubernetesYaml, string Terraform, string HelmValues);
 
 public interface IForgeDeploymentGenerator
+/// <summary>
+/// Defines the Generate operation.
+/// </summary>
+/// <param name="request">The request value.</param>
+/// <returns>The result of the Generate operation.</returns>
 {
+    /// <summary>
+    /// Defines the Generate operation.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <returns>The result of the Generate operation.</returns>
     CloudDeploymentArtifacts Generate(CloudDeploymentRequest request);
 }
 
 public sealed class ForgeDeploymentGenerator : IForgeDeploymentGenerator
 {
+    /// <summary>
+    /// Executes the Generate operation.
+    /// </summary>
+    /// <param name="r">The r value.</param>
+    /// <returns>The result of the Generate operation.</returns>
     public CloudDeploymentArtifacts Generate(CloudDeploymentRequest r)
     {
         var docker = $"FROM mcr.microsoft.com/dotnet/aspnet:10.0\nWORKDIR /app\nCOPY . .\nENTRYPOINT [\"dotnet\", \"{r.AppName}.dll\"]";
@@ -24,5 +39,10 @@ public sealed class ForgeDeploymentGenerator : IForgeDeploymentGenerator
 
 public static class ForgeCloudServiceCollectionExtensions
 {
+    /// <summary>
+    /// Executes the AddForgeCloudDeployment operation.
+    /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <returns>The result of the AddForgeCloudDeployment operation.</returns>
     public static IServiceCollection AddForgeCloudDeployment(this IServiceCollection services) => services.AddSingleton<IForgeDeploymentGenerator, ForgeDeploymentGenerator>();
 }

@@ -5,11 +5,23 @@ namespace ForgeORM.Core;
 
 internal static class ForgeMaterializer
 {
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="reader">The reader value.</param>
+    /// <returns>The result of the T operation.</returns>
     public static T Map<T>(DbDataReader reader)
     {
         return (T)Map(typeof(T), reader)!;
     }
 
+    /// <summary>
+    /// Executes the Map operation.
+    /// </summary>
+    /// <param name="type">The type value.</param>
+    /// <param name="reader">The reader value.</param>
+    /// <returns>The result of the Map operation.</returns>
     public static object? Map(Type type, DbDataReader reader)
     {
         var actualType = Nullable.GetUnderlyingType(type) ?? type;

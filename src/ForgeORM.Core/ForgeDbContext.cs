@@ -10,6 +10,14 @@ namespace ForgeORM.Core;
 /// </summary>
 public class ForgeDbContext : ForgeDb
 {
+    /// <summary>
+    /// Executes the ForgeDbContext operation.
+    /// </summary>
+    /// <param name="connectionString">The connectionString value.</param>
+    /// <param name="provider">The provider value.</param>
+    /// <param name="metadata">The metadata value.</param>
+    /// <param name="analyzer">The analyzer value.</param>
+    /// <returns>The result of the ForgeDbContext operation.</returns>
     public ForgeDbContext(
         string connectionString,
         IForgeDatabaseProvider provider,
@@ -34,4 +42,5 @@ public class ForgeDbContext : ForgeDb
 
     /// <summary>ForgeORM stored procedure search builder.</summary>
     public ForgeProcedureSearch<T> SearchProcedure<T>(string procedureName) => new(this, procedureName);
+
 }

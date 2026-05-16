@@ -6,12 +6,27 @@ namespace ForgeORM.Observability.AI;
 public sealed record ForgeObservabilityInsight(string Severity, string Title, string Recommendation);
 
 public interface IForgeAiObservabilityAnalyzer
+/// <summary>
+/// Defines the Analyze operation.
+/// </summary>
+/// <param name="snapshot">The snapshot value.</param>
+/// <returns>The result of the Analyze operation.</returns>
 {
+    /// <summary>
+    /// Defines the Analyze operation.
+    /// </summary>
+    /// <param name="snapshot">The snapshot value.</param>
+    /// <returns>The result of the Analyze operation.</returns>
     IReadOnlyList<ForgeObservabilityInsight> Analyze(ForgeMonitoringSnapshot snapshot);
 }
 
 public sealed class ForgeAiObservabilityAnalyzer : IForgeAiObservabilityAnalyzer
 {
+    /// <summary>
+    /// Executes the Analyze operation.
+    /// </summary>
+    /// <param name="snapshot">The snapshot value.</param>
+    /// <returns>The result of the Analyze operation.</returns>
     public IReadOnlyList<ForgeObservabilityInsight> Analyze(ForgeMonitoringSnapshot snapshot)
     {
         var list = new List<ForgeObservabilityInsight>();
@@ -25,5 +40,10 @@ public sealed class ForgeAiObservabilityAnalyzer : IForgeAiObservabilityAnalyzer
 
 public static class ForgeAiObservabilityServiceCollectionExtensions
 {
+    /// <summary>
+    /// Executes the AddForgeAiObservability operation.
+    /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <returns>The result of the AddForgeAiObservability operation.</returns>
     public static IServiceCollection AddForgeAiObservability(this IServiceCollection services) => services.AddSingleton<IForgeAiObservabilityAnalyzer, ForgeAiObservabilityAnalyzer>();
 }

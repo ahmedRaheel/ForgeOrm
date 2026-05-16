@@ -1,17 +1,18 @@
 
 using ForgeORM.Abstractions;
-using ForgeORM.AI.Advanced;
 using ForgeORM.AspNetCore;
-using ForgeORM.Caching.Redis;
 using ForgeORM.Core;
+using ForgeORM.AI.Advanced;
+using ForgeORM.Analytics;
+using ForgeORM.DataFrame;
 using ForgeORM.Core.Search;
 using ForgeORM.QueryAst;
 using ForgeORM.QueryAst.Artifacts;
 using ForgeORM.SchemaOps;
+using ForgeORM.Caching.Redis;
 using ForgeORM.Security;
 using ForgeORM.Telemetry;
 using ForgeORM.VectorSearch;
-using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,15 +27,55 @@ builder.Services.AddForgeSecurity();
 builder.Services.AddForgeInMemoryVectorSearch();
 builder.Services.AddForgeAdvancedAi();
 
-builder.Services.ConfigureHttpJsonOptions(options =>
-{
-    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
-});
+
 var app = builder.Build();
 
 app.UseSwagger();
 app.UseSwaggerUI();
+app.MapPost("/raw/orders/graph", async (
+    ForgeDbContext db,
+    CancellationToken ct) =>
+{
+    var order = new Order
+    {
+        OrderDate = DateTime.Now,
+        CreatedAt = DateTime.Now,
+        CustomerId = 1,
+        GrandTotal = 200,
+        OrderNo = "test",
+        Status = OrderStatus.Pending,
+        TotalAmount = 122,
 
+        Items =
+        [
+            new OrderItem
+            {
+                LineTotal = 1,
+                ProductId = 1,
+                Quantity = 10,
+                UnitPrice = 200
+            }
+        ]
+    };
+
+    var result = await db.InsertGraphAsync<Order, Order, int>(
+        order,
+        graph =>
+        {
+            graph.Parent()
+                .Key(x => x.Id);
+
+            graph.Children<OrderItem, OrderItem>(x => x.Items)
+                .ForeignKey(x => x.OrderId)
+                .UseSqlServerTvp(
+                    tableType: "dbo.OrderItemTvp",
+                    procedure: "dbo.InsertOrderItemsTvp");
+        },
+        ct);
+
+    
+})
+.WithTags("01 Raw SQL");
 app.MapGet("/", () => "ForgeORM Sample Scenarios API");
 
 app.MapGet("/raw/products", async (ForgeDbContext db) =>
@@ -444,6 +485,602 @@ app.MapPost("/v3/vector/search", async (float[] vector, int topK, IForgeVectorSt
     Results.Ok(await store.SearchAsync(vector, topK)))
 .WithTags("27 V3 Vector Search");
 
+
+app.MapGet("/analytics/window-functions/sql", (ForgeDbContext db) =>
+{
+    var sql = db.Analytics<Order>()
+        .From("Orders")
+
+        .Select(x => x.Id)
+        .Select(x => x.OrderNo)
+        .Select(x => x.CustomerId)
+        .Select(x => x.GrandTotal)
+        .Select(x => x.CreatedAt)
+
+        // Ranking
+        .RowNumber()
+            .PartitionBy(x => x.CustomerId)
+            .OrderByDescending(x => x.CreatedAt)
+            .As("RowNo")
+
+        .Rank()
+            .PartitionBy(x => x.CustomerId)
+            .OrderByDescending(x => x.GrandTotal)
+            .As("RankNo")
+
+        .DenseRank()
+            .PartitionBy(x => x.CustomerId)
+            .OrderByDescending(x => x.GrandTotal)
+            .As("DenseRankNo")
+
+        // Aggregates
+        .Count()
+            .PartitionBy(x => x.CustomerId)
+            .As("CustomerOrderCount")
+
+        .Sum(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .As("CustomerTotalSales")
+
+        .Avg(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .As("CustomerAverageSales")
+
+        .Min(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .As("CustomerMinSale")
+
+        .Max(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .As("CustomerMaxSale")
+
+        // Navigation functions
+        .Lag(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .OrderBy(x => x.CreatedAt)
+            .As("PreviousOrderAmount")
+
+        .Lead(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .OrderBy(x => x.CreatedAt)
+            .As("NextOrderAmount")
+
+        // Distribution
+        .PercentRank()
+            .PartitionBy(x => x.CustomerId)
+            .OrderBy(x => x.GrandTotal)
+            .As("PercentRank")
+
+        .CumeDist()
+            .PartitionBy(x => x.CustomerId)
+            .OrderBy(x => x.GrandTotal)
+            .As("CumeDist")
+
+        // Percentiles
+        .PercentileCont(x => x.GrandTotal, 0.5m)
+            .PartitionBy(x => x.CustomerId)
+            .As("MedianOrder")
+
+        .PercentileCont(x => x.GrandTotal, 0.9m)
+            .PartitionBy(x => x.CustomerId)
+            .As("P90Order")
+
+        // Running total
+        .Sum(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .OrderBy(x => x.CreatedAt)
+            .RowsBetweenUnboundedPrecedingAndCurrentRow()
+            .As("RunningSales")
+
+        .Render()
+        .Sql;
+
+    return Results.Ok(new { sql });
+})
+.WithTags("30 Analytics Window Functions");
+
+app.MapGet("/analytics/window-functions", async (
+    ForgeDbContext db,
+    CancellationToken ct) =>
+{
+    var result = await db.Analytics<Order>()
+        .From("Orders")
+        .Select(x => x.Id)
+        .Select(x => x.OrderNo)
+        .Select(x => x.CustomerId)
+        .Select(x => x.GrandTotal)
+        .Select(x => x.CreatedAt)
+
+        .RowNumber()
+            .PartitionBy(x => x.CustomerId)
+            .OrderByDescending(x => x.CreatedAt)
+            .As("RowNo")
+
+        .Rank()
+            .PartitionBy(x => x.CustomerId)
+            .OrderByDescending(x => x.GrandTotal)
+            .As("RankNo")
+
+        .DenseRank()
+            .PartitionBy(x => x.CustomerId)
+            .OrderByDescending(x => x.GrandTotal)
+            .As("DenseRankNo")
+
+        .Count()
+            .PartitionBy(x => x.CustomerId)
+            .As("CustomerOrderCount")
+
+        .Sum(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .As("CustomerTotalSales")
+
+        .Avg(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .As("CustomerAverageSales")
+
+        .Min(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .As("CustomerMinSale")
+
+        .Max(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .As("CustomerMaxSale")
+
+        .Lag(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .OrderBy(x => x.CreatedAt)
+            .As("PreviousOrderAmount")
+
+        .Lead(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .OrderBy(x => x.CreatedAt)
+            .As("NextOrderAmount")
+
+        .Sum(x => x.GrandTotal)
+            .PartitionBy(x => x.CustomerId)
+            .OrderBy(x => x.CreatedAt)
+            .RowsBetweenUnboundedPrecedingAndCurrentRow()
+            .As("RunningSales")
+
+        .ToDynamicListAsync(ct);
+  
+    return Results.Ok(result);
+})
+.WithTags("30 Analytics Window Functions");
+
+app.MapGet("/analytics/pivot/orders", async (ForgeDbContext db, CancellationToken ct) =>
+{
+    var frame = await db.Frame<Order>()
+        .FromSql("SELECT YEAR(CreatedAt) AS CreatedYear, Status, GrandTotal FROM dbo.Orders")
+        .ToFrameAsync(ct);
+
+    var pivot = frame.PivotTable(
+        rows: "CreatedYear",
+        columns: "Status",
+        values: "GrandTotal",
+        aggregate: ForgeAgg.Sum());
+
+    return Results.Ok(pivot.Rows);
+})
+.WithTags("31 Analytics DataFrame Pivot");
+
+app.MapGet("/analytics/groupby/orders", async (ForgeDbContext db, CancellationToken ct) =>
+{
+    var frame = await db.Frame<Order>()
+        .FromSql("SELECT Status, GrandTotal FROM dbo.Orders")
+        .ToFrameAsync(ct);
+
+    var summary = frame.GroupBy("Status")
+        .Agg(
+            ForgeAggregation.Count(alias: "Orders"),
+            ForgeAggregation.Sum("GrandTotal", "Revenue"),
+            ForgeAggregation.Avg("GrandTotal", "AverageOrder"),
+            ForgeAggregation.Median("GrandTotal", "MedianOrder"));
+
+    return Results.Ok(summary.Rows);
+})
+.WithTags("32 Analytics GroupBy");
+
+app.MapGet("/analytics/describe/orders", async (ForgeDbContext db, CancellationToken ct) =>
+{
+    var frame = await db.Frame<Order>()
+        .FromSql("SELECT GrandTotal, TotalAmount FROM dbo.Orders")
+        .ToFrameAsync(ct);
+
+    return Results.Ok(frame.Describe("GrandTotal", "TotalAmount").Rows);
+})
+.WithTags("33 Analytics Describe");
+
+app.MapGet("/analytics/microsoft-dataframe/orders", async (ForgeDbContext db, CancellationToken ct) =>
+{
+    var frame = await db.Frame<Order>()
+        .FromSql("SELECT TOP 20 Id, OrderNo, Status, GrandTotal, CreatedAt FROM dbo.Orders")
+        .ToFrameAsync(ct);
+
+    var microsoftFrame = frame.ToMicrosoftDataFrame();
+    return Results.Ok(new
+    {
+        forgeRows = frame.RowCount,
+        microsoftColumns = microsoftFrame.Columns.Select(c => c.Name).ToArray()
+    });
+})
+.WithTags("34 Microsoft.Data.Analysis Bridge");
+
+
+app.MapPost("/analytics/import/csv/orders/to-table", async (ForgeDbContext db, CancellationToken ct) =>
+{
+    var csv = """
+OrderNo,CustomerId,Status,GrandTotal,CreatedAt
+CSV-1001,1,Paid,1250.75,2026-05-01T10:00:00+05:00
+CSV-1002,1,Draft,540.25,2026-05-02T12:00:00+05:00
+CSV-1003,2,Cancelled,300.00,2026-05-03T14:00:00+05:00
+""";
+
+    var frame = ForgeDataFrame.FromCsvText(csv);
+
+    await frame.ToTableAsync(
+        db,
+        tableName: "dbo.ForgeImportedOrderCsvFrame",
+        createIfNotExists: true,
+        dropIfExists: true,
+        cancellationToken: ct);
+
+    var queried = await db.Frame<Order>()
+        .FromSql("SELECT * FROM dbo.ForgeImportedOrderCsvFrame")
+        .ToFrameAsync(ct);
+
+    var summary = queried.GroupBy("Status")
+        .Agg(
+            ForgeAggregation.Count(alias: "Orders"),
+            ForgeAggregation.Sum("GrandTotal", "Total"),
+            ForgeAggregation.Avg("GrandTotal", "Average"));
+
+    return Results.Ok(new
+    {
+        importedRows = frame.RowCount,
+        table = "dbo.ForgeImportedOrderCsvFrame",
+        rows = queried.Rows,
+        summary = summary.Rows
+    });
+})
+.WithTags("35 DataFrame Import CSV/JSON");
+
+app.MapPost("/analytics/import/json/orders/to-table", async (ForgeDbContext db, CancellationToken ct) =>
+{
+    var json = """
+[
+  { "OrderNo": "JSON-1001", "CustomerId": 1, "Status": "Paid", "GrandTotal": 900.50, "CreatedAt": "2026-05-04T09:00:00+05:00" },
+  { "OrderNo": "JSON-1002", "CustomerId": 2, "Status": "Draft", "GrandTotal": 150.00, "CreatedAt": "2026-05-05T11:30:00+05:00" },
+  { "OrderNo": "JSON-1003", "CustomerId": 2, "Status": "Paid", "GrandTotal": 2200.00, "CreatedAt": "2026-05-06T15:45:00+05:00" }
+]
+""";
+
+    var frame = ForgeDataFrame.FromJsonText(json);
+
+    await frame.ToTableAsync(
+        db,
+        tableName: "dbo.ForgeImportedOrderJsonFrame",
+        createIfNotExists: true,
+        dropIfExists: true,
+        cancellationToken: ct);
+
+    var queried = await db.Frame<Order>()
+        .FromSql("SELECT * FROM dbo.ForgeImportedOrderJsonFrame")
+        .ToFrameAsync(ct);
+
+    var pivot = queried.PivotTable(
+        rows: "CustomerId",
+        columns: "Status",
+        values: "GrandTotal",
+        aggregate: ForgeAgg.Sum());
+
+    return Results.Ok(new
+    {
+        importedRows = frame.RowCount,
+        table = "dbo.ForgeImportedOrderJsonFrame",
+        rows = queried.Rows,
+        pivot = pivot.Rows
+    });
+})
+.WithTags("35 DataFrame Import CSV/JSON");
+
+app.MapGet("/analytics/imported-orders/query", async (
+    ForgeDbContext db,
+    CancellationToken ct) =>
+{
+    var exists = await db.ExecuteScalarAsync<int>(
+        """
+        SELECT COUNT(1)
+        FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_SCHEMA = 'dbo'
+          AND TABLE_NAME = 'ForgeImportedOrderJsonFrame'
+        """,
+        cancellationToken: ct);
+
+    if (exists == 0)
+    {
+        return Results.NotFound(new
+        {
+            message = "Import table does not exist yet.",
+            requiredStep = "Call POST /dataframes/import/json first.",
+            table = "dbo.ForgeImportedOrderJsonFrame"
+        });
+    }
+
+    var frame = await db.Frame<dynamic>()
+        .From("dbo.ForgeImportedOrderJsonFrame")
+        .ToFrameAsync(ct);
+
+    return Results.Ok(new
+    {
+        rows = frame.RowCount,
+        columns = frame.Columns,
+        data = frame.Rows
+    });
+})
+.WithTags("DataFrames");
+app.MapPost("/dataframes/import/csv-to-table", async (
+    IFormFile file,
+    string tableName,
+    ForgeDbContext db,
+    CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(tableName))
+        return Results.BadRequest("tableName is required.");
+
+    if (!ForgeSqlNameValidator.IsSafeIdentifier(tableName))
+        return Results.BadRequest("Invalid tableName.");
+
+    await using var stream = file.OpenReadStream();
+
+    var frame = await ForgeDataFrame.FromCsvAsync(stream, ct);
+
+    await frame.ToTableAsync(
+        db,
+        tableName: tableName,
+        cancellationToken: ct);
+
+    return Results.Ok(new
+    {
+        message = "CSV imported successfully.",
+        tableName,
+        file.FileName,
+        rows = frame.RowCount,
+        columns = frame.Columns
+    });
+})
+.DisableAntiforgery()
+.WithTags("DataFrames");
+
+
+var userFriendlyExamples = app.MapGroup("/examples/user-friendly")
+    .WithTags("90 User Friendly API Examples");
+
+userFriendlyExamples.MapGet("/graph-insert-single", () => Results.Ok(new
+{
+    title = "Single entity insert",
+    description = "Use this when only the parent row should be inserted. Child collections are ignored.",
+    code = """
+await db.InsertAsync(product, ct);
+"""
+}));
+
+userFriendlyExamples.MapGet("/graph-insert-with-children", () => Results.Ok(new
+{
+    title = "Parent + all child collections insert",
+    description = "Use this when ForgeORM should insert the parent and every discovered child list, similar to EF graph insert. Provider-specific bulk/TVP support can be used internally.",
+    code = """
+var order = Order.Create(customerId, orderNumber);
+order.AddItem(productId: 10, quantity: 2, unitPrice: 1500);
+order.AddItem(productId: 12, quantity: 1, unitPrice: 950);
+
+await db.InsertGraphAsync(order, ct);
+"""
+}));
+
+userFriendlyExamples.MapGet("/graph-update-upsert-children", () => Results.Ok(new
+{
+    title = "Graph update with child upsert",
+    description = "Use this when ForgeORM should update the parent, update existing children, insert new children, and handle removed children according to the selected behavior.",
+    code = """
+order.ChangeStatus(OrderStatus.Paid);
+order.AddItem(productId: 15, quantity: 3, unitPrice: 700);
+
+await db.UpdateGraphAsync(order, options =>
+{
+    options.Children = GraphChildrenMode.ParentAndChildren;
+    options.ChildSaveBehavior = GraphChildSaveBehavior.Upsert;
+    options.RemovedChildren = GraphRemovedChildBehavior.SoftDelete;
+}, ct);
+"""
+}));
+
+userFriendlyExamples.MapGet("/graph-delete-modes", () => Results.Ok(new
+{
+    title = "Delete parent only, child only, or parent with children",
+    description = "Use explicit delete modes so a destructive operation is never ambiguous.",
+    code = """
+// Parent only.
+await db.DeleteAsync<Order>(orderId, ct);
+
+// Children only.
+await db.DeleteChildrenAsync<Order>(orderId, ct);
+
+// Parent and children.
+await db.DeleteGraphAsync<Order>(orderId, GraphDeleteMode.ParentAndChildren, ct);
+
+// Soft delete parent and children.
+await db.DeleteGraphAsync<Order>(orderId, GraphDeleteMode.SoftDeleteParentAndChildren, ct);
+"""
+}));
+
+userFriendlyExamples.MapGet("/query-sql-join-projection", () => Results.Ok(new
+{
+    title = "SQL-first QueryAst join projection",
+    description = "The SQL version remains available for advanced SQL scenarios.",
+    code = """
+var q = ForgeSql.Select<Product>()
+    .From("dbo.Products p")
+    .InnerJoin("dbo.Categories c", "c.Id = p.CategoryId")
+    .LeftJoin("dbo.Brands b", "b.Id = p.BrandId")
+    .CrossApply("SELECT TOP 1 o.Id FROM dbo.Orders o ORDER BY o.Id DESC", "latestOrder")
+    .Columns("p.Id", "p.Code", "p.Name", "p.Price", "c.Name AS CategoryName", "b.Name AS BrandName")
+    .OrderBySql("p.Id DESC")
+    .Take(20)
+    .Render(db.Provider);
+
+return await db.QueryAsync<ProductListItem>(q.Sql, q.Parameters, cancellationToken: ct);
+"""
+}));
+
+userFriendlyExamples.MapGet("/query-expression-join-projection", () => Results.Ok(new
+{
+    title = "Expression-first QueryAst join projection",
+    description = "The expression version should resolve table names from attributes and columns from expressions/projections.",
+    code = """
+var rows = await db.Query<Product>()
+    .InnerJoin<Category>((p, c) => p.CategoryId == c.Id)
+    .LeftJoin<Brand>((p, b) => p.BrandId == b.Id)
+    .CrossApply<Order>(
+        source => source.OrderByDescending(o => o.Id).Take(1),
+        alias: "latestOrder")
+    .Project<ProductListItem>((p, c, b) => new ProductListItem(
+        p.Id,
+        p.Code,
+        p.Name,
+        p.Price,
+        c.Name,
+        b.Name))
+    .OrderByDescending(p => p.Id)
+    .Take(20)
+    .ToListAsync(ct);
+
+return Results.Ok(rows);
+"""
+}));
+
+userFriendlyExamples.MapGet("/splitgraph-one-to-many-projection", () => Results.Ok(new
+{
+    title = "Split graph one-to-many with projection",
+    description = "The easy API should not expose ids => SQL. User provides parent key, child FK, and target projection.",
+    code = """
+var rows = await db.SplitGraph<Customer>()
+    .IncludeMany<Order>(
+        parentKey: c => c.Id,
+        childForeignKey: o => o.CustomerId)
+    .Project<CustomerWithOrdersDto>((customer, graph) => new CustomerWithOrdersDto
+    {
+        Id = customer.Id,
+        Name = customer.Name,
+        Orders = graph.Many<Order>()
+            .Select(o => new OrderListDto
+            {
+                Id = o.Id,
+                OrderNo = o.OrderNo,
+                GrandTotal = o.GrandTotal
+            })
+            .ToList()
+    })
+    .ToListAsync(ct);
+
+return Results.Ok(rows);
+"""
+}));
+
+userFriendlyExamples.MapGet("/bulk-ids-condition", () => Results.Ok(new
+{
+    title = "Bulk get/update/delete by ids and condition",
+    description = "Every bulk helper should have expression and SQL alternatives.",
+    code = """
+var selected = await db.GetByIdsAsync<Product, int>([1, 2, 3], ct);
+
+await db.UpdateByIdsAsync<Product, int>(
+    ids: [1, 2, 3],
+    values: new { Price = 999m },
+    cancellationToken: ct);
+
+await db.DeleteByConditionAsync<Product>(
+    predicate: p => p.Price <= 0,
+    cancellationToken: ct);
+
+await db.UpdateByConditionSqlAsync<Product>(
+    whereSql: "Price < @MinPrice",
+    whereParameters: new { MinPrice = 100m },
+    values: new { IsActive = false },
+    cancellationToken: ct);
+"""
+}));
+
+
+userFriendlyExamples.MapGet("/queryast-union-sql-expression", () => Results.Ok(new
+{
+    title = "QueryAst union, union all, intersect and except",
+    description = "Set operations are available as SQL methods and expression-configured methods.",
+    code = """
+// Expression-configured UNION ALL.
+var expressionUnion = ForgeSql.Select<Product>()
+    .Columns(p => p.Id, p => p.Code, p => p.Name)
+    .Where(p => p.Price > 100)
+    .UnionAll(q => q
+        .Columns(p => p.Id, p => p.Code, p => p.Name)
+        .Where(p => p.Price < 10))
+    .Render(db.Provider);
+
+// SQL UNION / INTERSECT / EXCEPT alternatives.
+var sqlUnion = ForgeSql.Select<Product>()
+    .From("dbo.Products p")
+    .ColumnsSql("p.Id", "p.Code", "p.Name")
+    .WhereSql("p.Price > @MinPrice", new { MinPrice = 100m })
+    .UnionSql("SELECT Id, Code, Name FROM dbo.ArchivedProducts WHERE Price > @MinPrice", new { MinPrice = 100m })
+    .IntersectSql("SELECT Id, Code, Name FROM dbo.Products WHERE IsActive = 1")
+    .ExceptSql("SELECT Id, Code, Name FROM dbo.BlockedProducts")
+    .Render(db.Provider);
+
+return await db.QueryAsync<ProductListItem>(expressionUnion.Sql, expressionUnion.Parameters, cancellationToken: ct);
+"""
+}));
+
+userFriendlyExamples.MapGet("/queryast-group-having-aggregate-expression", () => Results.Ok(new
+{
+    title = "Expression group by, having and aggregates",
+    description = "Aggregate columns and HAVING helpers can be built from expressions without writing raw SQL for common cases.",
+    code = """
+var q = ForgeSql.Select<Order>()
+    .Columns(o => o.CustomerId)
+    .Count("OrderCount")
+    .Sum(o => o.TotalAmount, "TotalSales")
+    .Average(o => o.TotalAmount, "AverageOrderValue")
+    .Min(o => o.TotalAmount, "SmallestOrder")
+    .Max(o => o.TotalAmount, "LargestOrder")
+    .GroupBy(o => o.CustomerId)
+    .HavingSum(o => o.TotalAmount, ">", 5000m)
+    .OrderByDescending(o => o.CustomerId)
+    .Render(db.Provider);
+
+return await db.QueryAsync<CustomerOrderAggregateDto>(q.Sql, q.Parameters, cancellationToken: ct);
+"""
+}));
+
+userFriendlyExamples.MapGet("/queryast-group-having-aggregate-sql", () => Results.Ok(new
+{
+    title = "SQL group by, having and aggregates",
+    description = "SQL alternatives remain available when the user needs aliases, provider-specific functions, or complex HAVING clauses.",
+    code = """
+var q = ForgeSql.Select<Order>()
+    .From("dbo.Orders o")
+    .ColumnsSql("o.CustomerId")
+    .AggregateSql("COUNT(1)", "OrderCount")
+    .AggregateSql("SUM(o.TotalAmount)", "TotalSales")
+    .AggregateSql("AVG(o.TotalAmount)", "AverageOrderValue")
+    .GroupBy("o.CustomerId")
+    .HavingSql("SUM(o.TotalAmount) > @MinSales")
+    .OrderBySql("TotalSales DESC")
+    .Render(db.Provider);
+
+return await db.QueryAsync<CustomerOrderAggregateDto>(q.Sql, new { MinSales = 5000m }, cancellationToken: ct);
+"""
+}));
+
 app.Run();
 
 [ForgeTable("Products")]
@@ -483,6 +1120,7 @@ public sealed class OrderItem
 public sealed class ProductCategory { public int ProductId { get; set; } public int CategoryId { get; set; } }
 public sealed record ProductListItem(int Id, string Code, string Name, decimal Price, string? CategoryName, string? BrandName);
 public sealed record OrderSummaryRecord(int Id, string OrderNo, OrderStatus Status, decimal GrandTotal, DateTimeOffset CreatedAt);
+public sealed record CustomerOrderAggregateDto(int CustomerId, int OrderCount, decimal TotalSales, decimal AverageOrderValue, decimal SmallestOrder, decimal LargestOrder);
 public enum OrderStatus
 {
     Draft = 0,
@@ -511,4 +1149,16 @@ public sealed class CreateOrderItemRequest
     public int Quantity { get; set; }
     public decimal UnitPrice { get; set; }
     public decimal LineTotal => Quantity * UnitPrice;
+}
+
+
+public sealed class NdpStatement
+{
+    [ForgeColumn("current_financial_stat_year")]
+    public int CurrentFinancialStatYear { get; set; }
+
+    [ForgeColumn("EBITDA_To_Total_Indebtedness")]
+    public decimal? EbitdaToTotalIndebtedness { get; set; }
+
+    public string Sector { get; set; } = string.Empty;
 }

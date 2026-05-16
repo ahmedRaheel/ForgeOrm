@@ -22,7 +22,19 @@ public sealed record ForgeRagAnswerContext(
     string Prompt);
 
 public interface IForgeEmbeddingProvider
+/// <summary>
+/// Defines the EmbedAsync operation.
+/// </summary>
+/// <param name="text">The text value.</param>
+/// <param name="cancellationToken">The cancellationToken value.</param>
+/// <returns>The result of the EmbedAsync operation.</returns>
 {
+    /// <summary>
+    /// Defines the EmbedAsync operation.
+    /// </summary>
+    /// <param name="text">The text value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the EmbedAsync operation.</returns>
     Task<float[]> EmbedAsync(
         string text,
         CancellationToken cancellationToken = default);
@@ -32,6 +44,12 @@ public sealed class DeterministicEmbeddingProvider : IForgeEmbeddingProvider
 {
     private const int Dimensions = 64;
 
+    /// <summary>
+    /// Executes the EmbedAsync operation.
+    /// </summary>
+    /// <param name="text">The text value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the EmbedAsync operation.</returns>
     public Task<float[]> EmbedAsync(
         string text,
         CancellationToken cancellationToken = default)
@@ -57,11 +75,44 @@ public sealed class DeterministicEmbeddingProvider : IForgeEmbeddingProvider
 }
 
 public interface IForgeRagEngine
+/// <summary>
+/// Defines the IngestAsync operation.
+/// </summary>
+/// <param name="document">The document value.</param>
+/// <param name="cancellationToken">The cancellationToken value.</param>
+/// <returns>The result of the IngestAsync operation.</returns>
 {
+    /// <summary>
+    /// Defines the IngestAsync operation.
+    /// </summary>
+    /// <param name="document">The document value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the IngestAsync operation.</returns>
     Task<IReadOnlyList<ForgeRagChunk>> IngestAsync(
         ForgeRagDocument document,
         CancellationToken cancellationToken = default);
 
+/// <summary>
+
+/// Defines the BuildContextAsync operation.
+
+/// </summary>
+
+/// <param name="question">The question value.</param>
+
+/// <param name="topK">The topK value.</param>
+
+/// <param name="cancellationToken">The cancellationToken value.</param>
+
+/// <returns>The result of the BuildContextAsync operation.</returns>
+
+    /// <summary>
+    /// Defines the BuildContextAsync operation.
+    /// </summary>
+    /// <param name="question">The question value.</param>
+    /// <param name="topK">The topK value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the BuildContextAsync operation.</returns>
     Task<ForgeRagAnswerContext> BuildContextAsync(
         string question,
         int topK = 5,
@@ -73,6 +124,12 @@ public sealed class ForgeRagEngine : IForgeRagEngine
     private readonly IForgeVectorStore _vectorStore;
     private readonly IForgeEmbeddingProvider _embeddingProvider;
 
+    /// <summary>
+    /// Executes the ForgeRagEngine operation.
+    /// </summary>
+    /// <param name="vectorStore">The vectorStore value.</param>
+    /// <param name="embeddingProvider">The embeddingProvider value.</param>
+    /// <returns>The result of the ForgeRagEngine operation.</returns>
     public ForgeRagEngine(
         IForgeVectorStore vectorStore,
         IForgeEmbeddingProvider embeddingProvider)
@@ -81,6 +138,12 @@ public sealed class ForgeRagEngine : IForgeRagEngine
         _embeddingProvider = embeddingProvider;
     }
 
+    /// <summary>
+    /// Executes the IngestAsync operation.
+    /// </summary>
+    /// <param name="document">The document value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the IngestAsync operation.</returns>
     public async Task<IReadOnlyList<ForgeRagChunk>> IngestAsync(
         ForgeRagDocument document,
         CancellationToken cancellationToken = default)
@@ -127,6 +190,13 @@ public sealed class ForgeRagEngine : IForgeRagEngine
         return chunks;
     }
 
+    /// <summary>
+    /// Executes the BuildContextAsync operation.
+    /// </summary>
+    /// <param name="question">The question value.</param>
+    /// <param name="topK">The topK value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the BuildContextAsync operation.</returns>
     public async Task<ForgeRagAnswerContext> BuildContextAsync(
         string question,
         int topK = 5,
@@ -213,6 +283,11 @@ public sealed record RagQuestionRequest
 }
 public static class ForgeRagServiceCollectionExtensions
 {
+    /// <summary>
+    /// Executes the AddForgeRag operation.
+    /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <returns>The result of the AddForgeRag operation.</returns>
     public static IServiceCollection AddForgeRag(this IServiceCollection services)
     {
         services.AddSingleton<IForgeEmbeddingProvider, DeterministicEmbeddingProvider>();

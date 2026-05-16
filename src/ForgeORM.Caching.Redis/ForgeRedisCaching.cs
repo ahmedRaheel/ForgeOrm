@@ -10,10 +10,48 @@ public sealed record ForgeCacheOptions(string KeyPrefix = "forgeorm", TimeSpan D
 }
 
 public interface IForgeQueryCache
+/// <summary>
+/// Defines the T operation.
+/// </summary>
+/// <typeparam name="T">The type used by the operation.</typeparam>
+/// <param name="key">The key value.</param>
+/// <param name="cancellationToken">The cancellationToken value.</param>
+/// <returns>The result of the T operation.</returns>
 {
+    /// <summary>
+    /// Defines the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="key">The key value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the T operation.</returns>
     Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Defines the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="key">The key value.</param>
+    /// <param name="value">The value value.</param>
+    /// <param name="ttl">The ttl value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the T operation.</returns>
     Task SetAsync<T>(string key, T value, TimeSpan? ttl = null, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Defines the RemoveAsync operation.
+    /// </summary>
+    /// <param name="key">The key value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the RemoveAsync operation.</returns>
     Task RemoveAsync(string key, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Defines the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="key">The key value.</param>
+    /// <param name="factory">The factory value.</param>
+    /// <param name="ttl">The ttl value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the T operation.</returns>
     Task<T> GetOrCreateAsync<T>(string key, Func<CancellationToken, Task<T>> factory, TimeSpan? ttl = null, CancellationToken cancellationToken = default);
 }
 
@@ -23,18 +61,40 @@ public sealed class ForgeDistributedQueryCache : IForgeQueryCache
     private readonly ForgeCacheOptions _options;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    /// <summary>
+    /// Executes the ForgeDistributedQueryCache operation.
+    /// </summary>
+    /// <param name="cache">The cache value.</param>
+    /// <param name="options">The options value.</param>
+    /// <returns>The result of the ForgeDistributedQueryCache operation.</returns>
     public ForgeDistributedQueryCache(IDistributedCache cache, ForgeCacheOptions? options = null)
     {
         _cache = cache;
         _options = options ?? new ForgeCacheOptions();
     }
 
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="key">The key value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the T operation.</returns>
     public async Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
     {
         var json = await _cache.GetStringAsync(BuildKey(key), cancellationToken);
         return string.IsNullOrWhiteSpace(json) ? default : JsonSerializer.Deserialize<T>(json, JsonOptions);
     }
 
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="key">The key value.</param>
+    /// <param name="value">The value value.</param>
+    /// <param name="ttl">The ttl value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the T operation.</returns>
     public async Task SetAsync<T>(string key, T value, TimeSpan? ttl = null, CancellationToken cancellationToken = default)
     {
         var json = JsonSerializer.Serialize(value, JsonOptions);
@@ -44,9 +104,24 @@ public sealed class ForgeDistributedQueryCache : IForgeQueryCache
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Executes the RemoveAsync operation.
+    /// </summary>
+    /// <param name="key">The key value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the RemoveAsync operation.</returns>
     public Task RemoveAsync(string key, CancellationToken cancellationToken = default)
         => _cache.RemoveAsync(BuildKey(key), cancellationToken);
 
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="key">The key value.</param>
+    /// <param name="factory">The factory value.</param>
+    /// <param name="ttl">The ttl value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the T operation.</returns>
     public async Task<T> GetOrCreateAsync<T>(string key, Func<CancellationToken, Task<T>> factory, TimeSpan? ttl = null, CancellationToken cancellationToken = default)
     {
         var cached = await GetAsync<T>(key, cancellationToken);
@@ -64,6 +139,13 @@ public sealed class ForgeMemoryQueryCache : IForgeQueryCache
     private readonly Dictionary<string, (DateTimeOffset Expiry, object Value)> _items = new();
     private readonly object _gate = new();
 
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="key">The key value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the T operation.</returns>
     public Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
     {
         lock (_gate)
@@ -78,18 +160,42 @@ public sealed class ForgeMemoryQueryCache : IForgeQueryCache
         }
     }
 
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="key">The key value.</param>
+    /// <param name="value">The value value.</param>
+    /// <param name="ttl">The ttl value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the T operation.</returns>
     public Task SetAsync<T>(string key, T value, TimeSpan? ttl = null, CancellationToken cancellationToken = default)
     {
         lock (_gate) _items[key] = (DateTimeOffset.UtcNow.Add(ttl ?? TimeSpan.FromMinutes(10)), value!);
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Executes the RemoveAsync operation.
+    /// </summary>
+    /// <param name="key">The key value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the RemoveAsync operation.</returns>
     public Task RemoveAsync(string key, CancellationToken cancellationToken = default)
     {
         lock (_gate) _items.Remove(key);
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="key">The key value.</param>
+    /// <param name="factory">The factory value.</param>
+    /// <param name="ttl">The ttl value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the T operation.</returns>
     public async Task<T> GetOrCreateAsync<T>(string key, Func<CancellationToken, Task<T>> factory, TimeSpan? ttl = null, CancellationToken cancellationToken = default)
     {
         var cached = await GetAsync<T>(key, cancellationToken);
@@ -102,6 +208,12 @@ public sealed class ForgeMemoryQueryCache : IForgeQueryCache
 
 public static class ForgeCachingServiceCollectionExtensions
 {
+    /// <summary>
+    /// Executes the AddForgeRedisQueryCaching operation.
+    /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <param name="options">The options value.</param>
+    /// <returns>The result of the AddForgeRedisQueryCaching operation.</returns>
     public static IServiceCollection AddForgeRedisQueryCaching(this IServiceCollection services, ForgeCacheOptions? options = null)
     {
         services.AddSingleton(options ?? new ForgeCacheOptions());
@@ -109,6 +221,11 @@ public static class ForgeCachingServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    /// Executes the AddForgeMemoryQueryCaching operation.
+    /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <returns>The result of the AddForgeMemoryQueryCaching operation.</returns>
     public static IServiceCollection AddForgeMemoryQueryCaching(this IServiceCollection services)
     {
         services.AddSingleton<IForgeQueryCache, ForgeMemoryQueryCache>();

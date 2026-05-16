@@ -38,7 +38,7 @@
     <!-- SQLite -->
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="8.0.10" />
    
-
+  <PackageVersion Include="Microsoft.Data.Analysis" Version="0.23.0" />
   </ItemGroup>
 
 </Project>

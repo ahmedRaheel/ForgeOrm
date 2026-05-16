@@ -7,8 +7,31 @@ namespace ForgeORM.Core;
 
 public static class ForgeAdo
 {
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="connection">The connection value.</param>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <param name="transaction">The transaction value.</param>
+    /// <param name="commandType">The commandType value.</param>
+    /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
+    /// <returns>The result of the T operation.</returns>
     public static IReadOnlyList<T> Query<T>(DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null)
         => QueryAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds).GetAwaiter().GetResult();
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="connection">The connection value.</param>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <param name="transaction">The transaction value.</param>
+    /// <param name="commandType">The commandType value.</param>
+    /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the T operation.</returns>
     public static async Task<IReadOnlyList<T>> QueryAsync<T>(
         DbConnection connection,
         string sql,
@@ -33,6 +56,18 @@ public static class ForgeAdo
         return rows;
     }
 
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="connection">The connection value.</param>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <param name="transaction">The transaction value.</param>
+    /// <param name="commandType">The commandType value.</param>
+    /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the T operation.</returns>
     public static async Task<T?> QuerySingleOrDefaultAsync<T>(
         DbConnection connection,
         string sql,
@@ -53,8 +88,29 @@ public static class ForgeAdo
 
         return rows.FirstOrDefault();
     }
+    /// <summary>
+    /// Executes the Execute operation.
+    /// </summary>
+    /// <param name="connection">The connection value.</param>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <param name="transaction">The transaction value.</param>
+    /// <param name="commandType">The commandType value.</param>
+    /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
+    /// <returns>The result of the Execute operation.</returns>
     public static int Execute(DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null)
       => ExecuteAsync(connection, sql, parameters, transaction, commandType, timeoutSeconds).GetAwaiter().GetResult();
+    /// <summary>
+    /// Executes the ExecuteAsync operation.
+    /// </summary>
+    /// <param name="connection">The connection value.</param>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <param name="transaction">The transaction value.</param>
+    /// <param name="commandType">The commandType value.</param>
+    /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the ExecuteAsync operation.</returns>
     public static async Task<int> ExecuteAsync(
         DbConnection connection,
         string sql,
@@ -70,9 +126,32 @@ public static class ForgeAdo
         await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
         return await command.ExecuteNonQueryAsync(cancellationToken);
     }
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="connection">The connection value.</param>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <param name="transaction">The transaction value.</param>
+    /// <param name="commandType">The commandType value.</param>
+    /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
+    /// <returns>The result of the T operation.</returns>
     public static T? ExecuteScalar<T>(DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null)
       => ExecuteScalarAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds).GetAwaiter().GetResult();
 
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="connection">The connection value.</param>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <param name="transaction">The transaction value.</param>
+    /// <param name="commandType">The commandType value.</param>
+    /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the T operation.</returns>
     public static async Task<T?> ExecuteScalarAsync<T>(
         DbConnection connection,
         string sql,
@@ -91,6 +170,16 @@ public static class ForgeAdo
         return ForgeValueConverter.FromDatabase<T>(value);
     }
 
+    /// <summary>
+    /// Executes the CreateCommand operation.
+    /// </summary>
+    /// <param name="connection">The connection value.</param>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <param name="transaction">The transaction value.</param>
+    /// <param name="commandType">The commandType value.</param>
+    /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
+    /// <returns>The result of the CreateCommand operation.</returns>
     public static DbCommand CreateCommand(
         DbConnection connection,
         string sql,
@@ -117,6 +206,12 @@ public static class ForgeAdo
     private static void BindParameters(DbCommand command, object? parameters)
     {
         if (parameters is null)
+            return;
+
+        // Defensive guard: a CancellationToken must never be treated as SQL parameters.
+        // This prevents provider errors such as ManualResetEvent being bound as a parameter
+        // when callers accidentally pass ct in the parameters position.
+        if (parameters is CancellationToken)
             return;
 
         if (parameters is IReadOnlyDictionary<string, object?> dictionary)
@@ -203,5 +298,55 @@ public static class ForgeAdo
         return value is IEnumerable;
     }
 
+    /// <summary>
+    /// Executes the QueryDynamicAsync operation.
+    /// </summary>
+    /// <param name="connection">The connection value.</param>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="parameters">The parameters value.</param>
+    /// <param name="transaction">The transaction value.</param>
+    /// <param name="commandType">The commandType value.</param>
+    /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the QueryDynamicAsync operation.</returns>
+    public static async Task<IReadOnlyList<IDictionary<string, object?>>> QueryDynamicAsync(
+    DbConnection connection,
+    string sql,
+    object? parameters = null,
+    DbTransaction? transaction = null,
+    CommandType commandType = CommandType.Text,
+    int? timeoutSeconds = null,
+    CancellationToken cancellationToken = default)
+    {
+        await using var command = CreateCommand(
+            connection,
+            sql,
+            parameters,
+            transaction,
+            commandType,
+            timeoutSeconds);
 
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        var rows = new List<IDictionary<string, object?>>();
+
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+            for (var i = 0; i < reader.FieldCount; i++)
+            {
+                row[reader.GetName(i)] = reader.IsDBNull(i)
+                    ? null
+                    : reader.GetValue(i);
+            }
+
+            rows.Add(row);
+        }
+
+        return rows;
+    }
 }

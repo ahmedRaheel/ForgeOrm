@@ -45,17 +45,38 @@ public sealed class InMemoryForgeCompiledQueryCache : IForgeCompiledQueryCache
 {
     private readonly ConcurrentDictionary<ForgeCompiledQueryKey, string> _cache = new();
 
+    /// <summary>
+    /// Executes the TryGet operation.
+    /// </summary>
+    /// <param name="key">The key value.</param>
+    /// <param name="sql">The sql value.</param>
+    /// <returns>The result of the TryGet operation.</returns>
     public bool TryGet(ForgeCompiledQueryKey key, out string sql)
         => _cache.TryGetValue(key, out sql!);
 
+    /// <summary>
+    /// Executes the Set operation.
+    /// </summary>
+    /// <param name="key">The key value.</param>
+    /// <param name="sql">The sql value.</param>
     public void Set(ForgeCompiledQueryKey key, string sql)
         => _cache[key] = sql;
 
+    /// <summary>
+    /// Executes the Clear operation.
+    /// </summary>
     public void Clear() => _cache.Clear();
 }
 
 public sealed class StaticForgeTenantProvider : IForgeTenantProvider
 {
+    /// <summary>
+    /// Executes the StaticForgeTenantProvider operation.
+    /// </summary>
+    /// <param name="tenantId">The tenantId value.</param>
+    /// <param name="connectionString">The connectionString value.</param>
+    /// <param name="schema">The schema value.</param>
+    /// <returns>The result of the StaticForgeTenantProvider operation.</returns>
     public StaticForgeTenantProvider(string tenantId = "default", string? connectionString = null, string? schema = null)
         => Current = new ForgeTenantContext(tenantId, connectionString, schema);
 
@@ -70,6 +91,13 @@ public sealed class SystemForgeAuditUserProvider : IForgeAuditUserProvider
 
 public static class ForgeAudit
 {
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="entity">The entity value.</param>
+    /// <param name="userProvider">The userProvider value.</param>
+    /// <returns>The result of the T operation.</returns>
     public static void StampCreate<T>(T entity, IForgeAuditUserProvider userProvider) where T : IForgeAuditable
     {
         entity.CreatedAt = DateTimeOffset.UtcNow;
@@ -77,12 +105,26 @@ public static class ForgeAudit
         entity.IsDeleted = false;
     }
 
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="entity">The entity value.</param>
+    /// <param name="userProvider">The userProvider value.</param>
+    /// <returns>The result of the T operation.</returns>
     public static void StampUpdate<T>(T entity, IForgeAuditUserProvider userProvider) where T : IForgeAuditable
     {
         entity.UpdatedAt = DateTimeOffset.UtcNow;
         entity.UpdatedBy = userProvider.UserName ?? userProvider.UserId;
     }
 
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="entity">The entity value.</param>
+    /// <param name="userProvider">The userProvider value.</param>
+    /// <returns>The result of the T operation.</returns>
     public static void SoftDelete<T>(T entity, IForgeAuditUserProvider userProvider) where T : IForgeAuditable
     {
         entity.IsDeleted = true;
@@ -95,6 +137,13 @@ public sealed class InMemoryForgeCacheProvider : IForgeCacheProvider
     private sealed record CacheItem(object? Value, DateTimeOffset ExpiresAt);
     private readonly ConcurrentDictionary<string, CacheItem> _cache = new();
 
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="key">The key value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the T operation.</returns>
     public Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
     {
         if (!_cache.TryGetValue(key, out var item))
@@ -109,12 +158,27 @@ public sealed class InMemoryForgeCacheProvider : IForgeCacheProvider
         return Task.FromResult((T?)item.Value);
     }
 
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="key">The key value.</param>
+    /// <param name="value">The value value.</param>
+    /// <param name="ttl">The ttl value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the T operation.</returns>
     public Task SetAsync<T>(string key, T value, TimeSpan ttl, CancellationToken cancellationToken = default)
     {
         _cache[key] = new CacheItem(value, DateTimeOffset.UtcNow.Add(ttl));
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Executes the RemoveAsync operation.
+    /// </summary>
+    /// <param name="key">The key value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the RemoveAsync operation.</returns>
     public Task RemoveAsync(string key, CancellationToken cancellationToken = default)
     {
         _cache.TryRemove(key, out _);
@@ -126,12 +190,24 @@ public sealed class InMemoryForgeOutboxStore : IForgeOutboxStore
 {
     private readonly ConcurrentDictionary<Guid, ForgeOutboxMessage> _messages = new();
 
+    /// <summary>
+    /// Executes the EnqueueAsync operation.
+    /// </summary>
+    /// <param name="message">The message value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the EnqueueAsync operation.</returns>
     public Task EnqueueAsync(ForgeOutboxMessage message, CancellationToken cancellationToken = default)
     {
         _messages[message.Id] = message;
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Executes the GetPendingAsync operation.
+    /// </summary>
+    /// <param name="take">The take value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the GetPendingAsync operation.</returns>
     public Task<IReadOnlyList<ForgeOutboxMessage>> GetPendingAsync(int take = 100, CancellationToken cancellationToken = default)
     {
         IReadOnlyList<ForgeOutboxMessage> pending = _messages.Values
@@ -143,6 +219,12 @@ public sealed class InMemoryForgeOutboxStore : IForgeOutboxStore
         return Task.FromResult(pending);
     }
 
+    /// <summary>
+    /// Executes the MarkProcessedAsync operation.
+    /// </summary>
+    /// <param name="id">The id value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the MarkProcessedAsync operation.</returns>
     public Task MarkProcessedAsync(Guid id, CancellationToken cancellationToken = default)
     {
         if (_messages.TryGetValue(id, out var message))
@@ -151,6 +233,14 @@ public sealed class InMemoryForgeOutboxStore : IForgeOutboxStore
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="event">The event value.</param>
+    /// <param name="tenantId">The tenantId value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the T operation.</returns>
     public Task EnqueueDomainEventAsync<T>(T @event, string? tenantId = null, CancellationToken cancellationToken = default)
     {
         var message = new ForgeOutboxMessage(
@@ -166,6 +256,12 @@ public sealed class InMemoryForgeOutboxStore : IForgeOutboxStore
 
 public sealed class ForgeReportingEngine : IForgeReportingEngine
 {
+    /// <summary>
+    /// Executes the Build operation.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <param name="provider">The provider value.</param>
+    /// <returns>The result of the Build operation.</returns>
     public ForgeReportSql Build(ForgeReportRequest request, string provider = "SqlServer")
     {
         if (string.IsNullOrWhiteSpace(request.From))

@@ -7,6 +7,11 @@ public sealed record ForgeEnterpriseAnalysis(
 
 public sealed class ForgeEnterpriseAnalyzer
 {
+    /// <summary>
+    /// Executes the AnalyzeSql operation.
+    /// </summary>
+    /// <param name="sql">The sql value.</param>
+    /// <returns>The result of the AnalyzeSql operation.</returns>
     public ForgeEnterpriseAnalysis AnalyzeSql(string sql)
     {
         var warnings = new List<string>();

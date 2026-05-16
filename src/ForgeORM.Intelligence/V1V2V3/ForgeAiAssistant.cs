@@ -4,6 +4,12 @@ namespace ForgeORM.Intelligence;
 
 public sealed class ForgeAiAssistant : IForgeAiQueryClient, IForgeApiGenerator, IForgeMigrationPlanner, IForgeSchemaScaffolder
 {
+    /// <summary>
+    /// Executes the GenerateSqlAsync operation.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the GenerateSqlAsync operation.</returns>
     public Task<ForgeAiQueryResult> GenerateSqlAsync(ForgeAiQueryRequest request, CancellationToken cancellationToken = default)
     {
         var entity = string.IsNullOrWhiteSpace(request.EntityName) ? "Records" : request.EntityName;
@@ -39,6 +45,11 @@ public sealed class ForgeAiAssistant : IForgeAiQueryClient, IForgeApiGenerator, 
             indexes));
     }
 
+    /// <summary>
+    /// Executes the GenerateCrudApi operation.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <returns>The result of the GenerateCrudApi operation.</returns>
     public IReadOnlyList<ForgeGeneratedFile> GenerateCrudApi(ForgeApiGenerationRequest request)
     {
         var route = request.RoutePrefix.Trim('/');
@@ -63,6 +74,13 @@ public sealed class ForgeAiAssistant : IForgeAiQueryClient, IForgeApiGenerator, 
         return [new ForgeGeneratedFile($"{request.EntityName}Endpoints.cs", code)];
     }
 
+    /// <summary>
+    /// Executes the Plan operation.
+    /// </summary>
+    /// <param name="name">The name value.</param>
+    /// <param name="currentSchema">The currentSchema value.</param>
+    /// <param name="targetSchema">The targetSchema value.</param>
+    /// <returns>The result of the Plan operation.</returns>
     public ForgeMigrationPlan Plan(string name, IReadOnlyList<string> currentSchema, IReadOnlyList<string> targetSchema)
     {
         var up = targetSchema.Except(currentSchema, StringComparer.OrdinalIgnoreCase).ToList();
@@ -74,6 +92,12 @@ public sealed class ForgeAiAssistant : IForgeAiQueryClient, IForgeApiGenerator, 
             down.Count == 0 ? ["-- No rollback changes detected."] : down);
     }
 
+    /// <summary>
+    /// Executes the ScaffoldAsync operation.
+    /// </summary>
+    /// <param name="request">The request value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the ScaffoldAsync operation.</returns>
     public Task<IReadOnlyList<ForgeGeneratedFile>> ScaffoldAsync(ForgeScaffoldRequest request, CancellationToken cancellationToken = default)
     {
         IReadOnlyList<ForgeGeneratedFile> files =

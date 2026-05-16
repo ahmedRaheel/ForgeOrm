@@ -7,7 +7,21 @@ namespace ForgeORM.Security;
 public sealed record ForgeSqlSafetyResult(bool IsSafe, IReadOnlyList<string> Violations);
 
 public interface IForgeSqlSecurityValidator
+/// <summary>
+/// Defines the Validate operation.
+/// </summary>
+/// <param name="sql">The sql value.</param>
+/// <param name="allowDdl">The allowDdl value.</param>
+/// <param name="allowDangerous">The allowDangerous value.</param>
+/// <returns>The result of the Validate operation.</returns>
 {
+    /// <summary>
+    /// Defines the Validate operation.
+    /// </summary>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="allowDdl">The allowDdl value.</param>
+    /// <param name="allowDangerous">The allowDangerous value.</param>
+    /// <returns>The result of the Validate operation.</returns>
     ForgeSqlSafetyResult Validate(string sql, bool allowDdl = false, bool allowDangerous = false);
 }
 
@@ -16,6 +30,13 @@ public sealed class ForgeSqlSecurityValidator : IForgeSqlSecurityValidator
     private static readonly string[] DangerousTokens = ["DROP ", "TRUNCATE ", "EXEC ", "EXECUTE ", "xp_", "sp_configure", "--", "/*", "*/"];
     private static readonly string[] DdlTokens = ["CREATE ", "ALTER ", "DROP "];
 
+    /// <summary>
+    /// Executes the Validate operation.
+    /// </summary>
+    /// <param name="sql">The sql value.</param>
+    /// <param name="allowDdl">The allowDdl value.</param>
+    /// <param name="allowDangerous">The allowDangerous value.</param>
+    /// <returns>The result of the Validate operation.</returns>
     public ForgeSqlSafetyResult Validate(string sql, bool allowDdl = false, bool allowDangerous = false)
     {
         var upper = $" {sql.ToUpperInvariant()} ";
@@ -30,20 +51,59 @@ public sealed class ForgeSqlSecurityValidator : IForgeSqlSecurityValidator
 }
 
 public interface IForgeDataMasker
+/// <summary>
+/// Defines the MaskEmail operation.
+/// </summary>
+/// <param name="email">The email value.</param>
+/// <returns>The result of the MaskEmail operation.</returns>
 {
+    /// <summary>
+    /// Defines the MaskEmail operation.
+    /// </summary>
+    /// <param name="email">The email value.</param>
+    /// <returns>The result of the MaskEmail operation.</returns>
     string MaskEmail(string email);
+    /// <summary>
+    /// Defines the MaskPhone operation.
+    /// </summary>
+    /// <param name="phone">The phone value.</param>
+    /// <returns>The result of the MaskPhone operation.</returns>
     string MaskPhone(string phone);
+    /// <summary>
+    /// Defines the Mask operation.
+    /// </summary>
+    /// <param name="value">The value value.</param>
+    /// <param name="visibleStart">The visibleStart value.</param>
+    /// <param name="visibleEnd">The visibleEnd value.</param>
+    /// <returns>The result of the Mask operation.</returns>
     string Mask(string value, int visibleStart = 2, int visibleEnd = 2);
 }
 
 public sealed class ForgeDataMasker : IForgeDataMasker
 {
+    /// <summary>
+    /// Executes the MaskEmail operation.
+    /// </summary>
+    /// <param name="email">The email value.</param>
+    /// <returns>The result of the MaskEmail operation.</returns>
     public string MaskEmail(string email)
     {
         var parts = email.Split('@');
         return parts.Length == 2 ? $"{Mask(parts[0], 1, 1)}@{parts[1]}" : Mask(email);
     }
+    /// <summary>
+    /// Executes the MaskPhone operation.
+    /// </summary>
+    /// <param name="phone">The phone value.</param>
+    /// <returns>The result of the MaskPhone operation.</returns>
     public string MaskPhone(string phone) => Mask(phone, 2, 2);
+    /// <summary>
+    /// Executes the Mask operation.
+    /// </summary>
+    /// <param name="value">The value value.</param>
+    /// <param name="visibleStart">The visibleStart value.</param>
+    /// <param name="visibleEnd">The visibleEnd value.</param>
+    /// <returns>The result of the Mask operation.</returns>
     public string Mask(string value, int visibleStart = 2, int visibleEnd = 2)
     {
         if (string.IsNullOrEmpty(value)) return value;
@@ -53,13 +113,37 @@ public sealed class ForgeDataMasker : IForgeDataMasker
 }
 
 public interface IForgeColumnEncryptor
+/// <summary>
+/// Defines the EncryptToBase64 operation.
+/// </summary>
+/// <param name="plainText">The plainText value.</param>
+/// <param name="key">The key value.</param>
+/// <returns>The result of the EncryptToBase64 operation.</returns>
 {
+    /// <summary>
+    /// Defines the EncryptToBase64 operation.
+    /// </summary>
+    /// <param name="plainText">The plainText value.</param>
+    /// <param name="key">The key value.</param>
+    /// <returns>The result of the EncryptToBase64 operation.</returns>
     string EncryptToBase64(string plainText, string key);
+    /// <summary>
+    /// Defines the DecryptFromBase64 operation.
+    /// </summary>
+    /// <param name="cipherText">The cipherText value.</param>
+    /// <param name="key">The key value.</param>
+    /// <returns>The result of the DecryptFromBase64 operation.</returns>
     string DecryptFromBase64(string cipherText, string key);
 }
 
 public sealed class ForgeAesColumnEncryptor : IForgeColumnEncryptor
 {
+    /// <summary>
+    /// Executes the EncryptToBase64 operation.
+    /// </summary>
+    /// <param name="plainText">The plainText value.</param>
+    /// <param name="key">The key value.</param>
+    /// <returns>The result of the EncryptToBase64 operation.</returns>
     public string EncryptToBase64(string plainText, string key)
     {
         using var aes = Aes.Create();
@@ -71,6 +155,12 @@ public sealed class ForgeAesColumnEncryptor : IForgeColumnEncryptor
         return Convert.ToBase64String(aes.IV.Concat(cipher).ToArray());
     }
 
+    /// <summary>
+    /// Executes the DecryptFromBase64 operation.
+    /// </summary>
+    /// <param name="cipherText">The cipherText value.</param>
+    /// <param name="key">The key value.</param>
+    /// <returns>The result of the DecryptFromBase64 operation.</returns>
     public string DecryptFromBase64(string cipherText, string key)
     {
         var payload = Convert.FromBase64String(cipherText);
@@ -86,6 +176,11 @@ public sealed class ForgeAesColumnEncryptor : IForgeColumnEncryptor
 
 public static class ForgeSecurityServiceCollectionExtensions
 {
+    /// <summary>
+    /// Executes the AddForgeSecurity operation.
+    /// </summary>
+    /// <param name="services">The services value.</param>
+    /// <returns>The result of the AddForgeSecurity operation.</returns>
     public static IServiceCollection AddForgeSecurity(this IServiceCollection services)
     {
         services.AddSingleton<IForgeSqlSecurityValidator, ForgeSqlSecurityValidator>();
@@ -96,11 +191,47 @@ public static class ForgeSecurityServiceCollectionExtensions
 }
 public sealed record AuthorizeRequest
 {
+    /// <summary>
+    /// Executes the string operation.
+    /// </summary>
+    /// <typeparam name="string">The type used by the operation.</typeparam>
+    /// <typeparam name="string">The type used by the operation.</typeparam>
+    /// <returns>The result of the string operation.</returns>
     public required string UserId { get; init; }
+    /// <summary>
+    /// Executes the string operation.
+    /// </summary>
+    /// <typeparam name="string">The type used by the operation.</typeparam>
+    /// <typeparam name="string">The type used by the operation.</typeparam>
+    /// <returns>The result of the string operation.</returns>
     public required string Resource { get; init; }
+    /// <summary>
+    /// Executes the string operation.
+    /// </summary>
+    /// <typeparam name="string">The type used by the operation.</typeparam>
+    /// <typeparam name="string">The type used by the operation.</typeparam>
+    /// <returns>The result of the string operation.</returns>
     public required string Action { get; init; }
+    /// <summary>
+    /// Executes the string operation.
+    /// </summary>
+    /// <typeparam name="string">The type used by the operation.</typeparam>
+    /// <typeparam name="string">The type used by the operation.</typeparam>
+    /// <returns>The result of the string operation.</returns>
     public string? TenantId { get; init; }
+    /// <summary>
+    /// Executes the string operation.
+    /// </summary>
+    /// <typeparam name="string">The type used by the operation.</typeparam>
+    /// <typeparam name="string">The type used by the operation.</typeparam>
+    /// <returns>The result of the string operation.</returns>
     public IReadOnlyList<string> Roles { get; init; }        = [];
+    /// <summary>
+    /// Executes the string operation.
+    /// </summary>
+    /// <typeparam name="string">The type used by the operation.</typeparam>
+    /// <typeparam name="string">The type used by the operation.</typeparam>
+    /// <returns>The result of the string operation.</returns>
     public IReadOnlyDictionary<string, string> Claims { get; init; }   = new Dictionary<string, string>();
     public IReadOnlyDictionary<string, string>? Metadata { get; init; }
     public string? IpAddress { get; init; }

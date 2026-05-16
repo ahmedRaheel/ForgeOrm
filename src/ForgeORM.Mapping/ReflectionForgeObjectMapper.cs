@@ -4,13 +4,37 @@ using System.Reflection;
 namespace ForgeORM.Mapping;
 
 public interface IForgeObjectMapper
+/// <summary>
+/// Defines the T operation.
+/// </summary>
+/// <typeparam name="T">The type used by the operation.</typeparam>
+/// <param name="record">The record value.</param>
+/// <returns>The result of the T operation.</returns>
 {
+    /// <summary>
+    /// Defines the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="record">The record value.</param>
+    /// <returns>The result of the T operation.</returns>
     T Map<T>(IDataRecord record);
+    /// <summary>
+    /// Defines the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="reader">The reader value.</param>
+    /// <returns>The result of the T operation.</returns>
     IReadOnlyList<T> MapList<T>(IDataReader reader);
 }
 
 public sealed class ReflectionForgeObjectMapper : IForgeObjectMapper
 {
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="record">The record value.</param>
+    /// <returns>The result of the T operation.</returns>
     public T Map<T>(IDataRecord record)
     {
         var obj = Activator.CreateInstance<T>();
@@ -26,6 +50,12 @@ public sealed class ReflectionForgeObjectMapper : IForgeObjectMapper
         return obj;
     }
 
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="reader">The reader value.</param>
+    /// <returns>The result of the T operation.</returns>
     public IReadOnlyList<T> MapList<T>(IDataReader reader)
     {
         var list = new List<T>();

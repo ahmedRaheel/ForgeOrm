@@ -808,6 +808,166 @@ app.MapPost("/dataframes/import/csv-to-table", async (
 })
 .DisableAntiforgery()
 .WithTags("DataFrames");
+
+
+var userFriendlyExamples = app.MapGroup("/examples/user-friendly")
+    .WithTags("90 User Friendly API Examples");
+
+userFriendlyExamples.MapGet("/graph-insert-single", () => Results.Ok(new
+{
+    title = "Single entity insert",
+    description = "Use this when only the parent row should be inserted. Child collections are ignored.",
+    code = """
+await db.InsertAsync(product, ct);
+"""
+}));
+
+userFriendlyExamples.MapGet("/graph-insert-with-children", () => Results.Ok(new
+{
+    title = "Parent + all child collections insert",
+    description = "Use this when ForgeORM should insert the parent and every discovered child list, similar to EF graph insert. Provider-specific bulk/TVP support can be used internally.",
+    code = """
+var order = Order.Create(customerId, orderNumber);
+order.AddItem(productId: 10, quantity: 2, unitPrice: 1500);
+order.AddItem(productId: 12, quantity: 1, unitPrice: 950);
+
+await db.InsertGraphAsync(order, ct);
+"""
+}));
+
+userFriendlyExamples.MapGet("/graph-update-upsert-children", () => Results.Ok(new
+{
+    title = "Graph update with child upsert",
+    description = "Use this when ForgeORM should update the parent, update existing children, insert new children, and handle removed children according to the selected behavior.",
+    code = """
+order.ChangeStatus(OrderStatus.Paid);
+order.AddItem(productId: 15, quantity: 3, unitPrice: 700);
+
+await db.UpdateGraphAsync(order, options =>
+{
+    options.Children = GraphChildrenMode.ParentAndChildren;
+    options.ChildSaveBehavior = GraphChildSaveBehavior.Upsert;
+    options.RemovedChildren = GraphRemovedChildBehavior.SoftDelete;
+}, ct);
+"""
+}));
+
+userFriendlyExamples.MapGet("/graph-delete-modes", () => Results.Ok(new
+{
+    title = "Delete parent only, child only, or parent with children",
+    description = "Use explicit delete modes so a destructive operation is never ambiguous.",
+    code = """
+// Parent only.
+await db.DeleteAsync<Order>(orderId, ct);
+
+// Children only.
+await db.DeleteChildrenAsync<Order>(orderId, ct);
+
+// Parent and children.
+await db.DeleteGraphAsync<Order>(orderId, GraphDeleteMode.ParentAndChildren, ct);
+
+// Soft delete parent and children.
+await db.DeleteGraphAsync<Order>(orderId, GraphDeleteMode.SoftDeleteParentAndChildren, ct);
+"""
+}));
+
+userFriendlyExamples.MapGet("/query-sql-join-projection", () => Results.Ok(new
+{
+    title = "SQL-first QueryAst join projection",
+    description = "The SQL version remains available for advanced SQL scenarios.",
+    code = """
+var q = ForgeSql.Select<Product>()
+    .From("dbo.Products p")
+    .InnerJoin("dbo.Categories c", "c.Id = p.CategoryId")
+    .LeftJoin("dbo.Brands b", "b.Id = p.BrandId")
+    .CrossApply("SELECT TOP 1 o.Id FROM dbo.Orders o ORDER BY o.Id DESC", "latestOrder")
+    .Columns("p.Id", "p.Code", "p.Name", "p.Price", "c.Name AS CategoryName", "b.Name AS BrandName")
+    .OrderBySql("p.Id DESC")
+    .Take(20)
+    .Render(db.Provider);
+
+return await db.QueryAsync<ProductListItem>(q.Sql, q.Parameters, cancellationToken: ct);
+"""
+}));
+
+userFriendlyExamples.MapGet("/query-expression-join-projection", () => Results.Ok(new
+{
+    title = "Expression-first QueryAst join projection",
+    description = "The expression version should resolve table names from attributes and columns from expressions/projections.",
+    code = """
+var rows = await db.Query<Product>()
+    .InnerJoin<Category>((p, c) => p.CategoryId == c.Id)
+    .LeftJoin<Brand>((p, b) => p.BrandId == b.Id)
+    .CrossApply<Order>(
+        source => source.OrderByDescending(o => o.Id).Take(1),
+        alias: "latestOrder")
+    .Project<ProductListItem>((p, c, b) => new ProductListItem(
+        p.Id,
+        p.Code,
+        p.Name,
+        p.Price,
+        c.Name,
+        b.Name))
+    .OrderByDescending(p => p.Id)
+    .Take(20)
+    .ToListAsync(ct);
+
+return Results.Ok(rows);
+"""
+}));
+
+userFriendlyExamples.MapGet("/splitgraph-one-to-many-projection", () => Results.Ok(new
+{
+    title = "Split graph one-to-many with projection",
+    description = "The easy API should not expose ids => SQL. User provides parent key, child FK, and target projection.",
+    code = """
+var rows = await db.SplitGraph<Customer>()
+    .IncludeMany<Order>(
+        parentKey: c => c.Id,
+        childForeignKey: o => o.CustomerId)
+    .Project<CustomerWithOrdersDto>((customer, graph) => new CustomerWithOrdersDto
+    {
+        Id = customer.Id,
+        Name = customer.Name,
+        Orders = graph.Many<Order>()
+            .Select(o => new OrderListDto
+            {
+                Id = o.Id,
+                OrderNo = o.OrderNo,
+                GrandTotal = o.GrandTotal
+            })
+            .ToList()
+    })
+    .ToListAsync(ct);
+
+return Results.Ok(rows);
+"""
+}));
+
+userFriendlyExamples.MapGet("/bulk-ids-condition", () => Results.Ok(new
+{
+    title = "Bulk get/update/delete by ids and condition",
+    description = "Every bulk helper should have expression and SQL alternatives.",
+    code = """
+var selected = await db.GetByIdsAsync<Product, int>([1, 2, 3], ct);
+
+await db.UpdateByIdsAsync<Product, int>(
+    ids: [1, 2, 3],
+    values: new { Price = 999m },
+    cancellationToken: ct);
+
+await db.DeleteByConditionAsync<Product>(
+    predicate: p => p.Price <= 0,
+    cancellationToken: ct);
+
+await db.UpdateByConditionSqlAsync<Product>(
+    whereSql: "Price < @MinPrice",
+    whereParameters: new { MinPrice = 100m },
+    values: new { IsActive = false },
+    cancellationToken: ct);
+"""
+}));
+
 app.Run();
 
 [ForgeTable("Products")]

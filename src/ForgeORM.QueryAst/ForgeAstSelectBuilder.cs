@@ -427,6 +427,94 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
         return new ForgeRenderedSql($"SELECT CASE WHEN EXISTS ({rendered.Sql}) THEN 1 ELSE 0 END", rendered.Parameters);
     }
 
+    /// <summary>
+    /// Adds an IN condition against the default Id column.
+    /// </summary>
+    /// <typeparam name="TKey">The key value type.</typeparam>
+    /// <param name="ids">The key values used by the IN condition.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> WhereIds<TKey>(IEnumerable<TKey> ids)
+        => WhereIdsSql("Id", ids);
+
+    /// <summary>
+    /// Adds an IN condition against a key column selected by expression.
+    /// </summary>
+    /// <typeparam name="TKey">The key value type.</typeparam>
+    /// <param name="keySelector">The expression that selects the key column.</param>
+    /// <param name="ids">The key values used by the IN condition.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> WhereIds<TKey>(Expression<Func<T, TKey>> keySelector, IEnumerable<TKey> ids)
+        => WhereIdsSql(ForgeAstExpression.MemberName(ToObjectExpression(keySelector)), ids);
+
+    /// <summary>
+    /// Adds an IN condition against an explicit SQL key column.
+    /// </summary>
+    /// <typeparam name="TKey">The key value type.</typeparam>
+    /// <param name="keyColumn">The SQL key column used by the IN condition.</param>
+    /// <param name="ids">The key values used by the IN condition.</param>
+    /// <returns>The current AST select builder.</returns>
+    public IForgeAstSelectBuilder<T> WhereIdsSql<TKey>(string keyColumn, IEnumerable<TKey> ids)
+    {
+        var values = ids.Select(x => (object?)x).Where(x => x is not null).Distinct().ToList();
+        if (values.Count == 0)
+        {
+            _where.Add("1 = 0");
+            return this;
+        }
+
+        var parameterName = "ids" + _parameterIndex++;
+        _parameters[parameterName] = values;
+        _where.Add($"{keyColumn} IN @{parameterName}");
+        return this;
+    }
+
+    /// <summary>
+    /// Renders the current AST query as a DELETE command using the configured filters.
+    /// </summary>
+    /// <param name="provider">The database provider used to render provider-aware SQL.</param>
+    /// <returns>The rendered DELETE SQL and parameters.</returns>
+    public ForgeRenderedSql RenderDelete(IForgeDatabaseProvider provider)
+    {
+        _table ??= ResolveTableName(typeof(T));
+        var sql = new StringBuilder();
+        sql.Append("DELETE FROM ").Append(_table);
+        AppendWhere(sql);
+        return new ForgeRenderedSql(sql.ToString(), BuildFinalParameters());
+    }
+
+    /// <summary>
+    /// Renders the current AST query as an UPDATE command using the configured filters.
+    /// </summary>
+    /// <param name="provider">The database provider used to render provider-aware SQL.</param>
+    /// <param name="values">An object containing the columns and values to update.</param>
+    /// <returns>The rendered UPDATE SQL and parameters.</returns>
+    public ForgeRenderedSql RenderUpdate(IForgeDatabaseProvider provider, object values)
+    {
+        _table ??= ResolveTableName(typeof(T));
+        var setParts = new List<string>();
+
+        foreach (var property in values.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(x => x.CanRead))
+        {
+            var parameterName = "set_" + property.Name;
+            setParts.Add($"{property.Name} = @{parameterName}");
+            _parameters[parameterName] = property.GetValue(values);
+        }
+
+        if (setParts.Count == 0)
+            throw new InvalidOperationException("At least one update value is required.");
+
+        var sql = new StringBuilder();
+        sql.Append("UPDATE ").Append(_table).Append(" SET ").Append(string.Join(", ", setParts));
+        AppendWhere(sql);
+        return new ForgeRenderedSql(sql.ToString(), BuildFinalParameters());
+    }
+
+    private static Expression<Func<T, object>> ToObjectExpression<TKey>(Expression<Func<T, TKey>> expression)
+    {
+        var converted = Expression.Convert(expression.Body, typeof(object));
+        return Expression.Lambda<Func<T, object>>(converted, expression.Parameters);
+    }
+
     private IForgeAstSelectBuilder<T> AddJoin(string joinSql)
     {
         _joins.Add(joinSql);

@@ -303,6 +303,42 @@ public interface IForgeAstSelectBuilder<T>
     /// <param name="provider">The provider value.</param>
     /// <returns>The result of the RenderAny operation.</returns>
     ForgeRenderedSql RenderAny(IForgeDatabaseProvider provider);
+    /// <summary>
+    /// Adds an IN condition against the entity key column.
+    /// </summary>
+    /// <typeparam name="TKey">The key value type.</typeparam>
+    /// <param name="ids">The key values used by the IN condition.</param>
+    /// <returns>The current AST select builder.</returns>
+    IForgeAstSelectBuilder<T> WhereIds<TKey>(IEnumerable<TKey> ids);
+    /// <summary>
+    /// Adds an IN condition against a key column selected by expression.
+    /// </summary>
+    /// <typeparam name="TKey">The key value type.</typeparam>
+    /// <param name="keySelector">The expression that selects the key column.</param>
+    /// <param name="ids">The key values used by the IN condition.</param>
+    /// <returns>The current AST select builder.</returns>
+    IForgeAstSelectBuilder<T> WhereIds<TKey>(Expression<Func<T, TKey>> keySelector, IEnumerable<TKey> ids);
+    /// <summary>
+    /// Adds an IN condition against an explicit SQL key column.
+    /// </summary>
+    /// <typeparam name="TKey">The key value type.</typeparam>
+    /// <param name="keyColumn">The SQL key column used by the IN condition.</param>
+    /// <param name="ids">The key values used by the IN condition.</param>
+    /// <returns>The current AST select builder.</returns>
+    IForgeAstSelectBuilder<T> WhereIdsSql<TKey>(string keyColumn, IEnumerable<TKey> ids);
+    /// <summary>
+    /// Renders the current AST query as a DELETE command using the configured filters.
+    /// </summary>
+    /// <param name="provider">The database provider used to render provider-aware SQL.</param>
+    /// <returns>The rendered DELETE SQL and parameters.</returns>
+    ForgeRenderedSql RenderDelete(IForgeDatabaseProvider provider);
+    /// <summary>
+    /// Renders the current AST query as an UPDATE command using the configured filters.
+    /// </summary>
+    /// <param name="provider">The database provider used to render provider-aware SQL.</param>
+    /// <param name="values">An object containing the columns and values to update.</param>
+    /// <returns>The rendered UPDATE SQL and parameters.</returns>
+    ForgeRenderedSql RenderUpdate(IForgeDatabaseProvider provider, object values);
 }
 
 public interface IForgeAstScriptBuilder

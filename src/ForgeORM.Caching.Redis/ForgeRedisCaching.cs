@@ -6,12 +6,7 @@ namespace ForgeORM.Caching.Redis;
 
 public sealed record ForgeCacheOptions(string KeyPrefix = "forgeorm", TimeSpan DefaultTtl = default)
 {
-    /// <summary>
-    /// Initializes or executes the TimeSpan.FromMinutes operation.
-    /// </summary>
-    /// <param name="10">The 10 value.</param>
-    /// <returns>The operation result.</returns>
-     public TimeSpan EffectiveDefaultTtl => DefaultTtl == default ? TimeSpan.FromMinutes(10) : DefaultTtl;
+    public TimeSpan EffectiveDefaultTtl => DefaultTtl == default ? TimeSpan.FromMinutes(10) : DefaultTtl;
 }
 
 public interface IForgeQueryCache

@@ -126,7 +126,7 @@ ORDER BY Id DESC
             var rows = await db.QueryKeysetPageAsync<Product, int>(
                 tableName: "dbo.Products",
                 keyColumn: "Id",
-                afterKey: afterId ?? 0,
+                afterKey: afterId??0,
                 take: take <= 0 ? 100 : Math.Min(take, 1000),
                 whereSql: "Price > @MinPrice",
                 parameters: new

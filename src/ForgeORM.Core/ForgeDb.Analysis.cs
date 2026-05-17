@@ -15,7 +15,7 @@ public sealed class ForgeDbAnalysisFacade
     }
 
     /// <summary>Analyzes raw SQL using the configured ForgeORM analyzer.</summary>
-    public ForgeORM.Abstractions. ForgeQueryAnalysis Analyze(string sql) => _db.Analyze(sql);
+    public  ForgeORM.Abstractions.ForgeQueryAnalysis Analyze(string sql) => _db.Analyze(sql);
 
     /// <summary>Analyzes a rendered query builder SQL statement.</summary>
     public ForgeQueryBuilderAnalysis Analyze<TEntity>(ForgeQueryBuilder<TEntity> query)

@@ -1,4 +1,6 @@
 using ForgeORM.Core;
+using ForgeORM.Core.Search;
+
 public static class SearchEndpoints
 {
     public static IEndpointRouteBuilder MapSearchEndpoints(

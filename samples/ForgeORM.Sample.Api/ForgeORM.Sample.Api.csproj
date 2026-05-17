@@ -13,8 +13,7 @@
     <PackageReference Include="Swashbuckle.AspNetCore"  />
     <ProjectReference Include="..\..\src\ForgeORM.NextGen\ForgeORM.NextGen.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.QueryBuilder\ForgeORM.QueryBuilder.csproj" />
-   
-    <ProjectReference Include="..\..\src\ForgeORM.Intelligence\ForgeORM.Intelligence.csproj" />
+<ProjectReference Include="..\..\src\ForgeORM.Intelligence\ForgeORM.Intelligence.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.Caching.Redis\ForgeORM.Caching.Redis.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.Telemetry\ForgeORM.Telemetry.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.Security\ForgeORM.Security.csproj" />

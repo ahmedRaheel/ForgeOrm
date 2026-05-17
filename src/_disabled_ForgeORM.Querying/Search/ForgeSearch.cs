@@ -2,9 +2,8 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 using ForgeORM.Core;
-using ForgeORM.QueryAst;
 
-namespace ForgeORM.Core.Search;
+namespace ForgeORM.Querying.Search;
 
 /// <summary>
 /// Entry-point extensions for enterprise search.

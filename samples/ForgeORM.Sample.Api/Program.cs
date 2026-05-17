@@ -6,6 +6,7 @@ using ForgeORM.AI.Advanced;
 using ForgeORM.Analytics;
 using ForgeORM.Analytics.Reporting;
 using ForgeORM.DataFrame;
+using ForgeORM.Core.Search;
 using ForgeORM.Core.SplitQuery;
 using ForgeORM.Core.SavedQueries;
 using ForgeORM.QueryAst;

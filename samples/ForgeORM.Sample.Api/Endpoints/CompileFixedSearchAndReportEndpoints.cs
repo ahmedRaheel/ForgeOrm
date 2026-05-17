@@ -1,5 +1,7 @@
 using ForgeORM.Analytics.Reporting;
 using ForgeORM.Core;
+using ForgeORM.Core.Search;
+
 public static class CompileFixedSearchAndReportEndpoints
 {
     public static IEndpointRouteBuilder MapCompileFixedSearchAndReportEndpoints(

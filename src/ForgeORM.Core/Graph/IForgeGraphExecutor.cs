@@ -1,17 +1,17 @@
 namespace ForgeORM.Core.Graph;
 
 /// <summary>
-/// Executes provider-specific graph persistence operations.
+/// Executes graph persistence operations.
 /// </summary>
 public interface IForgeGraphExecutor
 {
     /// <summary>
-    /// Gets the provider handled by this executor.
+    /// Gets the database provider handled by this executor.
     /// </summary>
     ForgeDatabaseProvider Provider { get; }
 
     /// <summary>
-    /// Inserts an entity graph and returns execution statistics.
+    /// Inserts an entity graph.
     /// </summary>
     Task<ForgeGraphResult> InsertGraphAsync<T>(
         T entity,
@@ -20,7 +20,7 @@ public interface IForgeGraphExecutor
         where T : class;
 
     /// <summary>
-    /// Updates an entity graph and returns execution statistics.
+    /// Updates an entity graph.
     /// </summary>
     Task<ForgeGraphResult> UpdateGraphAsync<T>(
         T entity,
@@ -29,7 +29,7 @@ public interface IForgeGraphExecutor
         where T : class;
 
     /// <summary>
-    /// Deletes an entity graph and returns execution statistics.
+    /// Deletes an entity graph.
     /// </summary>
     Task<ForgeGraphResult> DeleteGraphAsync<T>(
         T entity,

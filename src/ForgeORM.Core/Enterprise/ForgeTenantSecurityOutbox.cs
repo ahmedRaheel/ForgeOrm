@@ -1,7 +1,7 @@
 namespace ForgeORM.Core;
 
-public sealed record ForgeTenantContext(string TenantId);
-public sealed record ForgeOutboxMessage(Guid Id, string Type, string Payload, DateTimeOffset CreatedAtUtc, string? TenantId = null);
+public sealed record ForgeRuntimeTenantContext(string TenantId);
+public sealed record ForgeRuntimeOutboxMessage(Guid Id, string Type, string Payload, DateTimeOffset CreatedAtUtc, string? TenantId = null);
 public sealed record ForgeSecurityFinding(string Severity, string Message);
 
 public static class ForgeEnterpriseRuntimeExtensions
@@ -29,13 +29,13 @@ public static class ForgeEnterpriseRuntimeExtensions
         return email[0] + "***" + email[at..];
     }
 
-    public static async Task<int> SaveOutboxAsync(this ForgeDb db, ForgeOutboxMessage message, CancellationToken cancellationToken = default)
+    public static async Task<int> SaveOutboxAsync(this ForgeDb db, ForgeRuntimeOutboxMessage message, CancellationToken cancellationToken = default)
     {
         const string sql = "INSERT INTO ForgeOutbox (Id, Type, Payload, CreatedAtUtc, TenantId) VALUES (@Id, @Type, @Payload, @CreatedAtUtc, @TenantId)";
         return await db.ExecuteAsync(sql, message, cancellationToken: cancellationToken);
     }
 
-    public static async Task<int> SaveWithOutboxAsync<TEntity>(this ForgeDb db, TEntity entity, ForgeOutboxMessage message, CancellationToken cancellationToken = default)
+    public static async Task<int> SaveWithOutboxAsync<TEntity>(this ForgeDb db, TEntity entity, ForgeRuntimeOutboxMessage message, CancellationToken cancellationToken = default)
         where TEntity : class
     {
         var saved = await db.InsertAsync(entity, cancellationToken);

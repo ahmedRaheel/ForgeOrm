@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using ForgeORM.Abstractions;
+using AbstractionTenantContext = ForgeORM.Abstractions.ForgeTenantContext;
+using AbstractionOutboxMessage = ForgeORM.Abstractions.ForgeOutboxMessage;
 
 namespace ForgeORM.Core;
 
@@ -78,9 +80,9 @@ public sealed class StaticForgeTenantProvider : IForgeTenantProvider
     /// <param name="schema">The schema value.</param>
     /// <returns>The result of the StaticForgeTenantProvider operation.</returns>
     public StaticForgeTenantProvider(string tenantId = "default", string? connectionString = null, string? schema = null)
-        => Current = new ForgeTenantContext(tenantId, connectionString, schema);
+        => Current = new AbstractionTenantContext(tenantId, connectionString, schema);
 
-    public ForgeTenantContext Current { get; }
+    public AbstractionTenantContext Current { get; }
 }
 
 public sealed class SystemForgeAuditUserProvider : IForgeAuditUserProvider
@@ -188,7 +190,7 @@ public sealed class InMemoryForgeCacheProvider : IForgeCacheProvider
 
 public sealed class InMemoryForgeOutboxStore : IForgeOutboxStore
 {
-    private readonly ConcurrentDictionary<Guid, ForgeOutboxMessage> _messages = new();
+    private readonly ConcurrentDictionary<Guid, AbstractionOutboxMessage> _messages = new();
 
     /// <summary>
     /// Executes the EnqueueAsync operation.
@@ -196,7 +198,7 @@ public sealed class InMemoryForgeOutboxStore : IForgeOutboxStore
     /// <param name="message">The message value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the EnqueueAsync operation.</returns>
-    public Task EnqueueAsync(ForgeOutboxMessage message, CancellationToken cancellationToken = default)
+    public Task EnqueueAsync(AbstractionOutboxMessage message, CancellationToken cancellationToken = default)
     {
         _messages[message.Id] = message;
         return Task.CompletedTask;
@@ -208,9 +210,9 @@ public sealed class InMemoryForgeOutboxStore : IForgeOutboxStore
     /// <param name="take">The take value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the GetPendingAsync operation.</returns>
-    public Task<IReadOnlyList<ForgeOutboxMessage>> GetPendingAsync(int take = 100, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<AbstractionOutboxMessage>> GetPendingAsync(int take = 100, CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<ForgeOutboxMessage> pending = _messages.Values
+        IReadOnlyList<AbstractionOutboxMessage> pending = _messages.Values
             .Where(x => x.ProcessedAt is null)
             .OrderBy(x => x.CreatedAt)
             .Take(take)
@@ -243,7 +245,7 @@ public sealed class InMemoryForgeOutboxStore : IForgeOutboxStore
     /// <returns>The result of the T operation.</returns>
     public Task EnqueueDomainEventAsync<T>(T @event, string? tenantId = null, CancellationToken cancellationToken = default)
     {
-        var message = new ForgeOutboxMessage(
+        var message = new AbstractionOutboxMessage(
             Guid.NewGuid(),
             typeof(T).Name,
             JsonSerializer.Serialize(@event),

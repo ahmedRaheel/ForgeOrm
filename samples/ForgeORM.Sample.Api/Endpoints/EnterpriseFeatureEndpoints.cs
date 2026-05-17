@@ -374,7 +374,7 @@ public static class EnterpriseFeatureEndpoints
 
         group.MapPost("/tenant-outbox", async (string tenantId, Order order, ForgeDbContext db, CancellationToken ct) =>
         {
-            var message = new ForgeOutboxMessage(
+            var message = new ForgeRuntimeOutboxMessage(
                 Guid.NewGuid(),
                 "TenantOrderCreated",
                 JsonSerializer.Serialize(order),
@@ -466,14 +466,14 @@ public static class EnterpriseFeatureEndpoints
 
         group.MapPost("/save-message", async (string type, string payload, ForgeDbContext db, CancellationToken ct) =>
         {
-            var message = new ForgeOutboxMessage(Guid.NewGuid(), type, payload, DateTimeOffset.UtcNow);
+            var message = new ForgeRuntimeOutboxMessage(Guid.NewGuid(), type, payload, DateTimeOffset.UtcNow);
             var affected = await db.SaveOutboxAsync(message, ct);
             return Results.Ok(new { affected, message.Id, message.Type });
         });
 
         group.MapPost("/save-order-with-outbox", async (Order order, ForgeDbContext db, CancellationToken ct) =>
         {
-            var message = new ForgeOutboxMessage(
+            var message = new ForgeRuntimeOutboxMessage(
                 Guid.NewGuid(),
                 "OrderCreated",
                 JsonSerializer.Serialize(order),

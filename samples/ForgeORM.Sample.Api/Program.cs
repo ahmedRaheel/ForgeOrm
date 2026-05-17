@@ -31,6 +31,8 @@ builder.Services.AddForgeInMemoryVectorSearch();
 builder.Services.AddForgeAdvancedAi();
 
 var app = builder.Build();
+app.UseSwagger();
+app.UseSwaggerUI();
 app.MapAiVectorEndpoints();
 app.MapAnalyticsEndpoints();
 app.MapArtifactEndpoints();
@@ -46,6 +48,13 @@ app.MapSplitQueryEndpoints();
 app.MapStoredProcedureFunctionEndpoints();
 app.MapUserFriendlyExampleEndpoints();
 app.MapEnterpriseFeatureEndpoints();
+app.MapEnterpriseConcurrencyEndpoints();
 
+
+app.MapEnterpriseAdvancedFeaturePackEndpoints();
+
+app.MapNextGenFeaturePackEndpoints();
+
+app.MapNextGenDetailedSampleEndpoints();
 
 app.Run();

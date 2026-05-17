@@ -2,7 +2,6 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 using ForgeORM.Core;
-using ForgeORM.QueryAst;
 
 namespace ForgeORM.Querying.Search;
 
@@ -117,6 +116,90 @@ public sealed class ForgeSearch<T>
     public ForgeSearch<T> Optional<TValue>(
         Expression<Func<T, TValue>> column,
         TValue? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, int>> column,
+        int? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, int?>> column,
+        int? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, long>> column,
+        long? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, long?>> column,
+        long? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, Guid>> column,
+        Guid? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, Guid?>> column,
+        Guid? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, decimal>> column,
+        decimal? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, decimal?>> column,
+        decimal? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, DateTime>> column,
+        DateTime? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, DateTime?>> column,
+        DateTime? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, DateTimeOffset>> column,
+        DateTimeOffset? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, DateTimeOffset?>> column,
+        DateTimeOffset? value)
     {
         return Optional(ForgeSearchExpression.Column(column), value);
     }

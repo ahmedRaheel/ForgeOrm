@@ -188,8 +188,17 @@ public sealed class ForgeSearch<T>
     /// <param name="from">The from value.</param>
     /// <param name="to">The to value.</param>
     /// <returns>The result of the TValue operation.</returns>
-    public ForgeSearch<T> OptionalBetween<TValue>(Expression<Func<T, TValue>> column, TValue? from, TValue? to)
-        => OptionalBetween(ForgeSearchExpression.MemberName(column), from, to);
+    public ForgeSearch<T> OptionalBetween<TValue>(
+    Expression<Func<T, TValue>> column,
+    TValue? from,
+    TValue? to)
+    where TValue : struct
+    {
+        return OptionalBetween(
+            ForgeSearchExpression.MemberName(column),
+            from,
+            to);
+    }
 
     /// <summary>
     /// Executes the TValue operation.

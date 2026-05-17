@@ -6,7 +6,6 @@ using ForgeORM.AI.Advanced;
 using ForgeORM.Analytics;
 using ForgeORM.Analytics.Reporting;
 using ForgeORM.DataFrame;
-using ForgeORM.Querying.Search;
 using ForgeORM.Core.SplitQuery;
 using ForgeORM.Core.SavedQueries;
 using ForgeORM.QueryAst;
@@ -76,5 +75,7 @@ app.MapCompileFixedSearchAndReportEndpoints();
 app.MapFinalSyntaxFixEndpoints();
 
 app.MapPivotExpressionFriendlyEndpoints();
+
+app.MapSearchExpressionFixedEndpoints();
 
 app.Run();

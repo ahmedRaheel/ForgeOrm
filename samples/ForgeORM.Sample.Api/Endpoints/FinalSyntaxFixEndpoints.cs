@@ -1,6 +1,5 @@
 using ForgeORM.Analytics.Reporting;
 using ForgeORM.Core;
-using ForgeORM.Querying.Search;
 
 public static class FinalSyntaxFixEndpoints
 {

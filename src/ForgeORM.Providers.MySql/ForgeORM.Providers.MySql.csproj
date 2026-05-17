@@ -21,7 +21,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\ForgeORM.Abstractions\ForgeORM.Abstractions.csproj" />
-    <ProjectReference Include="..\ForgeORM.Core\ForgeORM.Core.csproj" />
+	  <ProjectReference Include="..\ForgeORM.Core\ForgeORM.Core.csproj" />
     <PackageReference Include="MySqlConnector"  />
   </ItemGroup>
   <ItemGroup>

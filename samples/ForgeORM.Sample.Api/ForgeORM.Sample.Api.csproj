@@ -19,5 +19,7 @@
     <ProjectReference Include="..\..\src\ForgeORM.Security\ForgeORM.Security.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.VectorSearch\ForgeORM.VectorSearch.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.AI.Advanced\ForgeORM.AI.Advanced.csproj" />
+    <ProjectReference Include="..\..\src\ForgeORM.Analytics\ForgeORM.Analytics.csproj" />
+    <ProjectReference Include="..\..\src\ForgeORM.DataFrame\ForgeORM.DataFrame.csproj" />
   </ItemGroup>
 </Project>

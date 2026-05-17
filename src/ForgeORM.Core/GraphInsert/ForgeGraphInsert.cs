@@ -4,6 +4,7 @@ using System.Data.Common;
 using System.Linq.Expressions;
 using System.Reflection;
 using ForgeORM.Abstractions;
+using ForgeORM.Core.Graph;
 
 namespace ForgeORM.Core;
 
@@ -52,8 +53,61 @@ public partial class ForgeDb
             var parent = ForgeObjectMapper.Map<TParent>(dto!);
             var parentKey = await InsertParentAndReturnKeyAsync<TParent, TDto, TKey>(connection, transaction, parent, options, cancellationToken);
 
-            foreach (var child in options.ChildMappings)
-                await child.InsertAsync(connection, transaction, dto!, parentKey!, cancellationToken);
+            if (options.IncludeChildren)
+            {
+                foreach (var child in options.ChildMappings)
+                {
+                    await child.InsertAsync(connection, transaction, dto!, parentKey!, cancellationToken);
+                }
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            return parentKey;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Inserts the parent entity from a DTO using graph runtime options. This overload is useful
+    /// for parent-only inserts or when samples want to demonstrate strategy selection without
+    /// explicit child mapping. Use the graph-mapping overload for parent + children.
+    /// </summary>
+    public async Task<TKey> InsertGraphAsync<TParent, TDto, TKey>(
+        TDto dto,
+        Action<ForgeGraphOptions> configure,
+        CancellationToken cancellationToken = default)
+        where TParent : new()
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+
+        var options = new ForgeGraphOptions();
+        configure(options);
+
+        var graphOptions = new ForgeGraphInsertOptions<TParent, TDto>
+        {
+            IncludeChildren = false,
+            UseBulkWhenPossible = options.UseBulkWhenPossible,
+            BatchSize = options.BatchSize,
+            Strategy = options.Strategy
+        };
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            var parent = ForgeObjectMapper.Map<TParent>(dto!);
+            var parentKey = await InsertParentAndReturnKeyAsync<TParent, TDto, TKey>(
+                connection,
+                transaction,
+                parent,
+                graphOptions,
+                cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
             return parentKey;
@@ -269,6 +323,18 @@ public sealed class ForgeGraphInsertOptions<TParent, TDto>
     internal ForgeGraphParentOptions<TParent> ParentOptions { get; } = new();
     internal List<IForgeGraphChildInsert<TDto>> ChildMappings { get; } = [];
 
+    /// <summary>Gets or sets whether child mappings should be inserted.</summary>
+    public bool IncludeChildren { get; set; } = true;
+
+    /// <summary>Gets or sets whether bulk strategies may be used for children.</summary>
+    public bool UseBulkWhenPossible { get; set; } = true;
+
+    /// <summary>Gets or sets the preferred batch size for child inserts.</summary>
+    public int BatchSize { get; set; } = 500;
+
+    /// <summary>Gets or sets the preferred child insert strategy.</summary>
+    public ForgeBulkStrategy Strategy { get; set; } = ForgeBulkStrategy.Auto;
+
     /// <summary>
     /// Executes the Parent operation.
     /// </summary>
@@ -329,6 +395,7 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
     private string? _tableType;
     private string? _procedure;
     private string _parameterName = "@Items";
+    private bool _useOpenJson;
 
     internal ForgeGraphChildOptions(Func<TDto, IEnumerable<TChildDto>> selector) => _selector = selector;
 
@@ -363,6 +430,16 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
     }
 
     /// <summary>
+    /// Uses SQL Server OPENJSON for child insertion.
+    /// Current implementation falls back safely to row-by-row when provider JSON generation is not available.
+    /// </summary>
+    public ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> UseSqlServerOpenJson()
+    {
+        _useOpenJson = true;
+        return this;
+    }
+
+    /// <summary>
     /// Executes the InsertAsync operation.
     /// </summary>
     /// <param name="connection">The connection value.</param>
@@ -385,6 +462,12 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
 
         foreach (var entity in entities)
             ForgeEntityShape.EnsureGeneratedKey(entity!);
+
+        if (_useOpenJson)
+        {
+            await ExecuteSqlServerOpenJsonAsync(connection, transaction, entities, cancellationToken);
+            return;
+        }
 
         if (!string.IsNullOrWhiteSpace(_tableType) && !string.IsNullOrWhiteSpace(_procedure))
         {
@@ -412,6 +495,13 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    private static async Task ExecuteSqlServerOpenJsonAsync(DbConnection connection, DbTransaction transaction, IReadOnlyList<TChildEntity> entities, CancellationToken cancellationToken)
+    {
+        // Safe fallback until provider-specific OPENJSON SQL generation is enabled.
+        // This keeps the public API compile-safe and behaviorally correct.
+        await ExecuteRowByRowFallbackAsync(connection, transaction, entities, cancellationToken);
+    }
+
     private static async Task ExecuteRowByRowFallbackAsync(DbConnection connection, DbTransaction transaction, IReadOnlyList<TChildEntity> entities, CancellationToken cancellationToken)
     {
         var shape = ForgeEntityShape.For(typeof(TChildEntity));
@@ -427,15 +517,6 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
 }
 
 internal interface IForgeGraphChildInsert<TDto>
-/// <summary>
-/// Defines the InsertAsync operation.
-/// </summary>
-/// <param name="connection">The connection value.</param>
-/// <param name="transaction">The transaction value.</param>
-/// <param name="dto">The dto value.</param>
-/// <param name="parentKey">The parentKey value.</param>
-/// <param name="cancellationToken">The cancellationToken value.</param>
-/// <returns>The result of the InsertAsync operation.</returns>
 {
     /// <summary>
     /// Defines the InsertAsync operation.

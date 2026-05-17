@@ -1,6 +1,6 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.0.31903.59
+# Visual Studio Version 18
+VisualStudioVersion = 18.5.11801.241 oobstable
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ForgeORM.Abstractions", "src\ForgeORM.Abstractions\ForgeORM.Abstractions.csproj", "{7C50FAB6-3097-4E96-A6D3-76A8017BA89F}"
 EndProject
@@ -79,6 +79,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ForgeORM.AI.Memory", "src\ForgeORM.AI.Memory\ForgeORM.AI.Memory.csproj", "{D9786D29-CA23-425A-BA22-23DCC607FB22}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ForgeORM.DataFrame", "src\ForgeORM.DataFrame\ForgeORM.DataFrame.csproj", "{E29EC4AD-123E-4985-BBB5-0CB073880D74}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ForgeORM.Querying", "src\ForgeORM.Querying\ForgeORM.Querying.csproj", "{2B039068-77CE-E684-94F6-B59952A80155}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -242,6 +244,10 @@ Global
 		{E29EC4AD-123E-4985-BBB5-0CB073880D74}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E29EC4AD-123E-4985-BBB5-0CB073880D74}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E29EC4AD-123E-4985-BBB5-0CB073880D74}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2B039068-77CE-E684-94F6-B59952A80155}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2B039068-77CE-E684-94F6-B59952A80155}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2B039068-77CE-E684-94F6-B59952A80155}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2B039068-77CE-E684-94F6-B59952A80155}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

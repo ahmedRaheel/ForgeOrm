@@ -95,25 +95,47 @@ public sealed class ForgeReportBuilder<T>
     public ForgeReportBuilder<T> TopN<TValue>(Expression<Func<T, TValue>> orderBy, int count, bool descending = true)
         => TopN(ForgeReportExpressionHelpers.Column(orderBy), count, descending);
 
+    /// <summary>
+    /// SQL/string pivot overload with friendly named arguments: row, column, value.
+    /// </summary>
     public ForgeReportBuilder<T> Pivot(
-        string rowExpression,
-        string columnExpression,
-        string valueExpression,
+        string row,
+        string column,
+        string value,
         string aggregate = "SUM",
         string alias = "PivotValue")
     {
         _definition.Pivot = new ForgeReportPivot
         {
-            RowExpression = rowExpression,
-            ColumnExpression = columnExpression,
-            ValueExpression = valueExpression,
+            RowExpression = row,
+            ColumnExpression = column,
+            ValueExpression = value,
             Aggregate = aggregate,
             Alias = alias
         };
 
-        AddDimensionIfMissing("PivotRow", rowExpression);
-        AddDimensionIfMissing("PivotColumn", columnExpression);
+        AddDimensionIfMissing("PivotRow", row);
+        AddDimensionIfMissing("PivotColumn", column);
         return this;
+    }
+
+    /// <summary>
+    /// Friendly expression pivot alias. Entity type is already known from ForgeReportBuilder&lt;T&gt;.
+    /// Usage: .PivotExpr(row: x => x.CreatedAt.Year, column: x => x.Status, value: x => x.GrandTotal)
+    /// </summary>
+    public ForgeReportBuilder<T> PivotExpr<TRow, TColumn, TValue>(
+        Expression<Func<T, TRow>> row,
+        Expression<Func<T, TColumn>> column,
+        Expression<Func<T, TValue>> value,
+        string aggregate = "SUM",
+        string alias = "PivotValue")
+    {
+        return Pivot(
+            row: ForgeReportExpressionHelpers.Column(row),
+            column: ForgeReportExpressionHelpers.Column(column),
+            value: ForgeReportExpressionHelpers.Column(value),
+            aggregate: aggregate,
+            alias: alias);
     }
 
     public ForgeReportBuilder<T> Pivot<TRow, TColumn, TValue>(
@@ -123,9 +145,9 @@ public sealed class ForgeReportBuilder<T>
         string aggregate = "SUM",
         string alias = "PivotValue")
         => Pivot(
-            ForgeReportExpressionHelpers.Column(row),
-            ForgeReportExpressionHelpers.Column(column),
-            ForgeReportExpressionHelpers.Column(value),
+            row: ForgeReportExpressionHelpers.Column(row),
+            column: ForgeReportExpressionHelpers.Column(column),
+            value: ForgeReportExpressionHelpers.Column(value),
             aggregate,
             alias);
 
@@ -136,9 +158,9 @@ public sealed class ForgeReportBuilder<T>
         string aggregate = "SUM",
         string alias = "PivotValue")
         => Pivot(
-            ForgeReportExpressionHelpers.Year(date),
-            ForgeReportExpressionHelpers.Column(column),
-            ForgeReportExpressionHelpers.Column(value),
+            row: ForgeReportExpressionHelpers.Year(date),
+            column: ForgeReportExpressionHelpers.Column(column),
+            value: ForgeReportExpressionHelpers.Column(value),
             aggregate,
             alias);
 

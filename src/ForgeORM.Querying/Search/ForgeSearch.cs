@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 using ForgeORM.Core;
+using ForgeORM.QueryAst;
 
 namespace ForgeORM.Querying.Search;
 
@@ -144,19 +145,20 @@ public sealed class ForgeSearch<T>
         string column,
         TValue? from,
         TValue? to)
+        where TValue : struct
     {
         if (from is not null)
         {
             var name = NextParameterName(column + "From");
             _where.Add($"{column} >= @{name}");
-            _parameters[name] = from;
+            _parameters[name] = from.Value;
         }
 
         if (to is not null)
         {
             var name = NextParameterName(column + "To");
             _where.Add($"{column} <= @{name}");
-            _parameters[name] = to;
+            _parameters[name] = to.Value;
         }
 
         return this;
@@ -166,6 +168,19 @@ public sealed class ForgeSearch<T>
         Expression<Func<T, TValue>> column,
         TValue? from,
         TValue? to)
+        where TValue : struct
+    {
+        return OptionalBetween(
+            ForgeSearchExpression.Column(column),
+            from,
+            to);
+    }
+
+    public ForgeSearch<T> OptionalBetween<TValue>(
+        Expression<Func<T, TValue?>> column,
+        TValue? from,
+        TValue? to)
+        where TValue : struct
     {
         return OptionalBetween(
             ForgeSearchExpression.Column(column),

@@ -72,7 +72,7 @@ public static class UserFriendlyReportingMaterializerEndpoints
         {
             var result = await db.Report<Order>("TopCustomersExpression")
                 .From("dbo.Orders")
-                .Dimension(x => x.CustomerId)
+                .Dimension<Order, int>(x => x.CustomerId)
                 .Sum<Order, decimal>(x => x.GrandTotal, "Revenue")
                 .TopN("Revenue", 10)
                 .ToJsonAsync(ct);
@@ -120,7 +120,7 @@ public static class UserFriendlyReportingMaterializerEndpoints
         {
             var result = await db.Report<Order>("SalesPivotExpression")
                 .From("dbo.Orders")
-                .Pivot<Order, int, OrderStatus, decimal>(
+                .PivotExpr(
                     row: x => x.CreatedAt.Year,
                     column: x => x.Status,
                     value: x => x.GrandTotal,

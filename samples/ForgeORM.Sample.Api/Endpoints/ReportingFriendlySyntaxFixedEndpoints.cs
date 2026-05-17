@@ -74,7 +74,7 @@ public static class ReportingFriendlySyntaxFixedEndpoints
         {
             var result = await db.Report<Order>("SalesPivotExpression")
                 .From("dbo.Orders")
-                .Pivot<Order, int, OrderStatus, decimal>(
+                .PivotExpr(
                     row: x => x.CreatedAt.Year,
                     column: x => x.Status,
                     value: x => x.GrandTotal,

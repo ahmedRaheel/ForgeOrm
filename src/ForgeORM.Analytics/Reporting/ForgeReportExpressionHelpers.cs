@@ -26,37 +26,37 @@ internal static class ForgeReportExpressionHelpers
             if (property.Name.Equals(nameof(DateTime.Year), StringComparison.OrdinalIgnoreCase) &&
                 property.DeclaringType == typeof(DateTime))
             {
-                return $"YEAR({Column(propertyExpression: (MemberExpression)expression.Expression!)})";
+                return $"YEAR({Column(propertyExpression: (MemberExpression)expression!)})";
             }
 
             if (property.Name.Equals(nameof(DateTime.Month), StringComparison.OrdinalIgnoreCase) &&
                 property.DeclaringType == typeof(DateTime))
             {
-                return $"MONTH({Column(propertyExpression: (MemberExpression)expression.Expression!)})";
+                return $"MONTH({Column(propertyExpression: (MemberExpression)expression!)})";
             }
 
             if (property.Name.Equals(nameof(DateTime.Day), StringComparison.OrdinalIgnoreCase) &&
                 property.DeclaringType == typeof(DateTime))
             {
-                return $"DAY({Column(propertyExpression: (MemberExpression)expression.Expression!)})";
+                return $"DAY({Column(propertyExpression: (MemberExpression)expression!)})";
             }
 
             if (property.Name.Equals(nameof(DateTimeOffset.Year), StringComparison.OrdinalIgnoreCase) &&
                 property.DeclaringType == typeof(DateTimeOffset))
             {
-                return $"YEAR({Column(propertyExpression: (MemberExpression)expression.Expression!)})";
+                return $"YEAR({Column(propertyExpression: (MemberExpression)expression!)})";
             }
 
             if (property.Name.Equals(nameof(DateTimeOffset.Month), StringComparison.OrdinalIgnoreCase) &&
                 property.DeclaringType == typeof(DateTimeOffset))
             {
-                return $"MONTH({Column(propertyExpression: (MemberExpression)expression.Expression!)})";
+                return $"MONTH({Column(propertyExpression: (MemberExpression)expression!)})";
             }
 
             if (property.Name.Equals(nameof(DateTimeOffset.Day), StringComparison.OrdinalIgnoreCase) &&
                 property.DeclaringType == typeof(DateTimeOffset))
             {
-                return $"DAY({Column(propertyExpression: (MemberExpression)expression.Expression!)})";
+                return $"DAY({Column(propertyExpression: (MemberExpression)expression!)})";
             }
 
             return property.Name;

@@ -105,6 +105,17 @@ public static class SearchEndpoints
             return Results.Ok(analysis);
         });
 
+        group.MapGet("/profiled/snapshot", () =>
+        {
+            return Results.Ok(ForgeQueryProfiler.Snapshot());
+        });
+
+        group.MapDelete("/profiled/snapshot", () =>
+        {
+            ForgeQueryProfiler.Clear();
+            return Results.Ok(new { cleared = true });
+        });
+
         group.MapPost("/saved/register-high-value-orders", async (ForgeDbContext db) =>
         {
             await db.SavedQueries.Register("HighValueOrders", query =>

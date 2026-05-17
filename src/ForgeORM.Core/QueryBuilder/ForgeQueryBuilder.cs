@@ -54,6 +54,7 @@ public sealed class ForgeQueryBuilder<TEntity>
     private readonly ForgeDb _db;
     private readonly Dictionary<string, object?> _parameters = new(StringComparer.OrdinalIgnoreCase);
     private int _parameterIndex;
+    private string? _profileName;
 
     internal ForgeQueryBuilder(ForgeDb db)
     {
@@ -164,6 +165,29 @@ public sealed class ForgeQueryBuilder<TEntity>
         return this;
     }
 
+    /// <summary>Enables query profiling with a logical operation name.</summary>
+    public ForgeQueryBuilder<TEntity> Profile(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new ArgumentException("Profile name is required.", nameof(name));
+        }
+
+        _profileName = name;
+        return this;
+    }
+
+    /// <summary>Analyzes the generated SQL and returns basic index suggestions.</summary>
+    public ForgeQueryAnalysis Analyze()
+    {
+        var query = Render();
+        return ForgeIndexSuggestionEngine.Analyze<TEntity>(
+            query.Sql,
+            TableName,
+            WhereClauses,
+            OrderClauses);
+    }
+
     /// <summary>Renders SQL and parameters.</summary>
     public ForgeRenderedQuery Render()
     {
@@ -200,10 +224,30 @@ public sealed class ForgeQueryBuilder<TEntity>
     public string ToSql() => Render().Sql;
 
     /// <summary>Executes the query.</summary>
-    public Task<IReadOnlyList<TEntity>> ToListAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<TEntity>> ToListAsync(CancellationToken cancellationToken = default)
     {
+        var startedAtUtc = DateTimeOffset.UtcNow;
         var query = Render();
-        return _db.QueryAsync<TEntity>(query.Sql, query.Parameters, cancellationToken: cancellationToken);
+        var rows = await _db.QueryAsync<TEntity>(
+            query.Sql,
+            query.Parameters,
+            cancellationToken: cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(_profileName))
+        {
+            ForgeQueryProfiler.Record(new ForgeQueryProfileEntry
+            {
+                Name = _profileName!,
+                Entity = typeof(TEntity).Name,
+                Sql = query.Sql,
+                Parameters = query.Parameters,
+                StartedAtUtc = startedAtUtc,
+                Duration = DateTimeOffset.UtcNow - startedAtUtc,
+                Rows = rows.Count
+            });
+        }
+
+        return rows;
     }
 
     private string AddParameter(object? value)

@@ -58,6 +58,7 @@ app.MapNextGenFeaturePackEndpoints();
 app.MapNextGenDetailedSampleEndpoints();
 
 app.MapProductionHardeningEndpoints();
-app.MapForgeReportingEndpoints();
 
+app.MapUserFriendlyReportingMaterializerEndpoints();
+app.MapForgeReportingEndpoints();
 app.Run();

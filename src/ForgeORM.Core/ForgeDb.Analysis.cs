@@ -14,14 +14,42 @@ public sealed class ForgeDbAnalysisFacade
         _db = db;
     }
 
-    /// <summary>Analyzes raw SQL using the configured ForgeORM analyzer.</summary>
-    public ForgeORM.Abstractions. ForgeQueryAnalysis Analyze(string sql) => _db.Analyze(sql);
+    /// <summary>
+    /// Analyzes raw SQL using the configured ForgeORM analyzer.
+    /// </summary>
+    public ForgeORM.Abstractions.ForgeQueryAnalysis Analyze(string sql)
+    {
+        return _db.Analyze(sql);
+    }
 
-    /// <summary>Analyzes a rendered query builder SQL statement.</summary>
+    /// <summary>
+    /// Analyzes a rendered query builder SQL statement and returns QueryBuilder-specific advice.
+    /// </summary>
     public ForgeQueryBuilderAnalysis Analyze<TEntity>(ForgeQueryBuilder<TEntity> query)
         where TEntity : class, new()
     {
+        if (query is null)
+        {
+            throw new ArgumentNullException(nameof(query));
+        }
+
         return query.Analyze();
+    }
+
+    /// <summary>
+    /// Returns captured query-builder profile entries.
+    /// </summary>
+    public IReadOnlyList<ForgeQueryBuilderProfileEntry> Profiles()
+    {
+        return ForgeQueryBuilderProfiler.Snapshot();
+    }
+
+    /// <summary>
+    /// Clears captured query-builder profile entries.
+    /// </summary>
+    public void ClearProfiles()
+    {
+        ForgeQueryBuilderProfiler.Clear();
     }
 }
 
@@ -29,6 +57,8 @@ public partial class ForgeDb
 {
     private ForgeDbAnalysisFacade? _analysis;
 
-    /// <summary>Database diagnostics and SQL analysis facade.</summary>
+    /// <summary>
+    /// Database diagnostics, SQL analysis, index-advice and query profile facade.
+    /// </summary>
     public ForgeDbAnalysisFacade Analysis => _analysis ??= new ForgeDbAnalysisFacade(this);
 }

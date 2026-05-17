@@ -285,6 +285,89 @@ public sealed class ForgeQueryBuilder<TEntity>
         return this;
     }
 
+
+    /// <summary>
+    /// Adds SQL Server NOLOCK hint for read-heavy dashboards where dirty reads are acceptable.
+    /// Prefer SnapshotRead for financial/transactional screens.
+    /// </summary>
+    public ForgeQueryBuilder<TEntity> NoLock()
+    {
+        return WithTableHint("NOLOCK");
+    }
+
+    /// <summary>
+    /// Adds SQL Server UPDLOCK hint for pessimistic update workflows.
+    /// </summary>
+    public ForgeQueryBuilder<TEntity> UpdateLock()
+    {
+        return WithTableHint("UPDLOCK");
+    }
+
+    /// <summary>
+    /// Adds SQL Server READPAST hint to skip locked rows for queue/worker scenarios.
+    /// </summary>
+    public ForgeQueryBuilder<TEntity> ReadPast()
+    {
+        return WithTableHint("READPAST");
+    }
+
+    /// <summary>
+    /// Adds SQL Server ROWLOCK hint to prefer row-level locks.
+    /// </summary>
+    public ForgeQueryBuilder<TEntity> RowLock()
+    {
+        return WithTableHint("ROWLOCK");
+    }
+
+    /// <summary>
+    /// Uses a safe comment marker indicating snapshot-read intent.
+    /// Enable READ_COMMITTED_SNAPSHOT or SNAPSHOT isolation at database level for true snapshot behavior.
+    /// </summary>
+    public ForgeQueryBuilder<TEntity> SnapshotRead()
+    {
+        QueryComment = string.IsNullOrWhiteSpace(QueryComment)
+            ? "ForgeORM SnapshotRead requested"
+            : QueryComment + " | ForgeORM SnapshotRead requested";
+
+        return this;
+    }
+
+    /// <summary>
+    /// Applies provider-specific read consistency metadata to the generated SQL comment.
+    /// </summary>
+    public ForgeQueryBuilder<TEntity> WithReadConsistency(ForgeReadConsistency consistency)
+    {
+        return consistency switch
+        {
+            ForgeReadConsistency.Default => this,
+            ForgeReadConsistency.NoLock => NoLock(),
+            ForgeReadConsistency.UpdateLock => UpdateLock(),
+            ForgeReadConsistency.ReadPast => ReadPast(),
+            ForgeReadConsistency.RowLock => RowLock(),
+            ForgeReadConsistency.Snapshot => SnapshotRead(),
+            _ => this
+        };
+    }
+
+    private ForgeQueryBuilder<TEntity> WithTableHint(string hint)
+    {
+        if (string.IsNullOrWhiteSpace(hint))
+        {
+            return this;
+        }
+
+        var hintText = $"WITH ({hint})";
+
+        if (TableName.Contains(" WITH ", StringComparison.OrdinalIgnoreCase))
+        {
+            return this;
+        }
+
+        TableName = $"{TableName} {hintText}";
+        return this;
+    }
+
+
     /// <summary>Validates the rendered SQL for dangerous patterns.</summary>
     public ForgeQueryValidationResult Validate()
     {

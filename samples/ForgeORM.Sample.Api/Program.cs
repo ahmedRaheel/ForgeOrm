@@ -60,5 +60,7 @@ app.MapNextGenDetailedSampleEndpoints();
 app.MapProductionHardeningEndpoints();
 
 app.MapUserFriendlyReportingMaterializerEndpoints();
-app.MapForgeReportingEndpoints();
+
+app.MapThreeEntryStylesEndpoints();
+
 app.Run();

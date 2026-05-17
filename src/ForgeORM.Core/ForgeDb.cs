@@ -36,10 +36,7 @@ public partial class ForgeDb : IForgeDb
         _analyzer = analyzer;
     }
 
-    /// <summary>
-    /// Create DatabaseConnection
-    /// </summary>
-    /// <returns></returns>
+    ///
     public DbConnection CreateConnection() => Provider.CreateConnection(_connectionString);
 
     /// <summary>

@@ -123,7 +123,7 @@ public static class ProductionHardeningEndpoints
 
             return Results.Ok(new
             {
-               joined
+                joined
             });
         });
 

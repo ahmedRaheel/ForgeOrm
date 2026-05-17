@@ -72,7 +72,7 @@ public static class UserFriendlyReportingMaterializerEndpoints
         {
             var result = await db.Report<Order>("TopCustomersExpression")
                 .From("dbo.Orders")
-                .Dimension<Order>(x => x.CustomerId)
+                .Dimension<Order, int>(x => x.CustomerId)
                 .Sum<Order, decimal>(x => x.GrandTotal, "Revenue")
                 .TopN("Revenue", 10)
                 .ToJsonAsync(ct);

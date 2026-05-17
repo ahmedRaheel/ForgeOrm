@@ -468,4 +468,9 @@ public partial class ForgeDb : IForgeDb
             parameters,
             cancellationToken: cancellationToken);
     }
+
+    Abstractions.ForgeQueryAnalysis IForgeDiagnostics.Analyze(string sql)
+    {
+        throw new NotImplementedException();
+    }
 }

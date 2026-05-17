@@ -45,6 +45,7 @@ app.MapSearchEndpoints();
 app.MapSplitQueryEndpoints();
 app.MapStoredProcedureFunctionEndpoints();
 app.MapUserFriendlyExampleEndpoints();
+app.MapEnterpriseFeatureEndpoints();
 
 
 app.Run();

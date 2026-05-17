@@ -36,7 +36,7 @@ public partial class ForgeDb : IForgeDb
         _analyzer = analyzer;
     }
 
-    public DbConnection CreateConnection() => Provider.CreateConnection(_connectionString);
+    private DbConnection CreateConnection() => Provider.CreateConnection(_connectionString);
 
     /// <summary>
     /// Executes the T operation.

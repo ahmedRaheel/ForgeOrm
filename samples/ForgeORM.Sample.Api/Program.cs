@@ -62,6 +62,9 @@ app.MapProductionHardeningEndpoints();
 app.MapUserFriendlyReportingMaterializerEndpoints();
 
 app.MapThreeEntryStylesEndpoints();
-app.MapForgeReportingEndpoints();
+
+app.MapReportingFriendlySyntaxFixedEndpoints();
+
+app.MapForgeReportEndpoints();
 
 app.Run();

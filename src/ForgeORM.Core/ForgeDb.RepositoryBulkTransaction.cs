@@ -326,5 +326,5 @@ public partial class ForgeDb
     /// </summary>
     /// <param name="sql">The sql value.</param>
     /// <returns>The result of the Analyze operation.</returns>
-    public ForgeORM.Abstractions. ForgeQueryAnalysis Analyze(string sql) => _analyzer.Analyze(sql);
+    public ForgeQueryAnalysis Analyze(string sql) => _analyzer.Analyze(sql);
 }

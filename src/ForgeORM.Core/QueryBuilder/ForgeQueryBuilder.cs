@@ -310,10 +310,10 @@ public sealed class ForgeQueryBuilder<TEntity>
     }
 
     /// <summary>Analyzes the query and returns index/query suggestions.</summary>
-    public ForgeQueryAnalysis Analyze()
+    public ForgeQueryBuilderAnalysis Analyze()
     {
         var rendered = Render();
-        return ForgeIndexSuggestionEngine.Analyze<TEntity>(rendered, WhereClauses, OrderClauses, TableName);
+        return ForgeQueryBuilderIndexSuggestionEngine.Analyze<TEntity>(rendered, WhereClauses, OrderClauses, TableName);
     }
 
     /// <summary>Creates a shallow clone of the query builder.</summary>
@@ -393,7 +393,7 @@ public sealed class ForgeQueryBuilder<TEntity>
 
         if (!string.IsNullOrWhiteSpace(ProfileName))
         {
-            ForgeQueryProfiler.Record(new ForgeQueryProfileEntry(
+            ForgeQueryBuilderProfiler.Record(new ForgeQueryBuilderProfileEntry(
                 ProfileName!,
                 query.Sql,
                 started,
@@ -514,22 +514,22 @@ public sealed record ForgeQueryValidationResult(bool IsValid, IReadOnlyList<stri
 public sealed record ForgeDebugSql(string Sql, IReadOnlyDictionary<string, object?> Parameters);
 
 /// <summary>Profile entry for query execution.</summary>
-public sealed record ForgeQueryProfileEntry(string Name, string Sql, DateTimeOffset StartedAtUtc, TimeSpan Duration, int Rows);
+public sealed record ForgeQueryBuilderProfileEntry(string Name, string Sql, DateTimeOffset StartedAtUtc, TimeSpan Duration, int Rows);
 
 /// <summary>Query analysis output with suggested indexes.</summary>
-public sealed record ForgeQueryAnalysis(string Entity, string Sql, IReadOnlyList<string> SuggestedIndexes, IReadOnlyList<string> Notes);
+public sealed record ForgeQueryBuilderAnalysis(string Entity, string Sql, IReadOnlyList<string> SuggestedIndexes, IReadOnlyList<string> Notes);
 
 /// <summary>In-memory query profiler for diagnostics and samples.</summary>
-public static class ForgeQueryProfiler
+public static class ForgeQueryBuilderProfiler
 {
-    private static readonly List<ForgeQueryProfileEntry> Entries = [];
+    private static readonly List<ForgeQueryBuilderProfileEntry> Entries = [];
 
-    public static void Record(ForgeQueryProfileEntry entry)
+    public static void Record(ForgeQueryBuilderProfileEntry entry)
     {
         lock (Entries) Entries.Add(entry);
     }
 
-    public static IReadOnlyList<ForgeQueryProfileEntry> Snapshot()
+    public static IReadOnlyList<ForgeQueryBuilderProfileEntry> Snapshot()
     {
         lock (Entries) return Entries.ToList();
     }
@@ -541,9 +541,9 @@ public static class ForgeQueryProfiler
 }
 
 /// <summary>Simple index advisor using rendered query metadata.</summary>
-public static class ForgeIndexSuggestionEngine
+public static class ForgeQueryBuilderIndexSuggestionEngine
 {
-    public static ForgeQueryAnalysis Analyze<TEntity>(ForgeRenderedQuery query, IReadOnlyList<string> whereClauses, IReadOnlyList<string> orderClauses, string tableName)
+    public static ForgeQueryBuilderAnalysis Analyze<TEntity>(ForgeRenderedQuery query, IReadOnlyList<string> whereClauses, IReadOnlyList<string> orderClauses, string tableName)
     {
         var table = tableName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? typeof(TEntity).Name;
         var clean = table.Replace("dbo.", string.Empty, StringComparison.OrdinalIgnoreCase).Replace("[", string.Empty).Replace("]", string.Empty);
@@ -560,7 +560,7 @@ public static class ForgeIndexSuggestionEngine
         {
             suggestions.Add("For leading-wildcard LIKE searches, consider full-text search or trigram indexes.");
         }
-        return new ForgeQueryAnalysis(typeof(TEntity).Name, query.Sql, suggestions, ["Use actual execution plans before creating indexes in production."]);
+        return new ForgeQueryBuilderAnalysis(typeof(TEntity).Name, query.Sql, suggestions, ["Use actual execution plans before creating indexes in production."]);
     }
 }
 

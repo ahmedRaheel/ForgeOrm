@@ -131,7 +131,7 @@ public static class EnterpriseFeatureEndpoints
                 .Comment("Profiled query sample")
                 .ToListAsync(ct);
 
-            return Results.Ok(new { rows, profiles = ForgeQueryProfiler.Snapshot() });
+            return Results.Ok(new { rows, profiles = ForgeQueryBuilderProfiler.Snapshot() });
         });
 
         group.MapGet("/compiled-products", async (ForgeDbContext db, CancellationToken ct) =>

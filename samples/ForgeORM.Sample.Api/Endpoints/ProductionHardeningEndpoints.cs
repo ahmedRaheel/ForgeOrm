@@ -123,7 +123,9 @@ public static class ProductionHardeningEndpoints
 
             return Results.Ok(new
             {
-               joined 
+                joined.RowCount,
+                joined.Rows,
+                summary = joined.CorrelationReadySummary("CustomerId", "Revenue")
             });
         });
 

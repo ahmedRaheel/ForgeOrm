@@ -1,6 +1,5 @@
 using ForgeORM.Core;
 
-
 public static class SearchEndpoints
 {
     public static IEndpointRouteBuilder MapSearchEndpoints(
@@ -23,7 +22,7 @@ public static class SearchEndpoints
                 .From("dbo.Orders")
                 .Optional(x => x.CustomerId, customerId)
                 .OptionalLike(x => x.OrderNo, orderNo)
-                .OptionalBetween(x => x.CreatedAt, from, to)
+               // .OptionalBetween(x => x.CreatedAt, from, to)
                 .OrderByDescending(x => x.CreatedAt)
                 .Page(page <= 0 ? 1 : page, pageSize <= 0 ? 20 : pageSize)
                 .ToPagedAsync(ct);

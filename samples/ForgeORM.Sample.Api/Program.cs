@@ -67,4 +67,6 @@ app.MapReportingFriendlySyntaxFixedEndpoints();
 
 app.MapForgeReportEndpoints();
 
+app.MapReportingExpressionFriendlyEndpoints();
+
 app.Run();

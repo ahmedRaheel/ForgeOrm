@@ -109,7 +109,7 @@ public static class ThreeEntryStylesEndpoints
         {
             var result = await db.Report<Order>("TopCustomersExpression")
                 .From("dbo.Orders")
-                .DimensionExpr<Order, int>(x => x.CustomerId)
+                .DimensionExpr("", x => x.CustomerId)
                 .SumExpr<Order, decimal>(x => x.GrandTotal, "Revenue")
                 .TopNSql("Revenue", 10)
                 .ToJsonAsync(ct);

@@ -136,9 +136,7 @@ public partial class ForgeDb
             if (fk is null) continue;
 
             var childShape = ForgeEntityShape.For(childType);
-            var childColumns = string.Join(", ", childShape.ScalarProperties.Where(p => p.CanRead && !ForgeEntityShape.IsComputed(p)).Select(ForgeEntityShape.ColumnName));
-            if (string.IsNullOrWhiteSpace(childColumns)) childColumns = "*";
-            var sql = $"SELECT {childColumns} FROM {childShape.TableName} WHERE {ForgeEntityShape.ColumnName(fk)} = @ParentId";
+            var sql = $"SELECT * FROM {childShape.TableName} WHERE {ForgeEntityShape.ColumnName(fk)} = @ParentId";
             var rows = await QueryDynamicListAsync(childType, sql, new Dictionary<string, object?> { ["ParentId"] = id }, cancellationToken);
             AssignCollection(parent!, collection, childType, rows);
         }
@@ -319,7 +317,9 @@ public partial class ForgeDb
     private static object MapRecord(Type type, IDataRecord record)
     {
         var instance = Activator.CreateInstance(type) ?? throw new InvalidOperationException($"Cannot create {type.Name}.");
-        var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanWrite).ToList();
+        var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanWrite && ForgeMaterializer.IsScalar(p.PropertyType))
+            .ToList();
         for (var i = 0; i < record.FieldCount; i++)
         {
             var name = record.GetName(i);

@@ -7,7 +7,8 @@ namespace ForgeORM.Core;
 
 internal static class ForgeMaterializer
 {
-    private static readonly ConcurrentDictionary<Type, PropertySetter[]> PropertySetterCache = new();
+    private static readonly ConcurrentDictionary<Type, MaterializerTypePlan> TypePlanCache = new();
+    private static readonly ConcurrentDictionary<string, MaterializerResultPlan> ResultPlanCache = new(StringComparer.Ordinal);
 
     public static T Map<T>(DbDataReader reader)
     {
@@ -33,45 +34,64 @@ internal static class ForgeMaterializer
     private static object MapByProperties(Type type, DbDataReader reader)
     {
         var instance = Activator.CreateInstance(type)!;
-        var setters = PropertySetterCache.GetOrAdd(type, BuildPropertySetters);
+        var resultPlan = GetResultPlan(type, reader);
 
-        for (var i = 0; i < reader.FieldCount; i++)
+        for (var i = 0; i < resultPlan.Columns.Length; i++)
         {
-            if (reader.IsDBNull(i))
+            var column = resultPlan.Columns[i];
+            if (column.Setter is null || reader.IsDBNull(column.Ordinal))
                 continue;
 
-            var column = reader.GetName(i);
-            PropertySetter? matched = null;
-
-            for (var j = 0; j < setters.Length; j++)
-            {
-                if (string.Equals(setters[j].ColumnName, column, StringComparison.OrdinalIgnoreCase))
-                {
-                    matched = setters[j];
-                    break;
-                }
-            }
-
-            if (matched is null)
-                continue;
-
-            var dbValue = reader.GetValue(i);
-            var value = ForgeValueConverter.FromDatabase(dbValue, matched.PropertyType);
-            matched.Setter(instance, value);
+            var dbValue = reader.GetValue(column.Ordinal);
+            var value = ForgeValueConverter.FromDatabase(dbValue, column.Setter.PropertyType);
+            column.Setter.Setter(instance, value);
         }
 
         return instance;
     }
 
-    private static PropertySetter[] BuildPropertySetters(Type type)
+    private static MaterializerResultPlan GetResultPlan(Type type, DbDataReader reader)
     {
-        return type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+        var key = BuildResultPlanKey(type, reader);
+        return ResultPlanCache.GetOrAdd(key, _ => BuildResultPlan(type, reader));
+    }
+
+    private static string BuildResultPlanKey(Type type, DbDataReader reader)
+    {
+        var parts = new string[reader.FieldCount + 1];
+        parts[0] = type.FullName ?? type.Name;
+        for (var i = 0; i < reader.FieldCount; i++)
+            parts[i + 1] = reader.GetName(i);
+        return string.Join("|", parts);
+    }
+
+    private static MaterializerResultPlan BuildResultPlan(Type type, DbDataReader reader)
+    {
+        var typePlan = TypePlanCache.GetOrAdd(type, BuildTypePlan);
+        var columns = new MaterializerColumn[reader.FieldCount];
+
+        for (var i = 0; i < reader.FieldCount; i++)
+        {
+            var name = reader.GetName(i);
+            typePlan.SettersByColumn.TryGetValue(name, out var setter);
+            columns[i] = new MaterializerColumn(i, setter);
+        }
+
+        return new MaterializerResultPlan(columns);
+    }
+
+    private static MaterializerTypePlan BuildTypePlan(Type type)
+    {
+        var setters = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.CanWrite && IsScalar(p.PropertyType))
             .Select(p => new PropertySetter(
                 p.GetCustomAttribute<ForgeORM.Abstractions.ForgeColumnAttribute>()?.Name ?? p.Name,
                 p.PropertyType,
                 BuildSetter(type, p)))
             .ToArray();
+
+        return new MaterializerTypePlan(
+            setters.ToDictionary(x => x.ColumnName, x => x, StringComparer.OrdinalIgnoreCase));
     }
 
     private static Action<object, object?> BuildSetter(Type declaringType, PropertyInfo property)
@@ -153,4 +173,7 @@ internal static class ForgeMaterializer
     }
 
     private sealed record PropertySetter(string ColumnName, Type PropertyType, Action<object, object?> Setter);
+    private sealed record MaterializerTypePlan(IReadOnlyDictionary<string, PropertySetter> SettersByColumn);
+    private sealed record MaterializerResultPlan(MaterializerColumn[] Columns);
+    private sealed record MaterializerColumn(int Ordinal, PropertySetter? Setter);
 }

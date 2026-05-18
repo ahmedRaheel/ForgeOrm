@@ -702,9 +702,6 @@ internal static class ForgeObjectMapper
         return Convert.ChangeType(value, type);
     }
 
-    private static bool IsEnumerableButNotString(Type type)
-        => type != typeof(string) && typeof(IEnumerable).IsAssignableFrom(type);
-
     private static bool IsScalarColumnType(Type type)
     {
         type = Nullable.GetUnderlyingType(type) ?? type;
@@ -721,6 +718,9 @@ internal static class ForgeObjectMapper
             || type == typeof(TimeSpan)
             || type == typeof(byte[]);
     }
+
+    private static bool IsEnumerableButNotString(Type type)
+        => type != typeof(string) && typeof(IEnumerable).IsAssignableFrom(type);
 }
 
 internal sealed class ForgeEntityShape
@@ -751,23 +751,16 @@ internal sealed class ForgeEntityShape
     /// <returns>The result of the For operation.</returns>
     public static ForgeEntityShape For(Type type)
     {
-        // Only real database scalar columns belong in INSERT/UPDATE/DELETE SQL.
-        // Navigation properties such as Customer and Items are handled separately
-        // by graph/split-query logic and must never be emitted as column names.
-        var allProperties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanRead)
-            .ToList();
-
-        var scalarProperties = allProperties
-            .Where(p => IsScalarColumnType(p.PropertyType))
+        var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanRead && IsScalarColumnType(p.PropertyType))
             .ToList();
 
         return new ForgeEntityShape
         {
             TableName = ResolveTableName(type),
-            KeyProperty = scalarProperties.FirstOrDefault(p => p.GetCustomAttribute<ForgeKeyAttribute>() is not null)
-                ?? scalarProperties.FirstOrDefault(p => p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase)),
-            ScalarProperties = scalarProperties
+            KeyProperty = props.FirstOrDefault(p => p.GetCustomAttribute<ForgeKeyAttribute>() is not null)
+                ?? props.FirstOrDefault(p => p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase)),
+            ScalarProperties = props
         };
     }
 
@@ -814,9 +807,6 @@ internal sealed class ForgeEntityShape
             key.SetValue(entity, Guid.NewGuid());
     }
 
-    private static bool IsEnumerableButNotString(Type type)
-        => type != typeof(string) && typeof(IEnumerable).IsAssignableFrom(type);
-
     private static bool IsScalarColumnType(Type type)
     {
         type = Nullable.GetUnderlyingType(type) ?? type;
@@ -833,6 +823,9 @@ internal sealed class ForgeEntityShape
             || type == typeof(TimeSpan)
             || type == typeof(byte[]);
     }
+
+    private static bool IsEnumerableButNotString(Type type)
+        => type != typeof(string) && typeof(IEnumerable).IsAssignableFrom(type);
 }
 
 internal static class ForgeExpression

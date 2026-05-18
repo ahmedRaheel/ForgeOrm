@@ -114,6 +114,11 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     private readonly ForgeEntityMetadata _meta;
     private readonly string? _baseSql;
     private readonly object? _baseParameters;
+    private static readonly ConcurrentDictionary<string, string> QuerySqlCache = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, string> CountSqlCache = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, string> AnySqlCache = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, string> AggregateSqlCache = new(StringComparer.Ordinal);
+
     private readonly List<string> _where = [];
     private readonly Dictionary<string, object?> _parameters = new(StringComparer.OrdinalIgnoreCase);
     private string? _orderBy;
@@ -316,19 +321,10 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     /// <returns>The result of the FirstOrDefault operation.</returns>
     public T? FirstOrDefault()
     {
-        var previousTake = _take;
-        try
-        {
-            _take = 1;
-            var row = _db.QueryFirstOrDefault<T>(BuildSql(), BuildParameters());
-            if (_includes.Count > 0 && row is not null)
-                ForgeNavigationSupport.LoadIncludedNavigationsAsync(new[] { row }, _db, _meta.KeyColumn, _includes, CancellationToken.None).GetAwaiter().GetResult();
-            return row;
-        }
-        finally
-        {
-            _take = previousTake;
-        }
+        var row = _db.QueryFirstOrDefault<T>(BuildFirstSql(), BuildParameters());
+        if (_includes.Count > 0 && row is not null)
+            ForgeNavigationSupport.LoadIncludedNavigationsAsync(new[] { row }, _db, _meta.KeyColumn, _includes, CancellationToken.None).GetAwaiter().GetResult();
+        return row;
     }
 
     /// <summary>
@@ -338,19 +334,10 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     /// <returns>The result of the FirstOrDefaultAsync operation.</returns>
     public async Task<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default)
     {
-        var previousTake = _take;
-        try
-        {
-            _take = 1;
-            var row = await _db.QueryFirstOrDefaultAsync<T>(BuildSql(), BuildParameters(), cancellationToken: cancellationToken);
-            if (_includes.Count > 0 && row is not null)
-                await ForgeNavigationSupport.LoadIncludedNavigationsAsync(new[] { row }, _db, _meta.KeyColumn, _includes, cancellationToken);
-            return row;
-        }
-        finally
-        {
-            _take = previousTake;
-        }
+        var row = await _db.QueryFirstOrDefaultAsync<T>(BuildFirstSql(), BuildParameters(), cancellationToken: cancellationToken);
+        if (_includes.Count > 0 && row is not null)
+            await ForgeNavigationSupport.LoadIncludedNavigationsAsync(new[] { row }, _db, _meta.KeyColumn, _includes, cancellationToken);
+        return row;
     }
 
     /// <summary>
@@ -416,38 +403,59 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
 
     private string BuildSql()
     {
+        var key = BuildSqlCacheKey("LIST", _skip, _take, _orderBy, null);
+        return QuerySqlCache.GetOrAdd(key, _ => BuildSqlCore());
+    }
+
+    private string BuildFirstSql()
+    {
+        var key = BuildSqlCacheKey("FIRST", 0, 1, _orderBy, null);
+        return QuerySqlCache.GetOrAdd(key, _ => BuildFirstSqlCore());
+    }
+
+    private string BuildSqlCore()
+    {
         var sql = BuildBaseSql();
-        var hasPaging = _skip.HasValue || _take.HasValue;
-
-        if (!string.IsNullOrWhiteSpace(_orderBy))
-        {
-            sql += " ORDER BY " + _orderBy;
-        }
-        else if (hasPaging)
-        {
-            sql += " ORDER BY 1";
-        }
-
-        if (hasPaging)
-        {
-            var skip = Math.Max(_skip ?? 0, 0);
-            var take = _take ?? 50;
-
-            if (take <= 0)
-                take = 1;
-
-            if (skip == take)
-                take += 1;
-
-            sql += $" OFFSET {skip} ROWS FETCH NEXT {take} ROWS ONLY";
-        }
-
+        AppendOrderAndPaging(ref sql, _skip, _take, _orderBy);
         return sql;
     }
 
-    private string BuildBaseSql()
+    private string BuildFirstSqlCore()
     {
-        var sql = _baseSql ?? $"SELECT {BuildColumnList()} FROM {_meta.TableName}";
+        // Use TOP 1 instead of mutating Take(1) + OFFSET/FETCH. This removes list allocation and reduces SQL Server work.
+        var sql = BuildBaseSql(top: 1);
+        if (!string.IsNullOrWhiteSpace(_orderBy))
+            sql += " ORDER BY " + _orderBy;
+        return sql;
+    }
+
+    private static void AppendOrderAndPaging(ref string sql, int? skipValue, int? takeValue, string? orderBy)
+    {
+        var hasPaging = skipValue.HasValue || takeValue.HasValue;
+
+        if (!string.IsNullOrWhiteSpace(orderBy))
+            sql += " ORDER BY " + orderBy;
+        else if (hasPaging)
+            sql += " ORDER BY 1";
+
+        if (!hasPaging)
+            return;
+
+        var skip = Math.Max(skipValue ?? 0, 0);
+        var take = takeValue ?? 50;
+
+        if (take <= 0)
+            take = 1;
+
+        if (skip == take)
+            take += 1;
+
+        sql += $" OFFSET {skip} ROWS FETCH NEXT {take} ROWS ONLY";
+    }
+
+    private string BuildBaseSql(int? top = null)
+    {
+        var sql = _baseSql ?? $"SELECT {(top.HasValue ? "TOP " + top.Value + " " : string.Empty)}{BuildColumnList()} FROM {_meta.TableName}";
         if (_where.Count > 0) sql += " WHERE " + string.Join(" AND ", _where);
         return sql;
     }
@@ -462,14 +470,37 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
         return columns.Length == 0 ? "*" : string.Join(", ", columns);
     }
 
-    private string BuildCountSql() => "SELECT COUNT(1) FROM (" + BuildBaseSql() + ") ForgeCount";
+    private string BuildCountSql()
+    {
+        var key = BuildSqlCacheKey("COUNT", null, null, null, null);
+        return CountSqlCache.GetOrAdd(key, _ => "SELECT COUNT(1) FROM (" + BuildBaseSql() + ") ForgeCount");
+    }
 
-    private string BuildAnySql() => "SELECT CASE WHEN EXISTS (" + BuildBaseSql() + ") THEN 1 ELSE 0 END";
+    private string BuildAnySql()
+    {
+        var key = BuildSqlCacheKey("ANY", null, null, null, null);
+        return AnySqlCache.GetOrAdd(key, _ => "SELECT CASE WHEN EXISTS (" + BuildBaseSql() + ") THEN 1 ELSE 0 END");
+    }
 
     private string BuildAggregateSql(string function, LambdaExpression selector)
     {
         var column = ForgeExpressionTranslator.MemberName(selector);
-        return $"SELECT COALESCE({function}({column}), 0) FROM (" + BuildBaseSql() + ") ForgeAggregate";
+        var key = BuildSqlCacheKey("AGG", null, null, null, function + ":" + column);
+        return AggregateSqlCache.GetOrAdd(key, _ => $"SELECT COALESCE({function}({column}), 0) FROM (" + BuildBaseSql() + ") ForgeAggregate");
+    }
+
+    private string BuildSqlCacheKey(string operation, int? skip, int? take, string? orderBy, string? extra)
+    {
+        return string.Join("|",
+            typeof(T).FullName,
+            operation,
+            _baseSql ?? string.Empty,
+            _meta.TableName,
+            string.Join("&", _where),
+            orderBy ?? string.Empty,
+            skip?.ToString() ?? string.Empty,
+            take?.ToString() ?? string.Empty,
+            extra ?? string.Empty);
     }
 
     private async Task<decimal> ExecuteDecimalAggregateAsync(
@@ -684,6 +715,8 @@ internal static class ForgeNavigationSupport
 
 internal static class ForgeExpressionTranslator
 {
+    private static readonly ConcurrentDictionary<string, string> PredicateSqlCache = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, string> MemberNameCache = new(StringComparer.Ordinal);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -692,7 +725,13 @@ internal static class ForgeExpressionTranslator
     /// <returns>The result of the T operation.</returns>
     public static string Translate<T>(Expression<Func<T, bool>> expression)
     {
-        if (expression.Body is not BinaryExpression b) throw new NotSupportedException("Only simple binary expressions are supported in MVP.");
+        var cacheKey = typeof(T).FullName + ":" + expression;
+        return PredicateSqlCache.GetOrAdd(cacheKey, _ => TranslateCore(expression.Body));
+    }
+
+    private static string TranslateCore(Expression body)
+    {
+        if (body is not BinaryExpression b) throw new NotSupportedException("Only simple binary expressions are supported in MVP.");
         return $"{Member(b.Left)} {Operator(b.NodeType)} {Value(b.Right)}";
     }
     /// <summary>
@@ -703,11 +742,17 @@ internal static class ForgeExpressionTranslator
     /// <returns>The result of the T operation.</returns>
     public static string MemberName<T>(Expression<Func<T, object>> expression)
     {
-        Expression body = expression.Body is UnaryExpression u ? u.Operand : expression.Body;
-        return body is MemberExpression m ? m.Member.Name : throw new NotSupportedException("Only member expression is supported.");
+        var cacheKey = typeof(T).FullName + ":" + expression;
+        return MemberNameCache.GetOrAdd(cacheKey, _ => MemberNameCore(expression));
     }
 
     public static string MemberName(LambdaExpression expression)
+    {
+        var cacheKey = expression.ReturnType.FullName + ":" + expression;
+        return MemberNameCache.GetOrAdd(cacheKey, _ => MemberNameCore(expression));
+    }
+
+    private static string MemberNameCore(LambdaExpression expression)
     {
         Expression body = expression.Body is UnaryExpression u ? u.Operand : expression.Body;
         return body is MemberExpression m ? m.Member.Name : throw new NotSupportedException("Only member expression is supported.");

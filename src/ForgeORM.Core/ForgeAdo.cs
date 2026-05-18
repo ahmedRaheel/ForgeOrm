@@ -4,12 +4,13 @@ using System.Text.RegularExpressions;
 using System.Data;
 using System.Data.Common;
 using System.Reflection;
+using System.Linq.Expressions;
 
 namespace ForgeORM.Core;
 
 public static class ForgeAdo
 {
-    private static readonly ConcurrentDictionary<Type, PropertyInfo[]> ParameterPropertyCache = new();
+    private static readonly ConcurrentDictionary<Type, ParameterProperty[]> ParameterPropertyCache = new();
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -224,15 +225,11 @@ public static class ForgeAdo
             return;
         }
 
-        var props = ParameterPropertyCache.GetOrAdd(
-            parameters.GetType(),
-            static type => type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => p.CanRead && IsBindableParameterProperty(p))
-                .ToArray());
+        var props = ParameterPropertyCache.GetOrAdd(parameters.GetType(), BuildParameterProperties);
 
         foreach (var prop in props)
         {
-            var value = prop.GetValue(parameters);
+            var value = prop.Getter(parameters);
             BindSingleOrEnumerable(command, prop.Name, value, prop.PropertyType);
         }
     }
@@ -288,7 +285,7 @@ public static class ForgeAdo
 
         var parameter = command.CreateParameter();
         parameter.ParameterName = "@" + name;
-        parameter.Value = value ?? DBNull.Value;
+        parameter.Value = NormalizeDateValue(value) ?? DBNull.Value;
 
         if (parameter.GetType().FullName is "Microsoft.Data.SqlClient.SqlParameter" or "System.Data.SqlClient.SqlParameter")
         {
@@ -298,6 +295,23 @@ public static class ForgeAdo
         }
 
         command.Parameters.Add(parameter);
+    }
+
+    private static ParameterProperty[] BuildParameterProperties(Type type)
+    {
+        return type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanRead && IsBindableParameterProperty(p))
+            .Select(p => new ParameterProperty(p.Name, p.PropertyType, BuildParameterGetter(type, p)))
+            .ToArray();
+    }
+
+    private static Func<object, object?> BuildParameterGetter(Type declaringType, PropertyInfo property)
+    {
+        var instance = Expression.Parameter(typeof(object), "instance");
+        var cast = Expression.Convert(instance, declaringType);
+        var access = Expression.Property(cast, property);
+        var convert = Expression.Convert(access, typeof(object));
+        return Expression.Lambda<Func<object, object?>>(convert, instance).Compile();
     }
 
     private static bool IsBindableParameterProperty(PropertyInfo property)
@@ -328,6 +342,19 @@ public static class ForgeAdo
 
         return 16;
     }
+
+    private static object? NormalizeDateValue(object? value)
+    {
+        if (value is DateTime dateTime)
+            return dateTime == default || dateTime < new DateTime(1753, 1, 1) ? DateTime.UtcNow : dateTime;
+
+        if (value is DateTimeOffset dateTimeOffset)
+            return dateTimeOffset == default ? DateTimeOffset.UtcNow : dateTimeOffset;
+
+        return value;
+    }
+
+    private sealed record ParameterProperty(string Name, Type PropertyType, Func<object, object?> Getter);
 
     private static bool IsEnumerableParameter(object? value)
     {

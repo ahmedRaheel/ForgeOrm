@@ -13,46 +13,9 @@ public interface IForgeDb :
     IForgeBulkOperations,
     IForgeBulkConditionOperations,
     IForgeTransactionManager,
-    IForgeDiagnostics,
-    IForgeFastOperations
+    IForgeDiagnostics
 {
     IForgeDatabaseProvider Provider { get; }
-}
-
-
-public interface IForgeFastOperations
-{
-    /// <summary>
-    /// Fast primary-key lookup path. This bypasses the expression pipeline, include processing, graph rules, and query-state rendering.
-    /// Use this path when comparing with Dapper QueryFirst/QueryFirstOrDefault by primary key.
-    /// </summary>
-    T? Find<T>(object id, int? timeoutSeconds = null);
-
-    /// <summary>
-    /// Fast primary-key lookup path. This bypasses the expression pipeline, include processing, graph rules, and query-state rendering.
-    /// Use this path when comparing with Dapper QueryFirst/QueryFirstOrDefault by primary key.
-    /// </summary>
-    Task<T?> FindAsync<T>(object id, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Fast raw SQL list path. This skips expression parsing and navigation processing.
-    /// </summary>
-    IReadOnlyList<T> QueryFast<T>(string sql, object? parameters = null, int? timeoutSeconds = null);
-
-    /// <summary>
-    /// Fast raw SQL list path. This skips expression parsing and navigation processing.
-    /// </summary>
-    Task<IReadOnlyList<T>> QueryFastAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Fast raw SQL single-row path. This skips expression parsing and navigation processing.
-    /// </summary>
-    T? QueryFirstFast<T>(string sql, object? parameters = null, int? timeoutSeconds = null);
-
-    /// <summary>
-    /// Fast raw SQL single-row path. This skips expression parsing and navigation processing.
-    /// </summary>
-    Task<T?> QueryFirstFastAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
 }
 
 public interface IForgeBulkConditionOperations

@@ -249,13 +249,13 @@ public partial class ForgeDb
         if (children.Count == 0) return;
 
         var shape = ForgeEntityShape.For(typeof(TChild));
-        var props = shape.ScalarProperties.Where(p => p.CanRead && !ForgeEntityShape.IsComputed(p)).ToList();
-        var sql = $"INSERT INTO {shape.TableName} ({string.Join(", ", props.Select(ForgeEntityShape.ColumnName))}) VALUES ({string.Join(", ", props.Select(p => "@" + p.Name))})";
+        var props = ForgeGraphWriteHelpers.GetInsertProperties(shape);
+        var sql = ForgeGraphWriteHelpers.BuildInsertSql(shape, props, includeScopeIdentity: false);
 
         foreach (var child in children)
         {
             if (child is null) continue;
-            var parameters = props.ToDictionary(p => p.Name, p => p.GetValue(child), StringComparer.OrdinalIgnoreCase);
+            var parameters = ForgeGraphWriteHelpers.CreateParameterDictionary(props, child!);
             await using var command = ForgeAdo.CreateCommand(connection, sql, parameters, transaction);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -277,18 +277,9 @@ public partial class ForgeDb
 
         var keyValue = key.GetValue(parent);
         var includeKeyInInsert = ShouldIncludeKeyInInsert(key, keyValue);
-        var props = entity.ScalarProperties
-            .Where(p => p.CanRead && !ForgeEntityShape.IsComputed(p) && (includeKeyInInsert || !SameProperty(p, key)))
-            .ToList();
-
-        var columns = string.Join(", ", props.Select(ForgeEntityShape.ColumnName));
-        var values = string.Join(", ", props.Select(p => "@" + p.Name));
-        var sql = $"INSERT INTO {entity.TableName} ({columns}) VALUES ({values});";
-
-        if (!includeKeyInInsert)
-            sql += " SELECT CAST(SCOPE_IDENTITY() AS int);";
-
-        var parameters = props.ToDictionary(p => p.Name, p => p.GetValue(parent), StringComparer.OrdinalIgnoreCase);
+        var props = ForgeGraphWriteHelpers.GetInsertProperties(entity, includeKeyInInsert);
+        var sql = ForgeGraphWriteHelpers.BuildInsertSql(entity, props, includeScopeIdentity: !includeKeyInInsert);
+        var parameters = ForgeGraphWriteHelpers.CreateParameterDictionary(props, parent!);
         await using var command = ForgeAdo.CreateCommand(connection, sql, parameters, transaction);
         var result = includeKeyInInsert ? keyValue : await command.ExecuteScalarAsync(cancellationToken);
         if (includeKeyInInsert)
@@ -505,11 +496,11 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
     private static async Task ExecuteRowByRowFallbackAsync(DbConnection connection, DbTransaction transaction, IReadOnlyList<TChildEntity> entities, CancellationToken cancellationToken)
     {
         var shape = ForgeEntityShape.For(typeof(TChildEntity));
-        var props = shape.ScalarProperties.Where(p => p.CanRead && !ForgeEntityShape.IsComputed(p)).ToList();
-        var sql = $"INSERT INTO {shape.TableName} ({string.Join(", ", props.Select(ForgeEntityShape.ColumnName))}) VALUES ({string.Join(", ", props.Select(p => "@" + p.Name))})";
+        var props = ForgeGraphWriteHelpers.GetInsertProperties(shape);
+        var sql = ForgeGraphWriteHelpers.BuildInsertSql(shape, props, includeScopeIdentity: false);
         foreach (var entity in entities)
         {
-            var parameters = props.ToDictionary(p => p.Name, p => p.GetValue(entity), StringComparer.OrdinalIgnoreCase);
+            var parameters = ForgeGraphWriteHelpers.CreateParameterDictionary(props, entity!);
             await using var command = ForgeAdo.CreateCommand(connection, sql, parameters, transaction);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -601,7 +592,7 @@ internal static class ForgeTvpDataTable
     public static DataTable Create<T>(IReadOnlyList<T> rows)
     {
         var shape = ForgeEntityShape.For(typeof(T));
-        var props = shape.ScalarProperties.Where(p => p.CanRead && !ForgeEntityShape.IsComputed(p)).ToList();
+        var props = ForgeGraphWriteHelpers.GetInsertProperties(shape);
         var table = new DataTable();
 
         foreach (var prop in props)
@@ -609,11 +600,85 @@ internal static class ForgeTvpDataTable
 
         foreach (var row in rows)
         {
-            var values = props.Select(p => ForgeEnumConversion.ToDatabaseValue(p.GetValue(row), p) ?? DBNull.Value).ToArray();
+            var values = props.Select(p => ForgeGraphWriteHelpers.NormalizeDatabaseValue(p.GetValue(row), p) ?? DBNull.Value).ToArray();
             table.Rows.Add(values);
         }
 
         return table;
+    }
+}
+
+
+internal static class ForgeGraphWriteHelpers
+{
+    public static List<PropertyInfo> GetInsertProperties(ForgeEntityShape shape, bool includeKey = false)
+    {
+        var key = shape.KeyProperty;
+
+        return shape.ScalarProperties
+            .Where(p => p.CanRead)
+            .Where(p => !ForgeEntityShape.IsComputed(p))
+            .Where(p => key is null || includeKey || !p.Name.Equals(key.Name, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    public static List<PropertyInfo> GetUpdateProperties(ForgeEntityShape shape)
+    {
+        var key = shape.KeyProperty;
+
+        return shape.ScalarProperties
+            .Where(p => p.CanRead)
+            .Where(p => !ForgeEntityShape.IsComputed(p))
+            .Where(p => key is null || !p.Name.Equals(key.Name, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    public static string BuildInsertSql(ForgeEntityShape shape, IReadOnlyList<PropertyInfo> props, bool includeScopeIdentity)
+    {
+        if (props.Count == 0)
+            throw new InvalidOperationException($"No insertable scalar columns were found for table {shape.TableName}.");
+
+        var columns = string.Join(", ", props.Select(ForgeEntityShape.ColumnName));
+        var values = string.Join(", ", props.Select(p => "@" + p.Name));
+        var sql = $"INSERT INTO {shape.TableName} ({columns}) VALUES ({values})";
+
+        if (includeScopeIdentity)
+            sql += "; SELECT CAST(SCOPE_IDENTITY() AS int);";
+
+        return sql;
+    }
+
+    public static Dictionary<string, object?> CreateParameterDictionary(IEnumerable<PropertyInfo> props, object entity)
+    {
+        var parameters = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var prop in props)
+            parameters[prop.Name] = NormalizeDatabaseValue(prop.GetValue(entity), prop);
+
+        return parameters;
+    }
+
+    public static object? NormalizeDatabaseValue(object? value, PropertyInfo? property = null)
+    {
+        value = ForgeEnumConversion.ToDatabaseValue(value, property);
+
+        if (value is DateTime dateTime)
+        {
+            if (dateTime == default || dateTime < new DateTime(1753, 1, 1))
+                return DateTime.UtcNow;
+
+            return dateTime;
+        }
+
+        if (value is DateTimeOffset dateTimeOffset)
+        {
+            if (dateTimeOffset == default)
+                return DateTimeOffset.UtcNow;
+
+            return dateTimeOffset;
+        }
+
+        return value;
     }
 }
 

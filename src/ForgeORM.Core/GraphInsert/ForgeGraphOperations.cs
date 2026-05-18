@@ -268,15 +268,10 @@ public partial class ForgeDb
 
         var keyValue = key?.GetValue(entity);
         var includeKey = key is not null && ShouldIncludeGraphKeyInInsert(key, keyValue);
-        var props = shape.ScalarProperties
-            .Where(p => p.CanRead && !ForgeEntityShape.IsComputed(p) && (key is null || includeKey || !p.Name.Equals(key.Name, StringComparison.OrdinalIgnoreCase)))
-            .ToList();
+        var props = ForgeGraphWriteHelpers.GetInsertProperties(shape, includeKey);
+        var sql = ForgeGraphWriteHelpers.BuildInsertSql(shape, props, includeScopeIdentity: key is not null && !includeKey);
 
-        var sql = $"INSERT INTO {shape.TableName} ({string.Join(", ", props.Select(ForgeEntityShape.ColumnName))}) VALUES ({string.Join(", ", props.Select(p => "@" + p.Name))})";
-        if (key is not null && !includeKey)
-            sql += "; SELECT CAST(SCOPE_IDENTITY() AS int);";
-
-        var parameters = props.ToDictionary(p => p.Name, p => ForgeEnumConversion.ToDatabaseValue(p.GetValue(entity), p), StringComparer.OrdinalIgnoreCase);
+        var parameters = ForgeGraphWriteHelpers.CreateParameterDictionary(props, entity);
         await using var command = ForgeAdo.CreateCommand(connection, sql, parameters, transaction);
 
         if (key is not null && !includeKey)
@@ -295,10 +290,11 @@ public partial class ForgeDb
         var entityType = entity.GetType();
         var shape = ForgeEntityShape.For(entityType);
         var key = shape.KeyProperty ?? throw new InvalidOperationException($"ForgeORM graph update requires a key property on {entityType.Name}.");
-        var props = shape.ScalarProperties.Where(p => p.CanRead && !ForgeEntityShape.IsComputed(p) && !p.Name.Equals(key.Name, StringComparison.OrdinalIgnoreCase)).ToList();
+        var props = ForgeGraphWriteHelpers.GetUpdateProperties(shape);
         var setClause = string.Join(", ", props.Select(p => $"{ForgeEntityShape.ColumnName(p)} = @{p.Name}"));
         var sql = $"UPDATE {shape.TableName} SET {setClause} WHERE {ForgeEntityShape.ColumnName(key)} = @{key.Name}";
-        var parameters = shape.ScalarProperties.ToDictionary(p => p.Name, p => ForgeEnumConversion.ToDatabaseValue(p.GetValue(entity), p), StringComparer.OrdinalIgnoreCase);
+        var parameters = ForgeGraphWriteHelpers.CreateParameterDictionary(props, entity);
+        parameters[key.Name] = ForgeGraphWriteHelpers.NormalizeDatabaseValue(key.GetValue(entity), key);
         return await ForgeAdo.ExecuteAsync(connection, sql, parameters, transaction, cancellationToken: cancellationToken);
     }
 

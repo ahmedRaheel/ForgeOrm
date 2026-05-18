@@ -187,6 +187,7 @@ public partial class ForgeDb
                     childForeignKeyProperty.SetValue(child, ForgeObjectMapper.ConvertTo(key, childForeignKeyProperty.PropertyType));
 
                 ForgeEntityShape.EnsureGeneratedKey(child);
+                ResetDatabaseGeneratedIdentity(child);
             }
 
             await InsertChildrenRowByRowAsync(connection, transaction, childRows, cancellationToken);
@@ -255,10 +256,26 @@ public partial class ForgeDb
         foreach (var child in children)
         {
             if (child is null) continue;
+            ResetDatabaseGeneratedIdentity(child!);
             var parameters = ForgeGraphWriteHelpers.CreateParameterDictionary(props, child!);
             await using var command = ForgeAdo.CreateCommand(connection, sql, parameters, transaction);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
+    }
+
+    private static void ResetDatabaseGeneratedIdentity(object entity)
+    {
+        var shape = ForgeEntityShape.For(entity.GetType());
+        var key = shape.KeyProperty;
+        if (key is null || !key.CanWrite)
+            return;
+
+        var keyType = Nullable.GetUnderlyingType(key.PropertyType) ?? key.PropertyType;
+        if (keyType == typeof(Guid))
+            return;
+
+        if (keyType == typeof(int) || keyType == typeof(long) || keyType == typeof(short))
+            key.SetValue(entity, Activator.CreateInstance(keyType));
     }
 
     private static async Task<TKey> InsertParentAndReturnKeyAsync<TParent, TDto, TKey>(
@@ -283,7 +300,13 @@ public partial class ForgeDb
         await using var command = ForgeAdo.CreateCommand(connection, sql, parameters, transaction);
         var result = includeKeyInInsert ? keyValue : await command.ExecuteScalarAsync(cancellationToken);
         if (includeKeyInInsert)
+        {
             await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        else if (key.CanWrite)
+        {
+            key.SetValue(parent, ForgeObjectMapper.ConvertTo(result, key.PropertyType));
+        }
 
         return (TKey)ForgeObjectMapper.ConvertTo(result, typeof(TKey))!;
     }

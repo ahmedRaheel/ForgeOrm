@@ -206,6 +206,10 @@ public partial class ForgeDb
                 fk.SetValue(entity, ForgeObjectMapper.ConvertTo(parentKeyValue, fk.PropertyType));
         }
 
+        // For SQL Server IDENTITY keys (int/long/short), never send an explicit Id value.
+        // InsertSingleNodeAsync will use SCOPE_IDENTITY() and write the generated key back.
+        ResetDatabaseGeneratedIdentity(entity, shape);
+
         await InsertSingleNodeAsync(connection, transaction, entity, shape, cancellationToken);
         var keyValue = key.GetValue(entity);
 
@@ -252,9 +256,15 @@ public partial class ForgeDb
 
                 var childShape = ForgeEntityShape.For(child.GetType());
                 var currentChildKey = childShape.KeyProperty?.GetValue(child);
-                affected += IsMeaningfulKey(currentChildKey)
-                    ? await ExecuteSingleUpdateAsync(connection, transaction, child, cancellationToken)
-                    : await InsertSingleNodeAsync(connection, transaction, child, childShape, cancellationToken);
+                if (IsMeaningfulKey(currentChildKey))
+                {
+                    affected += await ExecuteSingleUpdateAsync(connection, transaction, child, cancellationToken);
+                }
+                else
+                {
+                    ResetDatabaseGeneratedIdentity(child, childShape);
+                    affected += await InsertSingleNodeAsync(connection, transaction, child, childShape, cancellationToken);
+                }
             }
         }
 
@@ -264,7 +274,11 @@ public partial class ForgeDb
     private async Task<int> InsertSingleNodeAsync(DbConnection connection, DbTransaction transaction, object entity, ForgeEntityShape shape, CancellationToken cancellationToken)
     {
         var key = shape.KeyProperty;
-        if (key is not null) EnsureKeyValue(entity, key);
+        if (key is not null)
+        {
+            EnsureKeyValue(entity, key);
+            ResetDatabaseGeneratedIdentity(entity, shape);
+        }
 
         var keyValue = key?.GetValue(entity);
         var includeKey = key is not null && ShouldIncludeGraphKeyInInsert(key, keyValue);
@@ -378,6 +392,22 @@ public partial class ForgeDb
         if (type == typeof(Guid)) return (Guid)value != Guid.Empty;
         if (type.IsValueType) return !Equals(value, Activator.CreateInstance(type));
         return true;
+    }
+
+    private static void ResetDatabaseGeneratedIdentity(object entity, ForgeEntityShape shape)
+    {
+        var key = shape.KeyProperty;
+        if (key is null || !key.CanWrite)
+            return;
+
+        var keyType = Nullable.GetUnderlyingType(key.PropertyType) ?? key.PropertyType;
+
+        // GUID keys are client-generated. Numeric keys are database-generated identities.
+        if (keyType == typeof(Guid))
+            return;
+
+        if (keyType == typeof(int) || keyType == typeof(long) || keyType == typeof(short))
+            key.SetValue(entity, Activator.CreateInstance(keyType));
     }
 
     private static bool ShouldIncludeGraphKeyInInsert(PropertyInfo key, object? value)

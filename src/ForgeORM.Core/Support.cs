@@ -307,11 +307,74 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     public async Task<int> CountAsync(CancellationToken cancellationToken = default)
         => await _db.ExecuteScalarAsync<int>(BuildCountSql(), BuildParameters(), cancellationToken: cancellationToken);
 
+    /// <summary>Executes SUM for the selected decimal column.</summary>
+    public Task<decimal> SumAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
+        => ExecuteDecimalAggregateAsync("SUM", selector, cancellationToken);
+
+    /// <summary>Executes AVG for the selected decimal column.</summary>
+    public Task<decimal> AverageAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
+        => ExecuteDecimalAggregateAsync("AVG", selector, cancellationToken);
+
+    /// <summary>Executes MIN for the selected decimal column.</summary>
+    public Task<decimal> MinAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
+        => ExecuteDecimalAggregateAsync("MIN", selector, cancellationToken);
+
+    /// <summary>Executes MAX for the selected decimal column.</summary>
+    public Task<decimal> MaxAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
+        => ExecuteDecimalAggregateAsync("MAX", selector, cancellationToken);
+
+    /// <summary>Executes expression-based paging using the current query filters and ordering.</summary>
+    public async Task<ForgePagedResult<T>> PageAsync(int page, int pageSize, CancellationToken cancellationToken = default)
+    {
+        if (page <= 0) throw new ArgumentOutOfRangeException(nameof(page), "Page must be greater than zero.");
+        if (pageSize <= 0) throw new ArgumentOutOfRangeException(nameof(pageSize), "Page size must be greater than zero.");
+
+        var totalRecords = await CountAsync(cancellationToken);
+        var previousSkip = _skip;
+        var previousTake = _take;
+
+        try
+        {
+            _skip = (page - 1) * pageSize;
+            _take = pageSize;
+
+            var items = await ToListAsync(cancellationToken);
+            return new ForgePagedResult<T>
+            {
+                Items = items,
+                Page = page,
+                PageSize = pageSize,
+                TotalRecords = totalRecords
+            };
+        }
+        finally
+        {
+            _skip = previousSkip;
+            _take = previousTake;
+        }
+    }
+
     private string BuildSql()
     {
         var sql = BuildBaseSql();
-        if (!string.IsNullOrWhiteSpace(_orderBy)) sql += " ORDER BY " + _orderBy;
-        if (_take.HasValue) sql += $" OFFSET {_skip ?? 0} ROWS FETCH NEXT {_take.Value} ROWS ONLY";
+        if (!string.IsNullOrWhiteSpace(_orderBy))
+        {
+            sql += " ORDER BY " + _orderBy;
+        }
+        else if (_skip.HasValue || _take.HasValue)
+        {
+            sql += " ORDER BY 1";
+        }
+
+        if (_skip.HasValue || _take.HasValue)
+        {
+            sql += $" OFFSET {_skip ?? 0} ROWS";
+            if (_take.HasValue)
+            {
+                sql += $" FETCH NEXT {_take.Value} ROWS ONLY";
+            }
+        }
+
         return sql;
     }
 
@@ -325,6 +388,23 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     private string BuildCountSql() => "SELECT COUNT(1) FROM (" + BuildBaseSql() + ") ForgeCount";
 
     private string BuildAnySql() => "SELECT CASE WHEN EXISTS (" + BuildBaseSql() + ") THEN 1 ELSE 0 END";
+
+    private string BuildAggregateSql(string function, LambdaExpression selector)
+    {
+        var column = ForgeExpressionTranslator.MemberName(selector);
+        return $"SELECT COALESCE({function}({column}), 0) FROM (" + BuildBaseSql() + ") ForgeAggregate";
+    }
+
+    private async Task<decimal> ExecuteDecimalAggregateAsync(
+        string function,
+        Expression<Func<T, decimal>> selector,
+        CancellationToken cancellationToken)
+    {
+        return await _db.ExecuteScalarAsync<decimal>(
+            BuildAggregateSql(function, selector),
+            BuildParameters(),
+            cancellationToken: cancellationToken);
+    }
 
     private object? BuildParameters() => _parameters.Count == 0 ? _baseParameters : _parameters;
 
@@ -366,6 +446,12 @@ internal static class ForgeExpressionTranslator
     /// <param name="expression">The expression value.</param>
     /// <returns>The result of the T operation.</returns>
     public static string MemberName<T>(Expression<Func<T, object>> expression)
+    {
+        Expression body = expression.Body is UnaryExpression u ? u.Operand : expression.Body;
+        return body is MemberExpression m ? m.Member.Name : throw new NotSupportedException("Only member expression is supported.");
+    }
+
+    public static string MemberName(LambdaExpression expression)
     {
         Expression body = expression.Body is UnaryExpression u ? u.Operand : expression.Body;
         return body is MemberExpression m ? m.Member.Name : throw new NotSupportedException("Only member expression is supported.");

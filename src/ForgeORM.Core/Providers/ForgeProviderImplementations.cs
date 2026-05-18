@@ -72,7 +72,7 @@ public sealed class SqlServerForgeDialect : IForgeProviderDialect
     {
         if (take is null) return sql;
         if (!sql.Contains("ORDER BY", StringComparison.OrdinalIgnoreCase))
-            sql += " ORDER BY (SELECT 1)";
+            sql += " ORDER BY 1";
         return $"{sql} OFFSET {skip ?? 0} ROWS FETCH NEXT {take.Value} ROWS ONLY";
     }
 

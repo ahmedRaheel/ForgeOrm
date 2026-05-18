@@ -444,7 +444,7 @@ public sealed class ForgeQueryBuilder<TEntity>
         }
         else if (SkipCount.HasValue || TakeCount.HasValue)
         {
-            sql += " ORDER BY (SELECT 1)";
+            sql += " ORDER BY 1";
         }
 
         if (SkipCount.HasValue || TakeCount.HasValue)

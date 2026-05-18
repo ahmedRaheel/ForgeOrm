@@ -449,13 +449,11 @@ public sealed class ForgeQueryBuilder<TEntity>
 
         if (SkipCount.HasValue || TakeCount.HasValue)
         {
-            var skip = Math.Max(0, SkipCount.GetValueOrDefault());
-            var take = TakeCount.GetValueOrDefault();
-            if (take <= 0) take = 1;
-            if (skip == take) take++;
-
-            sql += $" OFFSET {skip} ROWS";
-            sql += $" FETCH NEXT {take} ROWS ONLY";
+            sql += $" OFFSET {SkipCount.GetValueOrDefault()} ROWS";
+            if (TakeCount.HasValue)
+            {
+                sql += $" FETCH NEXT {TakeCount.Value} ROWS ONLY";
+            }
         }
 
         return new ForgeRenderedQuery(sql, new Dictionary<string, object?>(_parameters, StringComparer.OrdinalIgnoreCase));

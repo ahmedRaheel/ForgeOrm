@@ -789,35 +789,16 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
 
     private void AppendPaging(StringBuilder sql, IForgeDatabaseProvider provider)
     {
-        if (!_take.HasValue && !_skip.HasValue) return;
-
-        var (skip, take) = NormalizePaging(_skip, _take);
-
+        if (!_take.HasValue) return;
         if (provider.ProviderName.Equals("SqlServer", StringComparison.OrdinalIgnoreCase) ||
             provider.ProviderName.Equals("Oracle", StringComparison.OrdinalIgnoreCase))
         {
             if (string.IsNullOrWhiteSpace(_orderBy))
                 sql.Append(" ORDER BY 1");
-
-            sql.Append($" OFFSET {skip} ROWS FETCH NEXT {take} ROWS ONLY");
+            sql.Append($" OFFSET {_skip ?? 0} ROWS FETCH NEXT {_take.Value} ROWS ONLY");
             return;
         }
-
-        sql.Append($" LIMIT {take} OFFSET {skip}");
-    }
-
-    private static (int Skip, int Take) NormalizePaging(int? skipValue, int? takeValue)
-    {
-        var skip = Math.Max(0, skipValue ?? 0);
-        var take = takeValue.GetValueOrDefault();
-
-        if (take <= 0)
-            take = 1;
-
-        if (skip == take)
-            take++;
-
-        return (skip, take);
+        sql.Append($" LIMIT {_take.Value} OFFSET {_skip ?? 0}");
     }
 
     private object? BuildFinalParameters()

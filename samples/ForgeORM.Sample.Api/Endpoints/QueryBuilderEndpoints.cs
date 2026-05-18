@@ -14,7 +14,7 @@ public static class QueryBuilderEndpoints
             var CustomerId = 1;
             var result1 = db.Set<Order>()
             .Where(x => x.CustomerId == CustomerId)
-            .ToListAsync(includeChildren: false);
+            .ToListAsync();
 
 
 

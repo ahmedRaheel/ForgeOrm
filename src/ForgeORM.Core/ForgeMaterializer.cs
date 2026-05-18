@@ -7,7 +7,7 @@ namespace ForgeORM.Core;
 
 internal static class ForgeMaterializer
 {
-    private static readonly ConcurrentDictionary<Type, MaterializerPlan> Plans = new();
+    private static readonly ConcurrentDictionary<Type, PropertySetter[]> PropertySetterCache = new();
 
     public static T Map<T>(DbDataReader reader)
     {
@@ -24,27 +24,68 @@ internal static class ForgeMaterializer
             return ForgeValueConverter.FromDatabase(value, actualType);
         }
 
-        var plan = Plans.GetOrAdd(actualType, BuildPlan);
-        return plan.Map(reader);
+        var parameterlessCtor = actualType.GetConstructor(Type.EmptyTypes);
+        return parameterlessCtor is not null
+            ? MapByProperties(actualType, reader)
+            : MapByConstructor(actualType, reader);
     }
 
-    private static MaterializerPlan BuildPlan(Type type)
+    private static object MapByProperties(Type type, DbDataReader reader)
     {
-        var parameterlessCtor = type.GetConstructor(Type.EmptyTypes);
+        var instance = Activator.CreateInstance(type)!;
+        var setters = PropertySetterCache.GetOrAdd(type, BuildPropertySetters);
 
-        if (parameterlessCtor is not null)
+        for (var i = 0; i < reader.FieldCount; i++)
         {
-            var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(x => x.CanWrite && IsScalarColumnType(x.PropertyType))
-                .Select(x => new PropertyMap(
-                    x.Name,
-                    x.PropertyType,
-                    CreateSetter(type, x)))
-                .ToArray();
+            if (reader.IsDBNull(i))
+                continue;
 
-            return new PropertyMaterializerPlan(type, properties);
+            var column = reader.GetName(i);
+            PropertySetter? matched = null;
+
+            for (var j = 0; j < setters.Length; j++)
+            {
+                if (string.Equals(setters[j].ColumnName, column, StringComparison.OrdinalIgnoreCase))
+                {
+                    matched = setters[j];
+                    break;
+                }
+            }
+
+            if (matched is null)
+                continue;
+
+            var dbValue = reader.GetValue(i);
+            var value = ForgeValueConverter.FromDatabase(dbValue, matched.PropertyType);
+            matched.Setter(instance, value);
         }
 
+        return instance;
+    }
+
+    private static PropertySetter[] BuildPropertySetters(Type type)
+    {
+        return type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanWrite && IsScalar(p.PropertyType))
+            .Select(p => new PropertySetter(
+                p.GetCustomAttribute<ForgeORM.Abstractions.ForgeColumnAttribute>()?.Name ?? p.Name,
+                p.PropertyType,
+                BuildSetter(type, p)))
+            .ToArray();
+    }
+
+    private static Action<object, object?> BuildSetter(Type declaringType, PropertyInfo property)
+    {
+        var instance = Expression.Parameter(typeof(object), "instance");
+        var value = Expression.Parameter(typeof(object), "value");
+        var convertedInstance = Expression.Convert(instance, declaringType);
+        var convertedValue = Expression.Convert(value, property.PropertyType);
+        var assign = Expression.Assign(Expression.Property(convertedInstance, property), convertedValue);
+        return Expression.Lambda<Action<object, object?>>(assign, instance, value).Compile();
+    }
+
+    private static object MapByConstructor(Type type, DbDataReader reader)
+    {
         var ctor = type.GetConstructors()
             .OrderByDescending(x => x.GetParameters().Length)
             .FirstOrDefault();
@@ -52,107 +93,26 @@ internal static class ForgeMaterializer
         if (ctor is null)
             throw new InvalidOperationException($"No constructor found for {type.Name}");
 
-        return new ConstructorMaterializerPlan(ctor);
-    }
+        var parameters = ctor.GetParameters();
+        var values = new object?[parameters.Length];
 
-    private static Action<object, object?> CreateSetter(Type declaringType, PropertyInfo property)
-    {
-        var instance = Expression.Parameter(typeof(object), "instance");
-        var value = Expression.Parameter(typeof(object), "value");
-
-        var convertedInstance = Expression.Convert(instance, declaringType);
-        var convertedValue = Expression.Convert(value, property.PropertyType);
-        var assign = Expression.Assign(Expression.Property(convertedInstance, property), convertedValue);
-
-        return Expression.Lambda<Action<object, object?>>(assign, instance, value).Compile();
-    }
-
-    private sealed class PropertyMaterializerPlan : MaterializerPlan
-    {
-        private readonly Type _type;
-        private readonly PropertyMap[] _properties;
-
-        public PropertyMaterializerPlan(Type type, PropertyMap[] properties)
+        for (var i = 0; i < parameters.Length; i++)
         {
-            _type = type;
-            _properties = properties;
-        }
+            var parameter = parameters[i];
+            var ordinal = FindOrdinal(reader, parameter.Name!);
 
-        public override object Map(DbDataReader reader)
-        {
-            var instance = Activator.CreateInstance(_type)!;
-
-            for (var i = 0; i < reader.FieldCount; i++)
+            if (ordinal < 0 || reader.IsDBNull(ordinal))
             {
-                if (reader.IsDBNull(i))
-                    continue;
-
-                var column = reader.GetName(i);
-
-                for (var p = 0; p < _properties.Length; p++)
-                {
-                    var property = _properties[p];
-
-                    if (!string.Equals(property.Name, column, StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    var dbValue = reader.GetValue(i);
-                    var value = ForgeValueConverter.FromDatabase(dbValue, property.PropertyType);
-
-                    if (value is not null)
-                        property.Setter(instance, value);
-
-                    break;
-                }
+                values[i] = GetDefault(parameter.ParameterType);
+                continue;
             }
 
-            return instance;
-        }
-    }
-
-    private sealed class ConstructorMaterializerPlan : MaterializerPlan
-    {
-        private readonly ConstructorInfo _ctor;
-        private readonly ParameterInfo[] _parameters;
-
-        public ConstructorMaterializerPlan(ConstructorInfo ctor)
-        {
-            _ctor = ctor;
-            _parameters = ctor.GetParameters();
+            var dbValue = reader.GetValue(ordinal);
+            values[i] = ForgeValueConverter.FromDatabase(dbValue, parameter.ParameterType);
         }
 
-        public override object Map(DbDataReader reader)
-        {
-            var values = new object?[_parameters.Length];
-
-            for (var i = 0; i < _parameters.Length; i++)
-            {
-                var parameter = _parameters[i];
-                var ordinal = FindOrdinal(reader, parameter.Name!);
-
-                if (ordinal < 0 || reader.IsDBNull(ordinal))
-                {
-                    values[i] = GetDefault(parameter.ParameterType);
-                    continue;
-                }
-
-                var dbValue = reader.GetValue(ordinal);
-                values[i] = ForgeValueConverter.FromDatabase(dbValue, parameter.ParameterType);
-            }
-
-            return _ctor.Invoke(values);
-        }
+        return ctor.Invoke(values);
     }
-
-    private abstract class MaterializerPlan
-    {
-        public abstract object Map(DbDataReader reader);
-    }
-
-    private sealed record PropertyMap(
-        string Name,
-        Type PropertyType,
-        Action<object, object?> Setter);
 
     private static int FindOrdinal(DbDataReader reader, string name)
     {
@@ -165,28 +125,23 @@ internal static class ForgeMaterializer
         return -1;
     }
 
-    private static bool IsSimple(Type type)
+    internal static bool IsScalar(Type type)
     {
-        type = Nullable.GetUnderlyingType(type) ?? type;
-
-        return type.IsPrimitive
-            || type.IsEnum
-            || type == typeof(string)
-            || type == typeof(Guid)
-            || type == typeof(decimal)
-            || type == typeof(DateTime)
-            || type == typeof(DateTimeOffset)
-            || type == typeof(DateOnly)
-            || type == typeof(TimeOnly)
-            || type == typeof(TimeSpan)
-            || type == typeof(byte[]);
+        var actual = Nullable.GetUnderlyingType(type) ?? type;
+        return actual.IsPrimitive
+               || actual.IsEnum
+               || actual == typeof(string)
+               || actual == typeof(Guid)
+               || actual == typeof(decimal)
+               || actual == typeof(DateTime)
+               || actual == typeof(DateTimeOffset)
+               || actual == typeof(DateOnly)
+               || actual == typeof(TimeOnly)
+               || actual == typeof(TimeSpan)
+               || actual == typeof(byte[]);
     }
 
-    private static bool IsScalarColumnType(Type type)
-    {
-        type = Nullable.GetUnderlyingType(type) ?? type;
-        return IsSimple(type);
-    }
+    private static bool IsSimple(Type type) => IsScalar(type);
 
     private static object? GetDefault(Type type)
     {
@@ -196,4 +151,6 @@ internal static class ForgeMaterializer
 
         return type.IsValueType ? Activator.CreateInstance(type) : null;
     }
+
+    private sealed record PropertySetter(string ColumnName, Type PropertyType, Action<object, object?> Setter);
 }

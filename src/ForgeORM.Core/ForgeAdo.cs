@@ -1,14 +1,15 @@
 using System.Collections;
+using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 using System.Data;
 using System.Data.Common;
 using System.Reflection;
-using System.Collections.Concurrent;
 
 namespace ForgeORM.Core;
 
 public static class ForgeAdo
 {
-    private static readonly ConcurrentDictionary<Type, PropertyInfo[]> ParameterPropertiesCache = new();
+    private static readonly ConcurrentDictionary<Type, PropertyInfo[]> ParameterPropertyCache = new();
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -50,7 +51,7 @@ public static class ForgeAdo
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
-        var rows = new List<T>(InferCapacity(sql));
+        var rows = new List<T>(EstimateCapacity(sql));
 
         while (await reader.ReadAsync(cancellationToken))
             rows.Add(ForgeMaterializer.Map<T>(reader));
@@ -79,16 +80,15 @@ public static class ForgeAdo
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        var rows = await QueryAsync<T>(
-            connection,
-            sql,
-            parameters,
-            transaction,
-            commandType,
-            timeoutSeconds,
-            cancellationToken);
+        await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
 
-        return rows.FirstOrDefault();
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken);
+
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow, cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? ForgeMaterializer.Map<T>(reader)
+            : default;
     }
     /// <summary>
     /// Executes the Execute operation.
@@ -224,13 +224,13 @@ public static class ForgeAdo
             return;
         }
 
-        var parameterProperties = ParameterPropertiesCache.GetOrAdd(
+        var props = ParameterPropertyCache.GetOrAdd(
             parameters.GetType(),
             static type => type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => p.CanRead)
+                .Where(p => p.CanRead && IsBindableParameterProperty(p))
                 .ToArray());
 
-        foreach (var prop in parameterProperties)
+        foreach (var prop in props)
         {
             var value = prop.GetValue(parameters);
             BindSingleOrEnumerable(command, prop.Name, value, prop.PropertyType);
@@ -290,12 +290,43 @@ public static class ForgeAdo
         parameter.ParameterName = "@" + name;
         parameter.Value = value ?? DBNull.Value;
 
-        if (value is DateTime)
-            parameter.DbType = DbType.DateTime2;
-        else if (value is DateTimeOffset)
-            parameter.DbType = DbType.DateTimeOffset;
+        if (parameter.GetType().FullName is "Microsoft.Data.SqlClient.SqlParameter" or "System.Data.SqlClient.SqlParameter")
+        {
+            var sqlDbTypeProperty = parameter.GetType().GetProperty("SqlDbType");
+            if (value is DateTime) sqlDbTypeProperty?.SetValue(parameter, SqlDbType.DateTime2);
+            if (value is DateTimeOffset) sqlDbTypeProperty?.SetValue(parameter, SqlDbType.DateTimeOffset);
+        }
 
         command.Parameters.Add(parameter);
+    }
+
+    private static bool IsBindableParameterProperty(PropertyInfo property)
+    {
+        if (!property.CanRead)
+            return false;
+
+        var type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+
+        if (type == typeof(string) || type == typeof(byte[]))
+            return true;
+
+        if (typeof(IEnumerable).IsAssignableFrom(type))
+            return false;
+
+        return ForgeMaterializer.IsScalar(property.PropertyType);
+    }
+
+    private static int EstimateCapacity(string sql)
+    {
+        var match = Regex.Match(sql, @"FETCH\s+NEXT\s+(\d+)\s+ROWS", RegexOptions.IgnoreCase);
+        if (match.Success && int.TryParse(match.Groups[1].Value, out var take))
+            return Math.Clamp(take, 4, 1024);
+
+        var top = Regex.Match(sql, @"TOP\s*\(?\s*(\d+)\s*\)?", RegexOptions.IgnoreCase);
+        if (top.Success && int.TryParse(top.Groups[1].Value, out var topCount))
+            return Math.Clamp(topCount, 1, 1024);
+
+        return 16;
     }
 
     private static bool IsEnumerableParameter(object? value)
@@ -307,35 +338,6 @@ public static class ForgeAdo
             return false;
 
         return value is IEnumerable;
-    }
-
-    private static int InferCapacity(string sql)
-    {
-        const int fallback = 32;
-
-        if (string.IsNullOrWhiteSpace(sql))
-            return fallback;
-
-        var upper = sql.ToUpperInvariant();
-        var fetch = upper.IndexOf("FETCH NEXT ", StringComparison.Ordinal);
-        if (fetch >= 0)
-        {
-            var start = fetch + "FETCH NEXT ".Length;
-            var end = upper.IndexOf(" ROWS", start, StringComparison.Ordinal);
-            if (end > start && int.TryParse(upper[start..end].Trim(), out var fetched) && fetched > 0)
-                return Math.Min(fetched, 4096);
-        }
-
-        var top = upper.IndexOf("SELECT TOP ", StringComparison.Ordinal);
-        if (top >= 0)
-        {
-            var start = top + "SELECT TOP ".Length;
-            var end = upper.IndexOf(' ', start);
-            if (end > start && int.TryParse(upper[start..end].Trim('(', ')', ' '), out var taken) && taken > 0)
-                return Math.Min(taken, 4096);
-        }
-
-        return fallback;
     }
 
     /// <summary>

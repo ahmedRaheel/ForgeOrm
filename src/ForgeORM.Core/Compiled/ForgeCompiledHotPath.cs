@@ -46,8 +46,7 @@ public static class ForgeCompiledPlanCache
     private static ForgeCompiledEntityPlan Build(Type type)
     {
         var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanRead && p.PropertyType != typeof(string) || p.PropertyType == typeof(string))
-            .Where(p => !typeof(System.Collections.IEnumerable).IsAssignableFrom(p.PropertyType) || p.PropertyType == typeof(string))
+            .Where(p => p.CanRead && IsScalar(p.PropertyType))
             .Select(CreateAccessor)
             .ToList();
 
@@ -66,10 +65,29 @@ public static class ForgeCompiledPlanCache
             Properties = props,
             Key = key,
             InsertSql = $"INSERT INTO {table} ({columns}) VALUES ({values});",
-            SelectByIdSql = key is null ? $"SELECT * FROM {table};" : $"SELECT * FROM {table} WHERE {key.Name} = @Id;",
+            SelectByIdSql = key is null ? $"SELECT {BuildSelectColumns(props)} FROM {table};" : $"SELECT {BuildSelectColumns(props)} FROM {table} WHERE {key.Name} = @Id;",
             UpdateSql = key is null ? $"-- No key for {type.Name}" : $"UPDATE {table} SET {set} WHERE {key.Name} = @{key.Name};",
             DeleteSql = key is null ? $"-- No key for {type.Name}" : $"DELETE FROM {table} WHERE {key.Name} = @Id;"
         };
+    }
+
+    private static string BuildSelectColumns(IReadOnlyList<ForgeCompiledPropertyAccessor> props)
+        => props.Count == 0 ? "*" : string.Join(", ", props.Select(p => p.Name));
+
+    private static bool IsScalar(Type type)
+    {
+        var actual = Nullable.GetUnderlyingType(type) ?? type;
+        return actual.IsPrimitive
+               || actual.IsEnum
+               || actual == typeof(string)
+               || actual == typeof(Guid)
+               || actual == typeof(decimal)
+               || actual == typeof(DateTime)
+               || actual == typeof(DateTimeOffset)
+               || actual == typeof(DateOnly)
+               || actual == typeof(TimeOnly)
+               || actual == typeof(TimeSpan)
+               || actual == typeof(byte[]);
     }
 
     private static ForgeCompiledPropertyAccessor CreateAccessor(PropertyInfo property)

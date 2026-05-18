@@ -73,12 +73,7 @@ public sealed class SqlServerForgeDialect : IForgeProviderDialect
         if (take is null) return sql;
         if (!sql.Contains("ORDER BY", StringComparison.OrdinalIgnoreCase))
             sql += " ORDER BY 1";
-        
-        var safeSkip = Math.Max(0, skip ?? 0);
-        var safeTake = take.GetValueOrDefault();
-        if (safeTake <= 0) safeTake = 1;
-        if (safeSkip == safeTake) safeTake++;
-        return $"{sql} OFFSET {safeSkip} ROWS FETCH NEXT {safeTake} ROWS ONLY";
+        return $"{sql} OFFSET {skip ?? 0} ROWS FETCH NEXT {take.Value} ROWS ONLY";
     }
 
     public string RenderKeysetPage(string table, string keyColumn, string projection, string? whereSql, string orderDirection)
@@ -204,15 +199,7 @@ public sealed class OracleForgeDialect : IForgeProviderDialect
     public string QuoteIdentifier(string name) => $"\"{name.Replace("\"", "\"\"")}\"";
 
     public string RenderLimitOffset(string sql, int? skip, int? take)
-        
-    {
-        if (take is null && skip is null) return sql;
-        var safeSkip = Math.Max(0, skip ?? 0);
-        var safeTake = take.GetValueOrDefault();
-        if (safeTake <= 0) safeTake = 1;
-        if (safeSkip == safeTake) safeTake++;
-        return $"{sql} OFFSET {safeSkip} ROWS FETCH NEXT {safeTake} ROWS ONLY";
-    }
+        => take is null ? sql : $"{sql} OFFSET {skip ?? 0} ROWS FETCH NEXT {take.Value} ROWS ONLY";
 
     public string RenderKeysetPage(string table, string keyColumn, string projection, string? whereSql, string orderDirection)
     {

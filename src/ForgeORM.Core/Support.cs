@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using System.Linq.Expressions;
@@ -65,7 +66,7 @@ internal sealed class ForgeGridReader : IForgeGridReader
 
 public sealed class ReflectionForgeEntityMetadataResolver : IForgeEntityMetadataResolver
 {
-    private readonly Dictionary<Type, ForgeEntityMetadata> _cache = [];
+    private readonly ConcurrentDictionary<Type, ForgeEntityMetadata> _cache = new();
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -79,17 +80,24 @@ public sealed class ReflectionForgeEntityMetadataResolver : IForgeEntityMetadata
     /// <returns>The result of the Resolve operation.</returns>
     public ForgeEntityMetadata Resolve(Type type)
     {
-        if (_cache.TryGetValue(type, out var cached)) return cached;
-        var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead).Select(p => new ForgePropertyMetadata
-        {
-            PropertyName = p.Name,
-            ColumnName = p.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? p.Name,
-            PropertyType = p.PropertyType,
-            IsKey = p.GetCustomAttribute<ForgeKeyAttribute>() is not null || p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase),
-            IsCode = p.GetCustomAttribute<ForgeCodeAttribute>() is not null || p.Name.Equals("Code", StringComparison.OrdinalIgnoreCase),
-            IsComputed = p.GetCustomAttribute<ForgeComputedAttribute>() is not null
-        }).ToList();
-        var meta = new ForgeEntityMetadata
+        return _cache.GetOrAdd(type, BuildMetadata);
+    }
+
+    private static ForgeEntityMetadata BuildMetadata(Type type)
+    {
+        var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanRead && ForgeMaterializer.IsScalar(p.PropertyType))
+            .Select(p => new ForgePropertyMetadata
+            {
+                PropertyName = p.Name,
+                ColumnName = p.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? p.Name,
+                PropertyType = p.PropertyType,
+                IsKey = p.GetCustomAttribute<ForgeKeyAttribute>() is not null || p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase),
+                IsCode = p.GetCustomAttribute<ForgeCodeAttribute>() is not null || p.Name.Equals("Code", StringComparison.OrdinalIgnoreCase),
+                IsComputed = p.GetCustomAttribute<ForgeComputedAttribute>() is not null
+            }).ToList();
+
+        return new ForgeEntityMetadata
         {
             EntityType = type,
             TableName = type.GetCustomAttribute<ForgeTableAttribute>()?.Name ?? type.Name,
@@ -97,8 +105,6 @@ public sealed class ReflectionForgeEntityMetadataResolver : IForgeEntityMetadata
             CodeColumn = props.FirstOrDefault(x => x.IsCode)?.ColumnName ?? "Code",
             Properties = props
         };
-        _cache[type] = meta;
-        return meta;
     }
 }
 
@@ -262,7 +268,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     /// Executes the ToList operation.
     /// </summary>
     /// <returns>The result of the ToList operation.</returns>
-    public IReadOnlyList<T> ToList() => ToListAsync(includeChildren: false).GetAwaiter().GetResult();
+    public IReadOnlyList<T> ToList() => _db.Query<T>(BuildSql(), BuildParameters()).ToList();
 
     /// <summary>
     /// Executes the ToListAsync operation.
@@ -270,24 +276,17 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ToListAsync operation.</returns>
     public Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default)
-        => ToListAsync(includeChildren: false, cancellationToken);
-
-    public async Task<IReadOnlyList<T>> ToListAsync(bool includeChildren = false, CancellationToken cancellationToken = default)
-    {
-        var rows = await _db.QueryAsync<T>(BuildSql(), BuildParameters(), cancellationToken: cancellationToken);
-
-        if (includeChildren && rows.Count > 0)
-            await LoadNavigationsAsync(rows, cancellationToken);
-
-        return rows;
-    }
+        => _db.QueryAsync<T>(BuildSql(), BuildParameters(), cancellationToken: cancellationToken);
 
     /// <summary>
     /// Executes the FirstOrDefault operation.
     /// </summary>
     /// <returns>The result of the FirstOrDefault operation.</returns>
     public T? FirstOrDefault()
-        => FirstOrDefaultAsync(includeChildren: false).GetAwaiter().GetResult();
+    {
+        Take(1);
+        return _db.QueryFirstOrDefault<T>(BuildSql(), BuildParameters());
+    }
 
     /// <summary>
     /// Executes the FirstOrDefaultAsync operation.
@@ -295,73 +294,9 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the FirstOrDefaultAsync operation.</returns>
     public Task<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default)
-        => FirstOrDefaultAsync(includeChildren: false, cancellationToken);
-
-    public async Task<T?> FirstOrDefaultAsync(bool includeChildren = false, CancellationToken cancellationToken = default)
     {
-        var previousTake = _take;
-
-        try
-        {
-            _take = 1;
-            var rows = await ToListAsync(includeChildren, cancellationToken);
-            return rows.FirstOrDefault();
-        }
-        finally
-        {
-            _take = previousTake;
-        }
-    }
-
-    public T Single()
-        => SingleAsync(includeChildren: false).GetAwaiter().GetResult();
-
-    public Task<T> SingleAsync(CancellationToken cancellationToken = default)
-        => SingleAsync(includeChildren: false, cancellationToken);
-
-    public async Task<T> SingleAsync(bool includeChildren = false, CancellationToken cancellationToken = default)
-    {
-        var rows = await TakeForSingleAsync(includeChildren, cancellationToken);
-
-        return rows.Count switch
-        {
-            1 => rows[0],
-            0 => throw new InvalidOperationException("Sequence contains no elements."),
-            _ => throw new InvalidOperationException("Sequence contains more than one element.")
-        };
-    }
-
-    public T? SingleOrDefault()
-        => SingleOrDefaultAsync(includeChildren: false).GetAwaiter().GetResult();
-
-    public Task<T?> SingleOrDefaultAsync(CancellationToken cancellationToken = default)
-        => SingleOrDefaultAsync(includeChildren: false, cancellationToken);
-
-    public async Task<T?> SingleOrDefaultAsync(bool includeChildren = false, CancellationToken cancellationToken = default)
-    {
-        var rows = await TakeForSingleAsync(includeChildren, cancellationToken);
-
-        return rows.Count switch
-        {
-            0 => default,
-            1 => rows[0],
-            _ => throw new InvalidOperationException("Sequence contains more than one element.")
-        };
-    }
-
-    private async Task<IReadOnlyList<T>> TakeForSingleAsync(bool includeChildren, CancellationToken cancellationToken)
-    {
-        var previousTake = _take;
-
-        try
-        {
-            _take = 2;
-            return await ToListAsync(includeChildren, cancellationToken);
-        }
-        finally
-        {
-            _take = previousTake;
-        }
+        Take(1);
+        return _db.QueryFirstOrDefaultAsync<T>(BuildSql(), BuildParameters(), cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -395,10 +330,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
         => ExecuteDecimalAggregateAsync("MAX", selector, cancellationToken);
 
     /// <summary>Executes expression-based paging using the current query filters and ordering.</summary>
-    public Task<ForgePagedResult<T>> PageAsync(int page, int pageSize, CancellationToken cancellationToken = default)
-        => PageAsync(page, pageSize, includeChildren: false, cancellationToken);
-
-    public async Task<ForgePagedResult<T>> PageAsync(int page, int pageSize, bool includeChildren = false, CancellationToken cancellationToken = default)
+    public async Task<ForgePagedResult<T>> PageAsync(int page, int pageSize, CancellationToken cancellationToken = default)
     {
         if (page <= 0) throw new ArgumentOutOfRangeException(nameof(page), "Page must be greater than zero.");
         if (pageSize <= 0) throw new ArgumentOutOfRangeException(nameof(pageSize), "Page size must be greater than zero.");
@@ -412,7 +344,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
             _skip = (page - 1) * pageSize;
             _take = pageSize;
 
-            var items = await ToListAsync(includeChildren, cancellationToken);
+            var items = await ToListAsync(cancellationToken);
             return new ForgePagedResult<T>
             {
                 Items = items,
@@ -444,203 +376,36 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
 
         if (hasPaging)
         {
-            var (skip, take) = NormalizePaging(_skip, _take);
-            sql += $" OFFSET {skip} ROWS";
-            sql += $" FETCH NEXT {take} ROWS ONLY";
+            var skip = Math.Max(_skip ?? 0, 0);
+            var take = _take ?? 50;
+
+            if (take <= 0)
+                take = 1;
+
+            if (skip == take)
+                take += 1;
+
+            sql += $" OFFSET {skip} ROWS FETCH NEXT {take} ROWS ONLY";
         }
 
         return sql;
-    }
-
-    private static (int Skip, int Take) NormalizePaging(int? skipValue, int? takeValue)
-    {
-        var skip = Math.Max(0, skipValue ?? 0);
-        var take = takeValue.GetValueOrDefault();
-
-        if (take <= 0)
-            take = 1;
-
-        // Defensive normalization for current ForgeSQL/QueryAst paging path.
-        // Some generated query paths treat equal Skip/Take as an invalid boundary;
-        // bump Take by one so generated FETCH NEXT remains safe and forward-moving.
-        if (skip == take)
-            take++;
-
-        return (skip, take);
     }
 
     private string BuildBaseSql()
     {
-        var sql = _baseSql ?? $"SELECT {BuildSelectColumns()} FROM {_meta.TableName}";
+        var sql = _baseSql ?? $"SELECT {BuildColumnList()} FROM {_meta.TableName}";
         if (_where.Count > 0) sql += " WHERE " + string.Join(" AND ", _where);
         return sql;
     }
 
-    private string BuildSelectColumns()
+    private string BuildColumnList()
     {
         var columns = _meta.Properties
-            .Where(x => IsScalarColumnType(x.PropertyType))
-            .Select(x => x.ColumnName)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(p => !p.IsComputed)
+            .Select(p => p.ColumnName)
             .ToArray();
 
         return columns.Length == 0 ? "*" : string.Join(", ", columns);
-    }
-
-    private async Task LoadNavigationsAsync(IReadOnlyList<T> rows, CancellationToken cancellationToken)
-    {
-        foreach (var navigation in typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance))
-        {
-            if (!navigation.CanWrite)
-                continue;
-
-            if (IsCollectionNavigation(navigation))
-            {
-                await LoadCollectionNavigationAsync(rows, navigation, cancellationToken);
-                continue;
-            }
-
-            if (IsReferenceNavigation(navigation))
-                await LoadReferenceNavigationAsync(rows, navigation, cancellationToken);
-        }
-    }
-
-    private async Task LoadCollectionNavigationAsync(IReadOnlyList<T> parents, PropertyInfo navigation, CancellationToken cancellationToken)
-    {
-        if (parents.Count == 0)
-            return;
-
-        var childType = navigation.PropertyType.GetGenericArguments()[0];
-        var parentKey = typeof(T).GetProperty(_meta.KeyColumn, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase)
-            ?? typeof(T).GetProperty("Id", BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-
-        if (parentKey is null)
-            return;
-
-        var childForeignKeyName = typeof(T).Name + "Id";
-        var childForeignKey = childType.GetProperty(childForeignKeyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-
-        if (childForeignKey is null)
-            return;
-
-        var ids = parents.Select(parent => parentKey.GetValue(parent)).Where(x => x is not null).Distinct().ToArray();
-        if (ids.Length == 0)
-            return;
-
-        var childTable = ResolveTableName(childType);
-        var childColumns = ResolveScalarColumns(childType);
-        var sql = $"SELECT {childColumns} FROM {childTable} WHERE {childForeignKey.Name} IN @Ids";
-
-        var queryAsync = typeof(IForgeDb).GetMethods()
-            .Where(x => x.Name == nameof(IForgeDb.QueryAsync) && x.IsGenericMethodDefinition)
-            .First(x => x.GetParameters().Length >= 2)
-            .MakeGenericMethod(childType);
-
-        var task = (Task)queryAsync.Invoke(_db, new object?[] { sql, new { Ids = ids }, null, cancellationToken })!;
-        await task.ConfigureAwait(false);
-
-        var result = task.GetType().GetProperty("Result")!.GetValue(task) as System.Collections.IEnumerable;
-        if (result is null)
-            return;
-
-        var children = result.Cast<object>().ToList();
-        foreach (var parent in parents)
-        {
-            var parentId = parentKey.GetValue(parent);
-            var list = (System.Collections.IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(childType))!;
-
-            foreach (var child in children)
-            {
-                var fk = childForeignKey.GetValue(child);
-                if (Equals(fk, parentId))
-                    list.Add(child);
-            }
-
-            navigation.SetValue(parent, list);
-        }
-    }
-
-    private async Task LoadReferenceNavigationAsync(IReadOnlyList<T> parents, PropertyInfo navigation, CancellationToken cancellationToken)
-    {
-        var childType = navigation.PropertyType;
-        var fkProperty = typeof(T).GetProperty(navigation.Name + "Id", BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-
-        if (fkProperty is null)
-            return;
-
-        var childTable = ResolveTableName(childType);
-        var childColumns = ResolveScalarColumns(childType);
-
-        var queryFirstOrDefaultAsync = typeof(IForgeDb).GetMethods()
-            .Where(x => x.Name == nameof(IForgeDb.QueryFirstOrDefaultAsync) && x.IsGenericMethodDefinition)
-            .First(x => x.GetParameters().Length >= 2)
-            .MakeGenericMethod(childType);
-
-        foreach (var parent in parents)
-        {
-            var fkValue = fkProperty.GetValue(parent);
-            if (fkValue is null)
-                continue;
-
-            var sql = $"SELECT {childColumns} FROM {childTable} WHERE Id = @Id";
-            var task = (Task)queryFirstOrDefaultAsync.Invoke(_db, new object?[] { sql, new { Id = fkValue }, null, cancellationToken })!;
-            await task.ConfigureAwait(false);
-
-            var child = task.GetType().GetProperty("Result")!.GetValue(task);
-            navigation.SetValue(parent, child);
-        }
-    }
-
-    private static string ResolveTableName(Type type)
-        => type.GetCustomAttribute<ForgeTableAttribute>()?.Name ?? type.Name;
-
-    private static string ResolveScalarColumns(Type type)
-    {
-        var columns = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(x => IsScalarColumnType(x.PropertyType))
-            .Select(x => x.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? x.Name)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        return columns.Length == 0 ? "*" : string.Join(", ", columns);
-    }
-
-    private static bool IsCollectionNavigation(PropertyInfo property)
-    {
-        if (property.PropertyType == typeof(string))
-            return false;
-
-        return property.PropertyType.IsGenericType
-            && property.PropertyType.GetGenericTypeDefinition() == typeof(List<>);
-    }
-
-    private static bool IsReferenceNavigation(PropertyInfo property)
-    {
-        if (property.PropertyType == typeof(string))
-            return false;
-
-        if (IsCollectionNavigation(property))
-            return false;
-
-        var type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-        return type.IsClass && !IsScalarColumnType(type);
-    }
-
-    private static bool IsScalarColumnType(Type type)
-    {
-        type = Nullable.GetUnderlyingType(type) ?? type;
-
-        return type.IsPrimitive
-            || type.IsEnum
-            || type == typeof(string)
-            || type == typeof(Guid)
-            || type == typeof(decimal)
-            || type == typeof(DateTime)
-            || type == typeof(DateTimeOffset)
-            || type == typeof(DateOnly)
-            || type == typeof(TimeOnly)
-            || type == typeof(TimeSpan)
-            || type == typeof(byte[]);
     }
 
     private string BuildCountSql() => "SELECT COUNT(1) FROM (" + BuildBaseSql() + ") ForgeCount";

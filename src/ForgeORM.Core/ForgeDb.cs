@@ -90,7 +90,10 @@ public partial class ForgeDb : IForgeDb
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
     public async Task<T> QueryFirstAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-        => (await QueryAsync<T>(sql, parameters, timeoutSeconds, cancellationToken)).First();
+    {
+        var item = await QueryFirstOrDefaultAsync<T>(sql, parameters, timeoutSeconds, cancellationToken);
+        return item is not null ? item : throw new InvalidOperationException("Sequence contains no elements.");
+    }
 
     /// <summary>
     /// Executes the T operation.
@@ -113,7 +116,11 @@ public partial class ForgeDb : IForgeDb
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
     public async Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-        => (await QueryAsync<T>(sql, parameters, timeoutSeconds, cancellationToken)).FirstOrDefault();
+    {
+        await using var c = CreateConnection();
+        await c.OpenAsync(cancellationToken);
+        return await ForgeAdo.QuerySingleOrDefaultAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+    }
 
     /// <summary>
     /// Executes the T operation.

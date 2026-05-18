@@ -74,13 +74,7 @@ public sealed class SqlServerForgeProvider : IForgeDatabaseProvider
     /// </summary>
     /// <param name="r">The r value.</param>
     /// <returns>The result of the BuildPage operation.</returns>
-    public ForgeCommand BuildPage(ForgePageRequest r)
-    {
-        var skip = Math.Max(0, r.Skip);
-        var take = r.PageSize <= 0 ? 1 : r.PageSize;
-        if (skip == take) take++;
-        return ForgeCommand.Text($"""SELECT * FROM ({r.Sql}) ForgePage ORDER BY {r.OrderBy} OFFSET {skip} ROWS FETCH NEXT {take} ROWS ONLY""", r.Parameters);
-    }
+    public ForgeCommand BuildPage(ForgePageRequest r) => ForgeCommand.Text($"""SELECT * FROM ({r.Sql}) ForgePage ORDER BY {r.OrderBy} OFFSET {r.Skip} ROWS FETCH NEXT {r.PageSize} ROWS ONLY""", r.Parameters);
     /// <summary>
     /// Executes the BuildCount operation.
     /// </summary>
@@ -166,7 +160,7 @@ internal static class BulkFallback
     /// <returns>The result of the T operation.</returns>
     public static Task InsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken ct)
     {
-        var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead).ToList();
+        var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead && IsScalar(p.PropertyType)).ToList();
         var columns = string.Join(", ", props.Select(p => p.Name));
         var values = string.Join(", ", props.Select(p => "@" + p.Name));
         var sql = $"INSERT INTO {tableName} ({columns}) VALUES ({values})";
@@ -185,11 +179,27 @@ internal static class BulkFallback
     /// <returns>The result of the T operation.</returns>
     public static Task UpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken ct)
     {
-        var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead && !p.Name.Equals(keyColumn, StringComparison.OrdinalIgnoreCase)).ToList();
+        var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead && IsScalar(p.PropertyType) && !p.Name.Equals(keyColumn, StringComparison.OrdinalIgnoreCase)).ToList();
         var set = string.Join(", ", props.Select(p => p.Name + " = @" + p.Name));
         var sql = $"UPDATE {tableName} SET {set} WHERE {keyColumn} = @{keyColumn}";
         return ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
     }
+    private static bool IsScalar(Type type)
+    {
+        var actual = Nullable.GetUnderlyingType(type) ?? type;
+        return actual.IsPrimitive
+               || actual.IsEnum
+               || actual == typeof(string)
+               || actual == typeof(Guid)
+               || actual == typeof(decimal)
+               || actual == typeof(DateTime)
+               || actual == typeof(DateTimeOffset)
+               || actual == typeof(DateOnly)
+               || actual == typeof(TimeOnly)
+               || actual == typeof(TimeSpan)
+               || actual == typeof(byte[]);
+    }
+
 }
 
 
@@ -211,15 +221,55 @@ internal static class ForgeProviderAdo
         {
             await using var command = connection.CreateCommand();
             command.CommandText = sql;
-            foreach (var prop in typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead))
+            foreach (var prop in typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead && IsScalar(p.PropertyType)))
             {
                 var parameter = command.CreateParameter();
                 parameter.ParameterName = "@" + prop.Name;
-                parameter.Value = prop.GetValue(row) ?? DBNull.Value;
+                parameter.Value = NormalizeValue(prop.GetValue(row), prop.PropertyType) ?? DBNull.Value;
                 command.Parameters.Add(parameter);
             }
             total += await command.ExecuteNonQueryAsync(cancellationToken);
         }
         return total;
     }
+    private static bool IsScalar(Type type)
+    {
+        var actual = Nullable.GetUnderlyingType(type) ?? type;
+        return actual.IsPrimitive
+               || actual.IsEnum
+               || actual == typeof(string)
+               || actual == typeof(Guid)
+               || actual == typeof(decimal)
+               || actual == typeof(DateTime)
+               || actual == typeof(DateTimeOffset)
+               || actual == typeof(DateOnly)
+               || actual == typeof(TimeOnly)
+               || actual == typeof(TimeSpan)
+               || actual == typeof(byte[]);
+    }
+
+    private static object? NormalizeValue(object? value, Type declaredType)
+    {
+        if (value is null)
+            return null;
+
+        var actual = Nullable.GetUnderlyingType(declaredType) ?? declaredType;
+
+        if (actual == typeof(DateTime))
+        {
+            var dateTime = (DateTime)value;
+            return dateTime == default || dateTime < new DateTime(1753, 1, 1)
+                ? DateTime.UtcNow
+                : dateTime;
+        }
+
+        if (actual == typeof(DateTimeOffset))
+        {
+            var dto = (DateTimeOffset)value;
+            return dto == default ? DateTimeOffset.UtcNow : dto;
+        }
+
+        return value;
+    }
+
 }

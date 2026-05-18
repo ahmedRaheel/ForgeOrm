@@ -181,11 +181,24 @@ public sealed class ForgeAdvancedQuery<T>
         if (!string.IsNullOrWhiteSpace(_orderBy))
             sql += " ORDER BY " + _orderBy;
 
-        if (_take.HasValue)
+        if (_take.HasValue || _skip.HasValue)
         {
-            sql += provider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase)
-                ? $" OFFSET {_skip ?? 0} ROWS FETCH NEXT {_take.Value} ROWS ONLY"
-                : $" LIMIT {_take.Value} OFFSET {_skip ?? 0}";
+            var skip = Math.Max(0, _skip ?? 0);
+            var take = _take.GetValueOrDefault();
+            if (take <= 0) take = 1;
+            if (skip == take) take++;
+
+            if (provider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(_orderBy))
+                    sql += " ORDER BY 1";
+
+                sql += $" OFFSET {skip} ROWS FETCH NEXT {take} ROWS ONLY";
+            }
+            else
+            {
+                sql += $" LIMIT {take} OFFSET {skip}";
+            }
         }
 
         return new ForgeAdvancedRenderedQuery(sql, _parameters.Count == 0 ? null : _parameters);

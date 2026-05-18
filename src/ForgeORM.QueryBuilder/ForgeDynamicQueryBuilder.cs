@@ -226,7 +226,15 @@ internal sealed class ForgeSelectBuilder : IForgeSelectBuilder
         if (_groupBy.Count > 0) sql.Append(" GROUP BY ").Append(string.Join(", ", _groupBy));
         if (!string.IsNullOrWhiteSpace(_having)) sql.Append(" HAVING ").Append(_having);
         if (!string.IsNullOrWhiteSpace(_orderBy)) sql.Append(" ORDER BY ").Append(_orderBy);
-        if (_take.HasValue) sql.Append($" OFFSET {_skip ?? 0} ROWS FETCH NEXT {_take.Value} ROWS ONLY");
+        if (_take.HasValue || _skip.HasValue)
+        {
+            if (string.IsNullOrWhiteSpace(_orderBy)) sql.Append(" ORDER BY 1");
+            var skip = Math.Max(0, _skip ?? 0);
+            var take = _take.GetValueOrDefault();
+            if (take <= 0) take = 1;
+            if (skip == take) take++;
+            sql.Append($" OFFSET {skip} ROWS FETCH NEXT {take} ROWS ONLY");
+        }
         return new ForgeBuiltQuery { Sql = sql.ToString(), Parameters = _parameters.Count == 1 ? _parameters[0] : _parameters };
     }
 }

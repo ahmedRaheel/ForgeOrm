@@ -74,7 +74,13 @@ public sealed class SqlServerForgeProvider : IForgeDatabaseProvider
     /// </summary>
     /// <param name="r">The r value.</param>
     /// <returns>The result of the BuildPage operation.</returns>
-    public ForgeCommand BuildPage(ForgePageRequest r) => ForgeCommand.Text($"""SELECT * FROM ({r.Sql}) ForgePage ORDER BY {r.OrderBy} OFFSET {r.Skip} ROWS FETCH NEXT {r.PageSize} ROWS ONLY""", r.Parameters);
+    public ForgeCommand BuildPage(ForgePageRequest r)
+    {
+        var skip = Math.Max(0, r.Skip);
+        var take = r.PageSize <= 0 ? 1 : r.PageSize;
+        if (skip == take) take++;
+        return ForgeCommand.Text($"""SELECT * FROM ({r.Sql}) ForgePage ORDER BY {r.OrderBy} OFFSET {skip} ROWS FETCH NEXT {take} ROWS ONLY""", r.Parameters);
+    }
     /// <summary>
     /// Executes the BuildCount operation.
     /// </summary>

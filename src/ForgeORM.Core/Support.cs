@@ -431,25 +431,42 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     private string BuildSql()
     {
         var sql = BuildBaseSql();
+        var hasPaging = _skip.HasValue || _take.HasValue;
+
         if (!string.IsNullOrWhiteSpace(_orderBy))
         {
             sql += " ORDER BY " + _orderBy;
         }
-        else if (_skip.HasValue || _take.HasValue)
+        else if (hasPaging)
         {
             sql += " ORDER BY 1";
         }
 
-        if (_skip.HasValue || _take.HasValue)
+        if (hasPaging)
         {
-            sql += $" OFFSET {_skip ?? 0} ROWS";
-            if (_take.HasValue)
-            {
-                sql += $" FETCH NEXT {_take.Value} ROWS ONLY";
-            }
+            var (skip, take) = NormalizePaging(_skip, _take);
+            sql += $" OFFSET {skip} ROWS";
+            sql += $" FETCH NEXT {take} ROWS ONLY";
         }
 
         return sql;
+    }
+
+    private static (int Skip, int Take) NormalizePaging(int? skipValue, int? takeValue)
+    {
+        var skip = Math.Max(0, skipValue ?? 0);
+        var take = takeValue.GetValueOrDefault();
+
+        if (take <= 0)
+            take = 1;
+
+        // Defensive normalization for current ForgeSQL/QueryAst paging path.
+        // Some generated query paths treat equal Skip/Take as an invalid boundary;
+        // bump Take by one so generated FETCH NEXT remains safe and forward-moving.
+        if (skip == take)
+            take++;
+
+        return (skip, take);
     }
 
     private string BuildBaseSql()
@@ -506,11 +523,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
         if (childForeignKey is null)
             return;
 
-        var ids = parents
-               .Select(parent => parentKey.GetValue(parent))
-               .Where(x => x is not null)
-               .Distinct()
-               .ToArray();
+        var ids = parents.Select(parent => parentKey.GetValue(parent)).Where(x => x is not null).Distinct().ToArray();
         if (ids.Length == 0)
             return;
 

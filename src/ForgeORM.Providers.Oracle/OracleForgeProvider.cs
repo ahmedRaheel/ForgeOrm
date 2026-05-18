@@ -34,14 +34,14 @@ public sealed class OracleForgeProvider : IForgeDatabaseProvider
     /// <param name="e">The e value.</param>
     /// <param name="id">The id value.</param>
     /// <returns>The result of the BuildGetById operation.</returns>
-    public ForgeCommand BuildGetById(ForgeEntityMetadata e, object id) => ForgeCommand.Text($"SELECT * FROM {e.TableName} WHERE {e.KeyColumn} = {Dialect.Parameter("Id")}", new { Id = id });
+    public ForgeCommand BuildGetById(ForgeEntityMetadata e, object id) => ForgeCommand.Text($"SELECT {BuildProjection(e)} FROM {e.TableName} WHERE {e.KeyColumn} = {Dialect.Parameter("Id")}", new { Id = id });
     /// <summary>
     /// Executes the BuildGetByCode operation.
     /// </summary>
     /// <param name="e">The e value.</param>
     /// <param name="code">The code value.</param>
     /// <returns>The result of the BuildGetByCode operation.</returns>
-    public ForgeCommand BuildGetByCode(ForgeEntityMetadata e, string code) => ForgeCommand.Text($"SELECT * FROM {e.TableName} WHERE {e.CodeColumn} = {Dialect.Parameter("Code")}", new { Code = code });
+    public ForgeCommand BuildGetByCode(ForgeEntityMetadata e, string code) => ForgeCommand.Text($"SELECT {BuildProjection(e)} FROM {e.TableName} WHERE {e.CodeColumn} = {Dialect.Parameter("Code")}", new { Code = code });
     /// <summary>
     /// Executes the BuildGetByIds operation.
     /// </summary>
@@ -133,6 +133,17 @@ public sealed class OracleForgeProvider : IForgeDatabaseProvider
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
     public Task BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+
+    private static string BuildProjection(ForgeEntityMetadata e)
+    {
+        var columns = e.Properties
+            .Where(p => !p.IsComputed)
+            .Select(p => p.ColumnName)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return columns.Length == 0 ? "*" : string.Join(", ", columns);
+    }
 
     private string BuildInsertSql(ForgeEntityMetadata e)
     {

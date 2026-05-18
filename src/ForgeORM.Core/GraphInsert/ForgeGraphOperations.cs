@@ -136,7 +136,9 @@ public partial class ForgeDb
             if (fk is null) continue;
 
             var childShape = ForgeEntityShape.For(childType);
-            var sql = $"SELECT * FROM {childShape.TableName} WHERE {ForgeEntityShape.ColumnName(fk)} = @ParentId";
+            var childColumns = string.Join(", ", childShape.ScalarProperties.Where(p => p.CanRead && !ForgeEntityShape.IsComputed(p)).Select(ForgeEntityShape.ColumnName));
+            if (string.IsNullOrWhiteSpace(childColumns)) childColumns = "*";
+            var sql = $"SELECT {childColumns} FROM {childShape.TableName} WHERE {ForgeEntityShape.ColumnName(fk)} = @ParentId";
             var rows = await QueryDynamicListAsync(childType, sql, new Dictionary<string, object?> { ["ParentId"] = id }, cancellationToken);
             AssignCollection(parent!, collection, childType, rows);
         }

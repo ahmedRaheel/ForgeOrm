@@ -119,6 +119,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     private string? _orderBy;
     private int? _skip;
     private int? _take;
+    private readonly List<PropertyInfo> _includes = [];
 
     /// <summary>
     /// Executes the ForgeQuery operation.
@@ -251,6 +252,26 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     }
 
     /// <summary>
+    /// Includes a reference or collection navigation. The navigation is loaded with split query only when a terminal entity method executes.
+    /// </summary>
+    public IForgeQuery<T> Include<TProperty>(Expression<Func<T, TProperty>> navigation)
+    {
+        if (navigation.Body is not MemberExpression memberExpression)
+            throw new NotSupportedException("Only direct navigation includes are supported. Example: Include(x => x.Items).");
+
+        if (memberExpression.Member is not PropertyInfo property)
+            throw new NotSupportedException("Include must target a property.");
+
+        if (!ForgeNavigationSupport.IsCollectionNavigation(property) && !ForgeNavigationSupport.IsReferenceNavigation(property))
+            throw new InvalidOperationException($"Property '{property.Name}' is not a navigation property.");
+
+        if (_includes.All(x => !x.Name.Equals(property.Name, StringComparison.OrdinalIgnoreCase)))
+            _includes.Add(property);
+
+        return this;
+    }
+
+    /// <summary>
     /// Executes the Any operation.
     /// </summary>
     /// <returns>The result of the Any operation.</returns>
@@ -268,15 +289,26 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     /// Executes the ToList operation.
     /// </summary>
     /// <returns>The result of the ToList operation.</returns>
-    public IReadOnlyList<T> ToList() => _db.Query<T>(BuildSql(), BuildParameters()).ToList();
+    public IReadOnlyList<T> ToList()
+    {
+        var rows = _db.Query<T>(BuildSql(), BuildParameters()).ToList();
+        if (_includes.Count > 0 && rows.Count > 0)
+            ForgeNavigationSupport.LoadIncludedNavigationsAsync(rows, _db, _meta.KeyColumn, _includes, CancellationToken.None).GetAwaiter().GetResult();
+        return rows;
+    }
 
     /// <summary>
     /// Executes the ToListAsync operation.
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ToListAsync operation.</returns>
-    public Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default)
-        => _db.QueryAsync<T>(BuildSql(), BuildParameters(), cancellationToken: cancellationToken);
+    public async Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default)
+    {
+        var rows = await _db.QueryAsync<T>(BuildSql(), BuildParameters(), cancellationToken: cancellationToken);
+        if (_includes.Count > 0 && rows.Count > 0)
+            await ForgeNavigationSupport.LoadIncludedNavigationsAsync(rows, _db, _meta.KeyColumn, _includes, cancellationToken);
+        return rows;
+    }
 
     /// <summary>
     /// Executes the FirstOrDefault operation.
@@ -284,8 +316,19 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     /// <returns>The result of the FirstOrDefault operation.</returns>
     public T? FirstOrDefault()
     {
-        Take(1);
-        return _db.QueryFirstOrDefault<T>(BuildSql(), BuildParameters());
+        var previousTake = _take;
+        try
+        {
+            _take = 1;
+            var row = _db.QueryFirstOrDefault<T>(BuildSql(), BuildParameters());
+            if (_includes.Count > 0 && row is not null)
+                ForgeNavigationSupport.LoadIncludedNavigationsAsync(new[] { row }, _db, _meta.KeyColumn, _includes, CancellationToken.None).GetAwaiter().GetResult();
+            return row;
+        }
+        finally
+        {
+            _take = previousTake;
+        }
     }
 
     /// <summary>
@@ -293,10 +336,21 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the FirstOrDefaultAsync operation.</returns>
-    public Task<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default)
+    public async Task<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default)
     {
-        Take(1);
-        return _db.QueryFirstOrDefaultAsync<T>(BuildSql(), BuildParameters(), cancellationToken: cancellationToken);
+        var previousTake = _take;
+        try
+        {
+            _take = 1;
+            var row = await _db.QueryFirstOrDefaultAsync<T>(BuildSql(), BuildParameters(), cancellationToken: cancellationToken);
+            if (_includes.Count > 0 && row is not null)
+                await ForgeNavigationSupport.LoadIncludedNavigationsAsync(new[] { row }, _db, _meta.KeyColumn, _includes, cancellationToken);
+            return row;
+        }
+        finally
+        {
+            _take = previousTake;
+        }
     }
 
     /// <summary>
@@ -446,6 +500,185 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
         }
         foreach (var property in parameters.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(x => x.CanRead))
             _parameters[property.Name] = property.GetValue(parameters);
+    }
+}
+
+internal static class ForgeNavigationSupport
+{
+    public static async Task LoadIncludedNavigationsAsync<T>(
+        IReadOnlyList<T> rows,
+        IForgeDb db,
+        string keyColumn,
+        IReadOnlyList<PropertyInfo> includes,
+        CancellationToken cancellationToken)
+    {
+        if (rows.Count == 0 || includes.Count == 0)
+            return;
+
+        foreach (var navigation in includes)
+        {
+            if (!navigation.CanWrite)
+                continue;
+
+            if (IsCollectionNavigation(navigation))
+            {
+                await LoadCollectionNavigationAsync(rows, db, keyColumn, navigation, cancellationToken);
+                continue;
+            }
+
+            if (IsReferenceNavigation(navigation))
+                await LoadReferenceNavigationAsync(rows, db, navigation, cancellationToken);
+        }
+    }
+
+    public static bool IsCollectionNavigation(PropertyInfo property)
+    {
+        if (property.PropertyType == typeof(string))
+            return false;
+
+        return property.PropertyType.IsGenericType
+            && property.PropertyType.GetGenericTypeDefinition() == typeof(List<>);
+    }
+
+    public static bool IsReferenceNavigation(PropertyInfo property)
+    {
+        if (property.PropertyType == typeof(string))
+            return false;
+
+        if (IsCollectionNavigation(property))
+            return false;
+
+        var type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        return type.IsClass && !IsScalarColumnType(type);
+    }
+
+    private static async Task LoadCollectionNavigationAsync<T>(
+        IReadOnlyList<T> parents,
+        IForgeDb db,
+        string keyColumn,
+        PropertyInfo navigation,
+        CancellationToken cancellationToken)
+    {
+        if (parents.Count == 0)
+            return;
+
+        var childType = navigation.PropertyType.GetGenericArguments()[0];
+        var parentKey = typeof(T).GetProperty(keyColumn, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase)
+            ?? typeof(T).GetProperty("Id", BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+
+        if (parentKey is null)
+            return;
+
+        var childForeignKeyName = typeof(T).Name + "Id";
+        var childForeignKey = childType.GetProperty(childForeignKeyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+        if (childForeignKey is null)
+            return;
+
+        var ids = parents
+            .Select(parent => parentKey.GetValue(parent))
+            .Where(x => x is not null)
+            .Distinct()
+            .ToArray();
+
+        if (ids.Length == 0)
+            return;
+
+        var childTable = ResolveTableName(childType);
+        var childColumns = ResolveScalarColumns(childType);
+        var sql = $"SELECT {childColumns} FROM {childTable} WHERE {childForeignKey.Name} IN @Ids";
+
+        var queryAsync = typeof(IForgeDb).GetMethods()
+            .Where(x => x.Name == nameof(IForgeDb.QueryAsync) && x.IsGenericMethodDefinition)
+            .First(x => x.GetParameters().Length >= 2)
+            .MakeGenericMethod(childType);
+
+        var task = (Task)queryAsync.Invoke(db, new object?[] { sql, new { Ids = ids }, null, cancellationToken })!;
+        await task.ConfigureAwait(false);
+
+        var result = task.GetType().GetProperty("Result")!.GetValue(task) as System.Collections.IEnumerable;
+        if (result is null)
+            return;
+
+        var children = result.Cast<object>().ToList();
+        foreach (var parent in parents)
+        {
+            var parentId = parentKey.GetValue(parent);
+            var list = (System.Collections.IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(childType))!;
+
+            foreach (var child in children)
+            {
+                var fk = childForeignKey.GetValue(child);
+                if (Equals(fk, parentId))
+                    list.Add(child);
+            }
+
+            navigation.SetValue(parent, list);
+        }
+    }
+
+    private static async Task LoadReferenceNavigationAsync<T>(
+        IReadOnlyList<T> parents,
+        IForgeDb db,
+        PropertyInfo navigation,
+        CancellationToken cancellationToken)
+    {
+        var childType = navigation.PropertyType;
+        var fkProperty = typeof(T).GetProperty(navigation.Name + "Id", BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+        if (fkProperty is null)
+            return;
+
+        var childTable = ResolveTableName(childType);
+        var childColumns = ResolveScalarColumns(childType);
+
+        var queryFirstOrDefaultAsync = typeof(IForgeDb).GetMethods()
+            .Where(x => x.Name == nameof(IForgeDb.QueryFirstOrDefaultAsync) && x.IsGenericMethodDefinition)
+            .First(x => x.GetParameters().Length >= 2)
+            .MakeGenericMethod(childType);
+
+        foreach (var parent in parents)
+        {
+            var fkValue = fkProperty.GetValue(parent);
+            if (fkValue is null)
+                continue;
+
+            var sql = $"SELECT {childColumns} FROM {childTable} WHERE Id = @Id";
+            var task = (Task)queryFirstOrDefaultAsync.Invoke(db, new object?[] { sql, new { Id = fkValue }, null, cancellationToken })!;
+            await task.ConfigureAwait(false);
+
+            var child = task.GetType().GetProperty("Result")!.GetValue(task);
+            navigation.SetValue(parent, child);
+        }
+    }
+
+    private static string ResolveTableName(Type type)
+        => type.GetCustomAttribute<ForgeTableAttribute>()?.Name ?? type.Name;
+
+    private static string ResolveScalarColumns(Type type)
+    {
+        var columns = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(x => IsScalarColumnType(x.PropertyType))
+            .Select(x => x.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? x.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return columns.Length == 0 ? "*" : string.Join(", ", columns);
+    }
+
+    private static bool IsScalarColumnType(Type type)
+    {
+        type = Nullable.GetUnderlyingType(type) ?? type;
+
+        return type.IsPrimitive
+            || type.IsEnum
+            || type == typeof(string)
+            || type == typeof(Guid)
+            || type == typeof(decimal)
+            || type == typeof(DateTime)
+            || type == typeof(DateTimeOffset)
+            || type == typeof(DateOnly)
+            || type == typeof(TimeOnly)
+            || type == typeof(TimeSpan)
+            || type == typeof(byte[]);
     }
 }
 

@@ -874,6 +874,15 @@ public interface IForgeQuery<T>
     /// <param name="count">The count value.</param>
     /// <returns>The result of the Take operation.</returns>
     IForgeQuery<T> Take(int count);
+
+    /// <summary>
+    /// Includes a reference or collection navigation property. Included navigations are loaded by split query only.
+    /// </summary>
+    /// <typeparam name="TProperty">The navigation property type.</typeparam>
+    /// <param name="navigation">Navigation selector, for example x => x.Items or x => x.Customer.</param>
+    /// <returns>The current query.</returns>
+    IForgeQuery<T> Include<TProperty>(Expression<Func<T, TProperty>> navigation);
+
     /// <summary>
     /// Defines the Any operation.
     /// </summary>

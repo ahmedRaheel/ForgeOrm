@@ -896,6 +896,9 @@ public interface IForgeQuery<T>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ToListAsync operation.</returns>
     Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Materializes rows and optionally loads reference/collection navigation properties using split queries.</summary>
+    Task<IReadOnlyList<T>> ToListAsync(bool includeChildren = false, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the FirstOrDefault operation.
     /// </summary>
@@ -907,6 +910,27 @@ public interface IForgeQuery<T>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the FirstOrDefaultAsync operation.</returns>
     Task<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Returns the first row or default and optionally loads reference/collection navigation properties using split queries.</summary>
+    Task<T?> FirstOrDefaultAsync(bool includeChildren = false, CancellationToken cancellationToken = default);
+
+    /// <summary>Returns the only row or throws when zero/multiple rows are found.</summary>
+    T Single();
+
+    /// <summary>Returns the only row or throws when zero/multiple rows are found.</summary>
+    Task<T> SingleAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Returns the only row or throws when zero/multiple rows are found. Optionally loads navigation properties.</summary>
+    Task<T> SingleAsync(bool includeChildren = false, CancellationToken cancellationToken = default);
+
+    /// <summary>Returns the only row, default for zero rows, or throws when multiple rows are found.</summary>
+    T? SingleOrDefault();
+
+    /// <summary>Returns the only row, default for zero rows, or throws when multiple rows are found.</summary>
+    Task<T?> SingleOrDefaultAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Returns the only row, default for zero rows, or throws when multiple rows are found. Optionally loads navigation properties.</summary>
+    Task<T?> SingleOrDefaultAsync(bool includeChildren = false, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the Count operation.
     /// </summary>
@@ -960,6 +984,9 @@ public interface IForgeQuery<T>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The paged result.</returns>
     Task<ForgePagedResult<T>> PageAsync(int page, int pageSize, CancellationToken cancellationToken = default);
+
+    /// <summary>Executes expression-based paging and optionally loads reference/collection navigation properties using split queries.</summary>
+    Task<ForgePagedResult<T>> PageAsync(int page, int pageSize, bool includeChildren = false, CancellationToken cancellationToken = default);
 }
 
 public interface IForgeSplitQueryFactory

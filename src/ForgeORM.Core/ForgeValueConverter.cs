@@ -28,6 +28,22 @@ internal static class ForgeValueConverter
                 : value.ToString();
         }
 
+        if (type == typeof(DateTime))
+        {
+            var dateTime = (DateTime)value;
+            return dateTime == default || dateTime < new DateTime(1753, 1, 1)
+                ? DateTime.UtcNow
+                : dateTime;
+        }
+
+        if (type == typeof(DateTimeOffset))
+        {
+            var dateTimeOffset = (DateTimeOffset)value;
+            return dateTimeOffset == default
+                ? DateTimeOffset.UtcNow
+                : dateTimeOffset;
+        }
+
         if (type == typeof(DateOnly))
             return ((DateOnly)value).ToDateTime(TimeOnly.MinValue);
 

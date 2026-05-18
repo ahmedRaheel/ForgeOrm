@@ -2,11 +2,13 @@ using System.Collections;
 using System.Data;
 using System.Data.Common;
 using System.Reflection;
+using System.Collections.Concurrent;
 
 namespace ForgeORM.Core;
 
 public static class ForgeAdo
 {
+    private static readonly ConcurrentDictionary<Type, PropertyInfo[]> ParameterPropertiesCache = new();
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -48,7 +50,7 @@ public static class ForgeAdo
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
-        var rows = new List<T>();
+        var rows = new List<T>(InferCapacity(sql));
 
         while (await reader.ReadAsync(cancellationToken))
             rows.Add(ForgeMaterializer.Map<T>(reader));
@@ -222,9 +224,13 @@ public static class ForgeAdo
             return;
         }
 
-        foreach (var prop in parameters.GetType()
-                     .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                     .Where(p => p.CanRead))
+        var parameterProperties = ParameterPropertiesCache.GetOrAdd(
+            parameters.GetType(),
+            static type => type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(p => p.CanRead)
+                .ToArray());
+
+        foreach (var prop in parameterProperties)
         {
             var value = prop.GetValue(parameters);
             BindSingleOrEnumerable(command, prop.Name, value, prop.PropertyType);
@@ -284,6 +290,11 @@ public static class ForgeAdo
         parameter.ParameterName = "@" + name;
         parameter.Value = value ?? DBNull.Value;
 
+        if (value is DateTime)
+            parameter.DbType = DbType.DateTime2;
+        else if (value is DateTimeOffset)
+            parameter.DbType = DbType.DateTimeOffset;
+
         command.Parameters.Add(parameter);
     }
 
@@ -296,6 +307,35 @@ public static class ForgeAdo
             return false;
 
         return value is IEnumerable;
+    }
+
+    private static int InferCapacity(string sql)
+    {
+        const int fallback = 32;
+
+        if (string.IsNullOrWhiteSpace(sql))
+            return fallback;
+
+        var upper = sql.ToUpperInvariant();
+        var fetch = upper.IndexOf("FETCH NEXT ", StringComparison.Ordinal);
+        if (fetch >= 0)
+        {
+            var start = fetch + "FETCH NEXT ".Length;
+            var end = upper.IndexOf(" ROWS", start, StringComparison.Ordinal);
+            if (end > start && int.TryParse(upper[start..end].Trim(), out var fetched) && fetched > 0)
+                return Math.Min(fetched, 4096);
+        }
+
+        var top = upper.IndexOf("SELECT TOP ", StringComparison.Ordinal);
+        if (top >= 0)
+        {
+            var start = top + "SELECT TOP ".Length;
+            var end = upper.IndexOf(' ', start);
+            if (end > start && int.TryParse(upper[start..end].Trim('(', ')', ' '), out var taken) && taken > 0)
+                return Math.Min(taken, 4096);
+        }
+
+        return fallback;
     }
 
     /// <summary>

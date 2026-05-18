@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using System.Reflection;
@@ -48,7 +49,7 @@ public static class ForgeAdo
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
-        var rows = new List<T>();
+        var rows = new List<T>(EstimateCapacity(sql));
 
         while (await reader.ReadAsync(cancellationToken))
             rows.Add(ForgeMaterializer.Map<T>(reader));
@@ -222,9 +223,7 @@ public static class ForgeAdo
             return;
         }
 
-        foreach (var prop in parameters.GetType()
-                     .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                     .Where(p => p.CanRead))
+        foreach (var prop in GetReadableProperties(parameters.GetType()))
         {
             var value = prop.GetValue(parameters);
             BindSingleOrEnumerable(command, prop.Name, value, prop.PropertyType);
@@ -243,7 +242,7 @@ public static class ForgeAdo
             return;
         }
 
-        AddParameter(command, name, ForgeValueConverter.ToDatabase(value, declaredType));
+        AddParameter(command, name, NormalizeParameterValue(ForgeValueConverter.ToDatabase(value, declaredType), declaredType));
     }
 
     private static void ExpandEnumerableParameter(
@@ -259,7 +258,7 @@ public static class ForgeAdo
         {
             var parameterName = $"{cleanName}{index++}";
             parameterNames.Add("@" + parameterName);
-            AddParameter(command, parameterName, ForgeValueConverter.ToDatabase(value, value?.GetType()));
+            AddParameter(command, parameterName, NormalizeParameterValue(ForgeValueConverter.ToDatabase(value, value?.GetType()), value?.GetType()));
         }
 
         var replacement = parameterNames.Count == 0
@@ -284,7 +283,81 @@ public static class ForgeAdo
         parameter.ParameterName = "@" + name;
         parameter.Value = value ?? DBNull.Value;
 
+        if (value is DateTime)
+            parameter.DbType = DbType.DateTime2;
+        else if (value is DateTimeOffset)
+            parameter.DbType = DbType.DateTimeOffset;
+
         command.Parameters.Add(parameter);
+    }
+
+    private static readonly ConcurrentDictionary<Type, PropertyInfo[]> ParameterPropertyCache = new();
+
+    private static PropertyInfo[] GetReadableProperties(Type type)
+    {
+        return ParameterPropertyCache.GetOrAdd(type, static t => t
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanRead)
+            .ToArray());
+    }
+
+    private static object? NormalizeParameterValue(object? value, Type? declaredType)
+    {
+        if (value is null)
+            return null;
+
+        var effectiveType = Nullable.GetUnderlyingType(declaredType ?? value.GetType()) ?? declaredType ?? value.GetType();
+
+        if (effectiveType == typeof(DateTime) && value is DateTime dateTime)
+        {
+            if (dateTime == default || dateTime < new DateTime(1753, 1, 1))
+                return DateTime.UtcNow;
+
+            return dateTime;
+        }
+
+        if (effectiveType == typeof(DateTimeOffset) && value is DateTimeOffset dateTimeOffset)
+        {
+            if (dateTimeOffset == default)
+                return DateTimeOffset.UtcNow;
+
+            return dateTimeOffset;
+        }
+
+        return value;
+    }
+
+    private static int EstimateCapacity(string sql)
+    {
+        const int defaultCapacity = 32;
+
+        var fetchIndex = sql.IndexOf("FETCH NEXT ", StringComparison.OrdinalIgnoreCase);
+        if (fetchIndex >= 0)
+        {
+            var start = fetchIndex + "FETCH NEXT ".Length;
+            var end = start;
+
+            while (end < sql.Length && char.IsDigit(sql[end]))
+                end++;
+
+            if (end > start && int.TryParse(sql[start..end], out var fetch) && fetch > 0)
+                return Math.Min(fetch, 4096);
+        }
+
+        var topIndex = sql.IndexOf("SELECT TOP ", StringComparison.OrdinalIgnoreCase);
+        if (topIndex >= 0)
+        {
+            var start = topIndex + "SELECT TOP ".Length;
+            var end = start;
+
+            while (end < sql.Length && char.IsDigit(sql[end]))
+                end++;
+
+            if (end > start && int.TryParse(sql[start..end], out var top) && top > 0)
+                return Math.Min(top, 4096);
+        }
+
+        return defaultCapacity;
     }
 
     private static bool IsEnumerableParameter(object? value)

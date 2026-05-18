@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using System.Linq.Expressions;
@@ -65,7 +66,7 @@ internal sealed class ForgeGridReader : IForgeGridReader
 
 public sealed class ReflectionForgeEntityMetadataResolver : IForgeEntityMetadataResolver
 {
-    private readonly Dictionary<Type, ForgeEntityMetadata> _cache = [];
+    private readonly ConcurrentDictionary<Type, ForgeEntityMetadata> _cache = new();
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -79,26 +80,27 @@ public sealed class ReflectionForgeEntityMetadataResolver : IForgeEntityMetadata
     /// <returns>The result of the Resolve operation.</returns>
     public ForgeEntityMetadata Resolve(Type type)
     {
-        if (_cache.TryGetValue(type, out var cached)) return cached;
-        var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead).Select(p => new ForgePropertyMetadata
+        return _cache.GetOrAdd(type, static entityType =>
         {
-            PropertyName = p.Name,
-            ColumnName = p.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? p.Name,
-            PropertyType = p.PropertyType,
-            IsKey = p.GetCustomAttribute<ForgeKeyAttribute>() is not null || p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase),
-            IsCode = p.GetCustomAttribute<ForgeCodeAttribute>() is not null || p.Name.Equals("Code", StringComparison.OrdinalIgnoreCase),
-            IsComputed = p.GetCustomAttribute<ForgeComputedAttribute>() is not null
-        }).ToList();
-        var meta = new ForgeEntityMetadata
-        {
-            EntityType = type,
-            TableName = type.GetCustomAttribute<ForgeTableAttribute>()?.Name ?? type.Name,
-            KeyColumn = props.FirstOrDefault(x => x.IsKey)?.ColumnName ?? "Id",
-            CodeColumn = props.FirstOrDefault(x => x.IsCode)?.ColumnName ?? "Code",
-            Properties = props
-        };
-        _cache[type] = meta;
-        return meta;
+            var props = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead).Select(p => new ForgePropertyMetadata
+            {
+                PropertyName = p.Name,
+                ColumnName = p.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? p.Name,
+                PropertyType = p.PropertyType,
+                IsKey = p.GetCustomAttribute<ForgeKeyAttribute>() is not null || p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase),
+                IsCode = p.GetCustomAttribute<ForgeCodeAttribute>() is not null || p.Name.Equals("Code", StringComparison.OrdinalIgnoreCase),
+                IsComputed = p.GetCustomAttribute<ForgeComputedAttribute>() is not null
+            }).ToList();
+
+            return new ForgeEntityMetadata
+            {
+                EntityType = entityType,
+                TableName = entityType.GetCustomAttribute<ForgeTableAttribute>()?.Name ?? entityType.Name,
+                KeyColumn = props.FirstOrDefault(x => x.IsKey)?.ColumnName ?? "Id",
+                CodeColumn = props.FirstOrDefault(x => x.IsCode)?.ColumnName ?? "Code",
+                Properties = props
+            };
+        });
     }
 }
 
@@ -380,9 +382,23 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
 
     private string BuildBaseSql()
     {
-        var sql = _baseSql ?? $"SELECT * FROM {_meta.TableName}";
+        var sql = _baseSql ?? $"SELECT {BuildSelectColumns()} FROM {_meta.TableName}";
         if (_where.Count > 0) sql += " WHERE " + string.Join(" AND ", _where);
         return sql;
+    }
+
+    private string BuildSelectColumns()
+    {
+        var columns = _meta.Properties
+            .Where(x => !x.IsComputed)
+            .Select(x => x.ColumnName)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return columns.Length == 0
+            ? "*"
+            : string.Join(", ", columns);
     }
 
     private string BuildCountSql() => "SELECT COUNT(1) FROM (" + BuildBaseSql() + ") ForgeCount";

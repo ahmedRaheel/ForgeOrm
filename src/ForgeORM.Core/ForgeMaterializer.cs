@@ -1,27 +1,26 @@
-﻿using System.Data.Common;
+using System.Collections.Concurrent;
+using System.Data.Common;
+using System.Linq.Expressions;
 using System.Reflection;
 
 namespace ForgeORM.Core;
 
 internal static class ForgeMaterializer
 {
+    private static readonly ConcurrentDictionary<Type, MaterializerTypePlan> TypePlans = new();
+
     /// <summary>
-    /// Executes the T operation.
+    /// Maps the current data-reader row to the requested type.
+    /// The mapper caches entity metadata and compiled property setters so repeated reads avoid reflection scans.
     /// </summary>
-    /// <typeparam name="T">The type used by the operation.</typeparam>
-    /// <param name="reader">The reader value.</param>
-    /// <returns>The result of the T operation.</returns>
     public static T Map<T>(DbDataReader reader)
     {
         return (T)Map(typeof(T), reader)!;
     }
 
     /// <summary>
-    /// Executes the Map operation.
+    /// Maps the current data-reader row to the requested runtime type.
     /// </summary>
-    /// <param name="type">The type value.</param>
-    /// <param name="reader">The reader value.</param>
-    /// <returns>The result of the Map operation.</returns>
     public static object? Map(Type type, DbDataReader reader)
     {
         var actualType = Nullable.GetUnderlyingType(type) ?? type;
@@ -35,93 +34,97 @@ internal static class ForgeMaterializer
             return ForgeValueConverter.FromDatabase(value, actualType);
         }
 
-        var parameterlessCtor = actualType.GetConstructor(Type.EmptyTypes);
+        var plan = TypePlans.GetOrAdd(actualType, BuildTypePlan);
 
-        if (parameterlessCtor is not null)
-            return MapByProperties(actualType, reader);
+        if (plan.HasParameterlessConstructor)
+            return MapByProperties(plan, reader);
 
-        return MapByConstructor(actualType, reader);
+        return MapByConstructor(plan, reader);
     }
 
-    private static object MapByProperties(Type type, DbDataReader reader)
+    private static object MapByProperties(MaterializerTypePlan plan, DbDataReader reader)
     {
-        var instance = Activator.CreateInstance(type)!;
-
-        var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(x => x.CanWrite)
-            .ToDictionary(x => x.Name, StringComparer.OrdinalIgnoreCase);
+        var instance = plan.CreateInstance();
 
         for (var i = 0; i < reader.FieldCount; i++)
         {
-            var column = reader.GetName(i);
-
-            if (!props.TryGetValue(column, out var property))
-                continue;
-
             if (reader.IsDBNull(i))
                 continue;
 
+            var column = reader.GetName(i);
+
+            if (!plan.PropertiesByColumn.TryGetValue(column, out var property))
+                continue;
+
             var dbValue = reader.GetValue(i);
-
-            var value = ForgeValueConverter.FromDatabase(
-                dbValue,
-                property.PropertyType);
-
-            property.SetValue(instance, value);
+            var value = ForgeValueConverter.FromDatabase(dbValue, property.PropertyType);
+            property.Set(instance, value);
         }
 
         return instance;
     }
 
-    private static object MapByConstructor(Type type, DbDataReader reader)
+    private static object MapByConstructor(MaterializerTypePlan plan, DbDataReader reader)
     {
-        var ctor = type.GetConstructors()
-            .OrderByDescending(x => x.GetParameters().Length)
-            .FirstOrDefault();
+        if (plan.Constructor is null)
+            throw new InvalidOperationException($"No constructor found for {plan.Type.Name}");
 
-        if (ctor is null)
-            throw new InvalidOperationException($"No constructor found for {type.Name}");
-
-        var parameters = ctor.GetParameters();
-
+        var parameters = plan.ConstructorParameters;
         var values = new object?[parameters.Length];
+        var ordinals = BuildOrdinalLookup(reader);
 
         for (var i = 0; i < parameters.Length; i++)
         {
             var parameter = parameters[i];
 
-            var ordinal = FindOrdinal(reader, parameter.Name!);
-
-            if (ordinal < 0 || reader.IsDBNull(ordinal))
+            if (!ordinals.TryGetValue(parameter.Name!, out var ordinal) || reader.IsDBNull(ordinal))
             {
                 values[i] = GetDefault(parameter.ParameterType);
                 continue;
             }
 
             var dbValue = reader.GetValue(ordinal);
-
-            values[i] = ForgeValueConverter.FromDatabase(
-                dbValue,
-                parameter.ParameterType);
+            values[i] = ForgeValueConverter.FromDatabase(dbValue, parameter.ParameterType);
         }
 
-        return ctor.Invoke(values);
+        return plan.Constructor.Invoke(values);
     }
 
-    private static int FindOrdinal(DbDataReader reader, string name)
+    private static MaterializerTypePlan BuildTypePlan(Type type)
     {
-        for (var i = 0; i < reader.FieldCount; i++)
-        {
-            if (string.Equals(
-                    reader.GetName(i),
-                    name,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return i;
-            }
-        }
+        var properties = type
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(x => x.CanWrite)
+            .Select(MaterializerPropertyPlan.Create)
+            .ToArray();
 
-        return -1;
+        var propertiesByColumn = new Dictionary<string, MaterializerPropertyPlan>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var property in properties)
+            propertiesByColumn[property.PropertyName] = property;
+
+        var ctor = type.GetConstructors()
+            .OrderByDescending(x => x.GetParameters().Length)
+            .FirstOrDefault();
+
+        var parameterlessCtor = type.GetConstructor(Type.EmptyTypes);
+
+        return new MaterializerTypePlan(
+            type,
+            parameterlessCtor,
+            ctor,
+            ctor?.GetParameters() ?? Array.Empty<ParameterInfo>(),
+            propertiesByColumn);
+    }
+
+    private static Dictionary<string, int> BuildOrdinalLookup(DbDataReader reader)
+    {
+        var ordinals = new Dictionary<string, int>(reader.FieldCount, StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 0; i < reader.FieldCount; i++)
+            ordinals[reader.GetName(i)] = i;
+
+        return ordinals;
     }
 
     private static bool IsSimple(Type type)
@@ -147,5 +150,80 @@ internal static class ForgeMaterializer
         return type.IsValueType
             ? Activator.CreateInstance(type)
             : null;
+    }
+
+    private sealed class MaterializerTypePlan
+    {
+        private readonly Func<object>? _factory;
+
+        public MaterializerTypePlan(
+            Type type,
+            ConstructorInfo? parameterlessConstructor,
+            ConstructorInfo? constructor,
+            ParameterInfo[] constructorParameters,
+            IReadOnlyDictionary<string, MaterializerPropertyPlan> propertiesByColumn)
+        {
+            Type = type;
+            ParameterlessConstructor = parameterlessConstructor;
+            Constructor = constructor;
+            ConstructorParameters = constructorParameters;
+            PropertiesByColumn = propertiesByColumn;
+            _factory = parameterlessConstructor is null ? null : CompileFactory(type);
+        }
+
+        public Type Type { get; }
+        public ConstructorInfo? ParameterlessConstructor { get; }
+        public ConstructorInfo? Constructor { get; }
+        public ParameterInfo[] ConstructorParameters { get; }
+        public IReadOnlyDictionary<string, MaterializerPropertyPlan> PropertiesByColumn { get; }
+        public bool HasParameterlessConstructor => ParameterlessConstructor is not null;
+
+        public object CreateInstance()
+        {
+            if (_factory is not null)
+                return _factory();
+
+            return Activator.CreateInstance(Type)!;
+        }
+
+        private static Func<object> CompileFactory(Type type)
+        {
+            var body = Expression.Convert(Expression.New(type), typeof(object));
+            return Expression.Lambda<Func<object>>(body).Compile();
+        }
+    }
+
+    private sealed class MaterializerPropertyPlan
+    {
+        private MaterializerPropertyPlan(
+            string propertyName,
+            Type propertyType,
+            Action<object, object?> setter)
+        {
+            PropertyName = propertyName;
+            PropertyType = propertyType;
+            Set = setter;
+        }
+
+        public string PropertyName { get; }
+        public Type PropertyType { get; }
+        public Action<object, object?> Set { get; }
+
+        public static MaterializerPropertyPlan Create(PropertyInfo property)
+        {
+            var instance = Expression.Parameter(typeof(object), "instance");
+            var value = Expression.Parameter(typeof(object), "value");
+
+            var typedInstance = Expression.Convert(instance, property.DeclaringType!);
+            var typedValue = Expression.Convert(value, property.PropertyType);
+            var assign = Expression.Assign(Expression.Property(typedInstance, property), typedValue);
+
+            var setter = Expression.Lambda<Action<object, object?>>(assign, instance, value).Compile();
+
+            return new MaterializerPropertyPlan(
+                property.Name,
+                property.PropertyType,
+                setter);
+        }
     }
 }

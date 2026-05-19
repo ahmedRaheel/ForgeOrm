@@ -255,11 +255,89 @@ public static class ForgeAdo
             foreach (var item in dictionary)
                 BindSingleOrEnumerable(command, item.Key, item.Value, item.Value?.GetType());
 
+            EnsureReferencedSqlParametersAreBound(command, parameters);
             return;
         }
 
+        if (parameters is IDictionary nonGenericDictionary)
+        {
+            foreach (DictionaryEntry item in nonGenericDictionary)
+            {
+                if (item.Key is null)
+                    continue;
+
+                var key = Convert.ToString(item.Key, System.Globalization.CultureInfo.InvariantCulture);
+                if (string.IsNullOrWhiteSpace(key))
+                    continue;
+
+                BindSingleOrEnumerable(command, key, item.Value, item.Value?.GetType());
+            }
+
+            EnsureReferencedSqlParametersAreBound(command, parameters);
+            return;
+        }
+
+        // Primary fast path: cached MSIL writer for anonymous objects / POCO parameter bags.
         var writer = ParameterWriterCache.GetOrAdd(parameters.GetType(), BuildParameterWriter);
         writer(command, parameters);
+
+        // Safety net: make sure every @Parameter used by SQL is actually bound.
+        // This fixes cases like GetByIdAsync where optimized pipeline generated SQL with @Id
+        // but a parameter bag was not bound due to anonymous type / dictionary edge cases.
+        EnsureReferencedSqlParametersAreBound(command, parameters);
+    }
+
+
+    private static void EnsureReferencedSqlParametersAreBound(DbCommand command, object parameters)
+    {
+        if (command.CommandType != CommandType.Text)
+            return;
+
+        if (string.IsNullOrWhiteSpace(command.CommandText))
+            return;
+
+        var matches = Regex.Matches(
+            command.CommandText,
+            @"(?<!@)@([A-Za-z_][A-Za-z0-9_]*)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        if (matches.Count == 0)
+            return;
+
+        var props = ParameterPropertyCache.GetOrAdd(parameters.GetType(), BuildParameterProperties);
+
+        foreach (Match match in matches)
+        {
+            var name = match.Groups[1].Value;
+
+            if (HasParameter(command, name))
+                continue;
+
+            var prop = props.FirstOrDefault(x =>
+                string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+
+            if (prop.Property is null)
+                continue;
+
+            var value = prop.Getter(parameters);
+            BindSingleOrEnumerable(command, name, value, prop.PropertyType);
+        }
+    }
+
+    private static bool HasParameter(DbCommand command, string name)
+    {
+        var expected = "@" + name.TrimStart('@', ':');
+
+        foreach (DbParameter parameter in command.Parameters)
+        {
+            if (string.Equals(parameter.ParameterName, expected, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (string.Equals(parameter.ParameterName.TrimStart('@', ':'), name, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     private static void BindSingleOrEnumerable(
@@ -478,9 +556,9 @@ public static class ForgeAdo
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken);
 
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
 
-        var rows = new List<IDictionary<string, object?>>();
+        var rows = new List<IDictionary<string, object?>>(EstimateCapacity(sql));
 
         while (await reader.ReadAsync(cancellationToken))
         {

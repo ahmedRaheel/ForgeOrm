@@ -15,19 +15,26 @@ namespace ForgeORM.Core;
 internal static class ForgeIlMaterializerCache
 {
     private static readonly ConcurrentDictionary<string, Delegate> Cache = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, Delegate> ObjectCache = new(StringComparer.Ordinal);
 
     public static Func<DbDataReader, T> GetOrCreate<T>(DbDataReader reader)
     {
-        var key = CreateKey<T>(reader);
+        var key = CreateKey(typeof(T), reader);
         return (Func<DbDataReader, T>)Cache.GetOrAdd(key, _ => CreateMaterializer<T>(reader));
     }
 
-    private static string CreateKey<T>(DbDataReader reader)
+    public static Func<DbDataReader, object> GetOrCreate(Type type, DbDataReader reader)
+    {
+        var key = CreateKey(type, reader);
+        return (Func<DbDataReader, object>)ObjectCache.GetOrAdd(key, _ => CreateObjectMaterializer(type, reader));
+    }
+
+    private static string CreateKey(Type type, DbDataReader reader)
     {
         // Built once per execution, then hits ConcurrentDictionary for repeated query shapes.
         // Include field types to avoid reusing a plan where same names have different DB types.
         var parts = new string[(reader.FieldCount * 2) + 1];
-        parts[0] = typeof(T).FullName ?? typeof(T).Name;
+        parts[0] = type.FullName ?? type.Name;
 
         var index = 1;
         for (var i = 0; i < reader.FieldCount; i++)
@@ -173,6 +180,73 @@ internal static class ForgeIlMaterializerCache
         }
     }
 
+
+    private static Func<DbDataReader, object> CreateObjectMaterializer(Type runtimeType, DbDataReader reader)
+    {
+        var method = new DynamicMethod(
+            name: $"ForgeORM_Materialize_Object_{SanitizeName(runtimeType.FullName ?? runtimeType.Name)}_{Guid.NewGuid():N}",
+            returnType: typeof(object),
+            parameterTypes: new[] { typeof(DbDataReader) },
+            m: typeof(ForgeIlMaterializerCache).Module,
+            skipVisibility: true);
+
+        var il = method.GetILGenerator();
+
+        if (ForgeMaterializer.IsScalar(runtimeType))
+        {
+            EmitReadValue(il, typeof(object), runtimeType, 0);
+            if (runtimeType.IsValueType)
+                il.Emit(OpCodes.Box, runtimeType);
+            il.Emit(OpCodes.Ret);
+            return (Func<DbDataReader, object>)method.CreateDelegate(typeof(Func<DbDataReader, object>));
+        }
+
+        var ctor = runtimeType.GetConstructor(Type.EmptyTypes)
+            ?? throw new InvalidOperationException($"{runtimeType.FullName} must have a parameterless constructor for MSIL materialization.");
+
+        var entity = il.DeclareLocal(runtimeType);
+        il.Emit(OpCodes.Newobj, ctor);
+        il.Emit(OpCodes.Stloc, entity);
+
+        var properties = runtimeType
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanWrite && Support.IsScalarColumn(p))
+            .ToDictionary(
+                p => p.GetCustomAttribute<ForgeORM.Abstractions.ForgeColumnAttribute>()?.Name ?? p.Name,
+                p => p,
+                StringComparer.OrdinalIgnoreCase);
+
+        var isDbNull = typeof(DbDataReader).GetMethod(nameof(DbDataReader.IsDBNull), new[] { typeof(int) })!;
+
+        for (var ordinal = 0; ordinal < reader.FieldCount; ordinal++)
+        {
+            var columnName = reader.GetName(ordinal);
+            if (!properties.TryGetValue(columnName, out var property))
+                continue;
+
+            var setter = property.SetMethod;
+            if (setter is null)
+                continue;
+
+            var endLabel = il.DefineLabel();
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldc_I4, ordinal);
+            il.Emit(OpCodes.Callvirt, isDbNull);
+            il.Emit(OpCodes.Brtrue_S, endLabel);
+
+            il.Emit(OpCodes.Ldloc, entity);
+            EmitReadValueForProperty(il, property.PropertyType, ordinal);
+            il.Emit(OpCodes.Callvirt, setter);
+            il.MarkLabel(endLabel);
+        }
+
+        il.Emit(OpCodes.Ldloc, entity);
+        if (runtimeType.IsValueType)
+            il.Emit(OpCodes.Box, runtimeType);
+        il.Emit(OpCodes.Ret);
+        return (Func<DbDataReader, object>)method.CreateDelegate(typeof(Func<DbDataReader, object>));
+    }
+
     private static string SanitizeName(string value)
     {
         var chars = value.ToCharArray();
@@ -184,164 +258,161 @@ internal static class ForgeIlMaterializerCache
 
         return new string(chars);
     }
-
-
-
-internal static class Support
-{
-    public static bool IsScalarColumn(PropertyInfo property)
+    internal static class Support
     {
-        return IsScalarColumnType(property.PropertyType);
-    }
-
-    public static bool IsScalarColumnType(Type type)
-    {
-        type = Nullable.GetUnderlyingType(type) ?? type;
-
-        return type.IsPrimitive
-            || type.IsEnum
-            || type == typeof(string)
-            || type == typeof(Guid)
-            || type == typeof(decimal)
-            || type == typeof(DateTime)
-            || type == typeof(DateTimeOffset)
-            || type == typeof(DateOnly)
-            || type == typeof(TimeOnly)
-            || type == typeof(TimeSpan)
-            || type == typeof(byte[]);
-    }
-
-    public static bool IsCollectionNavigation(PropertyInfo property)
-    {
-        if (property.PropertyType == typeof(string))
-            return false;
-
-        return property.PropertyType.IsGenericType
-            && property.PropertyType.GetGenericTypeDefinition() == typeof(List<>);
-    }
-
-    public static bool IsReferenceNavigation(PropertyInfo property)
-    {
-        if (property.PropertyType == typeof(string))
-            return false;
-
-        if (IsCollectionNavigation(property))
-            return false;
-
-        var type = Nullable.GetUnderlyingType(property.PropertyType)
-                   ?? property.PropertyType;
-
-        return type.IsClass && !IsScalarColumnType(type);
-    }
-
-    public static string ResolveTableName(Type type)
-    {
-        return type.GetCustomAttribute<ForgeTableAttribute>()?.Name
-            ?? type.Name;
-    }
-
-    public static string ResolveScalarColumns(Type type)
-    {
-        var columns = type
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(IsScalarColumn)
-            .Select(x => x.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? x.Name)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        return columns.Length == 0
-            ? "*"
-            : string.Join(", ", columns);
-    }
-
-    public static PropertyInfo[] GetScalarProperties(
-        Type type,
-        bool includeIdentity = false)
-    {
-        return type
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(x => x.CanRead)
-            .Where(IsScalarColumn)
-            .Where(x => includeIdentity || !IsIdentityColumn(x))
-            .ToArray();
-    }
-
-    public static bool IsIdentityColumn(PropertyInfo property)
-    {
-        return property.Name.Equals(
-                   "Id",
-                   StringComparison.OrdinalIgnoreCase)
-               || property.GetCustomAttributes()
-                   .Any(x => x.GetType().Name.Contains(
-                       "Key",
-                       StringComparison.OrdinalIgnoreCase));
-    }
-
-    public static object? NormalizeParameterValue(object? value)
-    {
-        if (value is null)
-            return null;
-
-        if (value is Enum enumValue)
+        public static bool IsScalarColumn(PropertyInfo property)
         {
-            return Convert.ChangeType(
-                enumValue,
-                Enum.GetUnderlyingType(enumValue.GetType()));
+            return IsScalarColumnType(property.PropertyType);
         }
 
-        if (value is DateTime dateTime)
+        public static bool IsScalarColumnType(Type type)
         {
-            if (dateTime == default ||
-                dateTime < new DateTime(1753, 1, 1))
+            type = Nullable.GetUnderlyingType(type) ?? type;
+
+            return type.IsPrimitive
+                || type.IsEnum
+                || type == typeof(string)
+                || type == typeof(Guid)
+                || type == typeof(decimal)
+                || type == typeof(DateTime)
+                || type == typeof(DateTimeOffset)
+                || type == typeof(DateOnly)
+                || type == typeof(TimeOnly)
+                || type == typeof(TimeSpan)
+                || type == typeof(byte[]);
+        }
+
+        public static bool IsCollectionNavigation(PropertyInfo property)
+        {
+            if (property.PropertyType == typeof(string))
+                return false;
+
+            return property.PropertyType.IsGenericType
+                && property.PropertyType.GetGenericTypeDefinition() == typeof(List<>);
+        }
+
+        public static bool IsReferenceNavigation(PropertyInfo property)
+        {
+            if (property.PropertyType == typeof(string))
+                return false;
+
+            if (IsCollectionNavigation(property))
+                return false;
+
+            var type = Nullable.GetUnderlyingType(property.PropertyType)
+                       ?? property.PropertyType;
+
+            return type.IsClass && !IsScalarColumnType(type);
+        }
+
+        public static string ResolveTableName(Type type)
+        {
+            return type.GetCustomAttribute<ForgeTableAttribute>()?.Name
+                ?? type.Name;
+        }
+
+        public static string ResolveScalarColumns(Type type)
+        {
+            var columns = type
+                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(IsScalarColumn)
+                .Select(x => x.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? x.Name)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            return columns.Length == 0
+                ? "*"
+                : string.Join(", ", columns);
+        }
+
+        public static PropertyInfo[] GetScalarProperties(
+            Type type,
+            bool includeIdentity = false)
+        {
+            return type
+                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(x => x.CanRead)
+                .Where(IsScalarColumn)
+                .Where(x => includeIdentity || !IsIdentityColumn(x))
+                .ToArray();
+        }
+
+        public static bool IsIdentityColumn(PropertyInfo property)
+        {
+            return property.Name.Equals(
+                       "Id",
+                       StringComparison.OrdinalIgnoreCase)
+                   || property.GetCustomAttributes()
+                       .Any(x => x.GetType().Name.Contains(
+                           "Key",
+                           StringComparison.OrdinalIgnoreCase));
+        }
+
+        public static object? NormalizeParameterValue(object? value)
+        {
+            if (value is null)
+                return null;
+
+            if (value is Enum enumValue)
             {
-                return DateTime.UtcNow;
+                return Convert.ChangeType(
+                    enumValue,
+                    Enum.GetUnderlyingType(enumValue.GetType()));
             }
 
-            return dateTime;
+            if (value is DateTime dateTime)
+            {
+                if (dateTime == default ||
+                    dateTime < new DateTime(1753, 1, 1))
+                {
+                    return DateTime.UtcNow;
+                }
+
+                return dateTime;
+            }
+
+            if (value is DateTimeOffset dateTimeOffset)
+            {
+                if (dateTimeOffset == default)
+                    return DateTimeOffset.UtcNow;
+
+                return dateTimeOffset;
+            }
+
+            return value;
         }
 
-        if (value is DateTimeOffset dateTimeOffset)
+        public static (int Skip, int Take) NormalizePaging(
+            int skip,
+            int take)
         {
-            if (dateTimeOffset == default)
-                return DateTimeOffset.UtcNow;
+            if (skip < 0)
+                skip = 0;
 
-            return dateTimeOffset;
+            if (take <= 0)
+                take = 1;
+
+            if (skip == take)
+                take++;
+
+            return (skip, take);
         }
 
-        return value;
+        public static void ResetIdentityValue(
+            object entity,
+            PropertyInfo? identityProperty)
+        {
+            if (identityProperty is null)
+                return;
+
+            var type = Nullable.GetUnderlyingType(identityProperty.PropertyType)
+                       ?? identityProperty.PropertyType;
+
+            object? value = type.IsValueType
+                ? Activator.CreateInstance(type)
+                : null;
+
+            identityProperty.SetValue(entity, value);
+        }
     }
-
-    public static (int Skip, int Take) NormalizePaging(
-        int skip,
-        int take)
-    {
-        if (skip < 0)
-            skip = 0;
-
-        if (take <= 0)
-            take = 1;
-
-        if (skip == take)
-            take++;
-
-        return (skip, take);
-    }
-
-    public static void ResetIdentityValue(
-        object entity,
-        PropertyInfo? identityProperty)
-    {
-        if (identityProperty is null)
-            return;
-
-        var type = Nullable.GetUnderlyingType(identityProperty.PropertyType)
-                   ?? identityProperty.PropertyType;
-
-        object? value = type.IsValueType
-            ? Activator.CreateInstance(type)
-            : null;
-
-        identityProperty.SetValue(entity, value);
-    }
-}
 }

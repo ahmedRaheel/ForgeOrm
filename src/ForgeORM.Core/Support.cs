@@ -46,8 +46,9 @@ internal sealed class ForgeGridReader : IForgeGridReader
             await _reader.NextResultAsync();
 
         var rows = new List<T>();
+        var materializer = ForgeIlMaterializerCache.GetOrCreate<T>(_reader);
         while (await _reader.ReadAsync())
-            rows.Add(ForgeMaterializer.Map<T>(_reader));
+            rows.Add(materializer(_reader));
 
         _hasConsumedCurrentResult = true;
         return rows;

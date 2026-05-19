@@ -250,8 +250,9 @@ public partial class ForgeDb
         if (children.Count == 0) return;
 
         var shape = ForgeEntityShape.For(typeof(TChild));
-        var props = ForgeGraphWriteHelpers.GetInsertProperties(shape);
-        var sql = ForgeGraphWriteHelpers.BuildInsertSql(shape, props, includeScopeIdentity: false);
+        var key = shape.KeyProperty;
+        var props = ForgeGraphWriteHelpers.GetInsertProperties(shape, includeKey: false);
+        var sql = ForgeGraphWriteHelpers.BuildInsertSql(shape, props, includeScopeIdentity: key is not null);
 
         foreach (var child in children)
         {
@@ -259,7 +260,16 @@ public partial class ForgeDb
             ResetDatabaseGeneratedIdentity(child!);
             var parameters = ForgeGraphWriteHelpers.CreateParameterDictionary(props, child!);
             await using var command = ForgeAdo.CreateCommand(connection, sql, parameters, transaction);
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            if (key is not null)
+            {
+                var generated = await command.ExecuteScalarAsync(cancellationToken);
+                if (key.CanWrite)
+                    key.SetValue(child!, ForgeObjectMapper.ConvertTo(generated, key.PropertyType));
+            }
+            else
+            {
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
         }
     }
 
@@ -520,19 +530,20 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
     private static async Task ExecuteRowByRowFallbackAsync(DbConnection connection, DbTransaction transaction, IReadOnlyList<TChildEntity> entities, CancellationToken cancellationToken)
     {
         var shape = ForgeEntityShape.For(typeof(TChildEntity));
-        var props = ForgeGraphWriteHelpers.GetInsertProperties(shape);
-        var sql = ForgeGraphWriteHelpers.BuildInsertSql(shape, props, includeScopeIdentity: false);
+        var key = shape.KeyProperty;
+        var props = ForgeGraphWriteHelpers.GetInsertProperties(shape, includeKey: false);
+        var sql = ForgeGraphWriteHelpers.BuildInsertSql(shape, props, includeScopeIdentity: key is not null);
         foreach (var entity in entities)
         {
             if (entity is null)
                 continue;
 
-            ResetDatabaseGeneratedIdentity(entity);
+            ForgeGraphWriteHelpers.ResetDatabaseGeneratedIdentity(entity!);
 
             var parameters =
                 ForgeGraphWriteHelpers.CreateParameterDictionary(
                     props,
-                    entity);
+                    entity!);
 
             await using var command =
                 ForgeAdo.CreateCommand(
@@ -541,14 +552,43 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
                     parameters,
                     transaction);
 
-            var generatedId =
-                await command.ExecuteScalarAsync(cancellationToken);
+            if (key is not null)
+            {
+                var generated =
+                    await command.ExecuteScalarAsync(cancellationToken);
 
-            SetDatabaseGeneratedIdentity(entity, generatedId);
+                ForgeGraphWriteHelpers.SetDatabaseGeneratedIdentity(
+                    entity!,
+                    generated);
+            }
+            else
+            {
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
         }
     }
-    private static void ResetDatabaseGeneratedIdentity(object entity)
+}
+
+internal interface IForgeGraphChildInsert<TDto>
+{
+    /// <summary>
+    /// Defines the InsertAsync operation.
+    /// </summary>
+    /// <param name="connection">The connection value.</param>
+    /// <param name="transaction">The transaction value.</param>
+    /// <param name="dto">The dto value.</param>
+    /// <param name="parentKey">The parentKey value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the InsertAsync operation.</returns>
+    Task InsertAsync(DbConnection connection, DbTransaction transaction, TDto dto, object parentKey, CancellationToken cancellationToken);
+}
+internal static partial class ForgeGraphWriteHelpers
+{
+    internal static void ResetDatabaseGeneratedIdentity(object entity)
     {
+        if (entity is null)
+            return;
+
         var identity = entity.GetType()
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .FirstOrDefault(p =>
@@ -569,42 +609,38 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
 
         identity.SetValue(entity, defaultValue);
     }
-    private static void SetDatabaseGeneratedIdentity(object entity,   object? generatedId)
+
+    internal static void SetDatabaseGeneratedIdentity(
+        object entity,
+        object? generatedId)
     {
+        if (entity is null)
+            return;
+
         if (generatedId is null || generatedId == DBNull.Value)
             return;
 
         var identity = entity.GetType()
-            .GetProperties()
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .FirstOrDefault(p =>
                 p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase));
 
-        if (identity is null || !identity.CanWrite)
+        if (identity is null)
             return;
 
-        var targetType = Nullable.GetUnderlyingType(identity.PropertyType)
-                         ?? identity.PropertyType;
+        if (!identity.CanWrite)
+            return;
 
-        var converted = Convert.ChangeType(generatedId, targetType);
+        var targetType =
+            Nullable.GetUnderlyingType(identity.PropertyType)
+            ?? identity.PropertyType;
+
+        var converted =
+            Convert.ChangeType(generatedId, targetType);
 
         identity.SetValue(entity, converted);
     }
 }
-
-internal interface IForgeGraphChildInsert<TDto>
-{
-    /// <summary>
-    /// Defines the InsertAsync operation.
-    /// </summary>
-    /// <param name="connection">The connection value.</param>
-    /// <param name="transaction">The transaction value.</param>
-    /// <param name="dto">The dto value.</param>
-    /// <param name="parentKey">The parentKey value.</param>
-    /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The result of the InsertAsync operation.</returns>
-    Task InsertAsync(DbConnection connection, DbTransaction transaction, TDto dto, object parentKey, CancellationToken cancellationToken);
-}
-
 internal static class ForgeEnumConversion
 {
     /// <summary>
@@ -637,7 +673,7 @@ internal static class ForgeEnumConversion
         var enumType = Nullable.GetUnderlyingType(type) ?? type;
         if (!enumType.IsEnum) return value;
 
-        var storage = property?.GetCustomAttribute<ForgeEnumStorageAttribute>()?.Storage ?? ForgeEnumStorage.String;
+        var storage = property?.GetCustomAttribute<ForgeEnumStorageAttribute>()?.Storage ?? ForgeEnumStorage.Number;
         return storage == ForgeEnumStorage.Number
             ? Convert.ChangeType(value, Enum.GetUnderlyingType(enumType))
             : value.ToString();
@@ -693,7 +729,7 @@ internal static class ForgeTvpDataTable
 }
 
 
-internal static class ForgeGraphWriteHelpers
+internal static partial class ForgeGraphWriteHelpers
 {
     public static List<PropertyInfo> GetInsertProperties(ForgeEntityShape shape, bool includeKey = false)
     {

@@ -324,7 +324,13 @@ public partial class ForgeDb : IForgeDb
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the T operation.</returns>
     public T? QueryProcedureSingleOrDefault<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null)
-        => QueryProcedure<T>(procedureName, parameters, timeoutSeconds).SingleOrDefault();
+    {
+        using var c = CreateConnection();
+        c.Open();
+        return ForgeAdo.QuerySingleOrDefaultAsync<T>(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds)
+            .GetAwaiter()
+            .GetResult();
+    }
 
     /// <summary>
     /// Executes the T operation.
@@ -336,7 +342,11 @@ public partial class ForgeDb : IForgeDb
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
     public async Task<T?> QueryProcedureSingleOrDefaultAsync<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-        => (await QueryProcedureAsync<T>(procedureName, parameters, timeoutSeconds, cancellationToken)).SingleOrDefault();
+    {
+        await using var c = CreateConnection();
+        await c.OpenAsync(cancellationToken);
+        return await ForgeAdo.QuerySingleOrDefaultAsync<T>(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+    }
 
     /// <summary>
     /// Executes the ExecuteProcedure operation.

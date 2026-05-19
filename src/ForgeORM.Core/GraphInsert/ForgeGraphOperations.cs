@@ -319,25 +319,10 @@ public partial class ForgeDb
         await using var command = ForgeAdo.CreateCommand(connection, sql, parameters);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var rows = new List<object>();
+        var materializer = ForgeIlMaterializerCache.GetOrCreate(type, reader);
         while (await reader.ReadAsync(cancellationToken))
-            rows.Add(MapRecord(type, reader));
+            rows.Add(materializer(reader));
         return rows;
-    }
-
-    private static object MapRecord(Type type, IDataRecord record)
-    {
-        var instance = Activator.CreateInstance(type) ?? throw new InvalidOperationException($"Cannot create {type.Name}.");
-        var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanWrite && ForgeMaterializer.IsScalar(p.PropertyType))
-            .ToList();
-        for (var i = 0; i < record.FieldCount; i++)
-        {
-            var name = record.GetName(i);
-            var prop = props.FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase) || ForgeEntityShape.ColumnName(p).Equals(name, StringComparison.OrdinalIgnoreCase));
-            if (prop is null || record.IsDBNull(i)) continue;
-            prop.SetValue(instance, ForgeObjectMapper.ConvertTo(record.GetValue(i), prop.PropertyType));
-        }
-        return instance;
     }
 
     private static IReadOnlyList<PropertyInfo> GetChildCollectionProperties(Type type)

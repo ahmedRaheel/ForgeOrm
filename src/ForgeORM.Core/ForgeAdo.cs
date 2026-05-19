@@ -13,6 +13,7 @@ public static class ForgeAdo
 {
     private static readonly ConcurrentDictionary<Type, ParameterProperty[]> ParameterPropertyCache = new();
     private static readonly ConcurrentDictionary<Type, Action<DbCommand, object>> ParameterWriterCache = new();
+    private static readonly Regex SqlParameterTokenRegex = new(@"(?<!@)@([A-Za-z_][A-Za-z0-9_]*)", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -288,40 +289,93 @@ public static class ForgeAdo
     }
 
 
-    private static void EnsureReferencedSqlParametersAreBound(DbCommand command, object parameters)
+    private static void EnsureReferencedSqlParametersAreBound(DbCommand command, object? parameters)
     {
+        // Graph delete/update paths may legitimately call ExecuteAsync with null parameters.
+        // This method must therefore be completely null safe.
+        if (command is null || parameters is null)
+            return;
+
         if (command.CommandType != CommandType.Text)
             return;
 
         if (string.IsNullOrWhiteSpace(command.CommandText))
             return;
 
-        var matches = Regex.Matches(
-            command.CommandText,
-            @"(?<!@)@([A-Za-z_][A-Za-z0-9_]*)",
-            RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
+        var matches = SqlParameterTokenRegex.Matches(command.CommandText);
         if (matches.Count == 0)
             return;
-
-        var props = ParameterPropertyCache.GetOrAdd(parameters.GetType(), BuildParameterProperties);
 
         foreach (Match match in matches)
         {
             var name = match.Groups[1].Value;
 
-            if (HasParameter(command, name))
+            if (string.IsNullOrWhiteSpace(name) || HasParameter(command, name))
                 continue;
 
-            var prop = props.FirstOrDefault(x =>
-                string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
-
-            if (prop.Property is null)
+            if (!TryReadParameterValue(parameters, name, out var value, out var declaredType))
                 continue;
 
-            var value = prop.Getter(parameters);
-            BindSingleOrEnumerable(command, name, value, prop.PropertyType);
+            BindSingleOrEnumerable(command, name, value, declaredType);
         }
+    }
+
+    private static bool TryReadParameterValue(
+        object parameters,
+        string name,
+        out object? value,
+        out Type? declaredType)
+    {
+        value = null;
+        declaredType = null;
+
+        if (parameters is IReadOnlyDictionary<string, object?> readOnlyDictionary)
+        {
+            if (readOnlyDictionary.TryGetValue(name, out value) ||
+                readOnlyDictionary.TryGetValue("@" + name, out value) ||
+                readOnlyDictionary.TryGetValue(":" + name, out value))
+            {
+                declaredType = value?.GetType();
+                return true;
+            }
+
+            return false;
+        }
+
+        if (parameters is IDictionary dictionary)
+        {
+            foreach (DictionaryEntry item in dictionary)
+            {
+                if (item.Key is null)
+                    continue;
+
+                var key = Convert.ToString(item.Key, System.Globalization.CultureInfo.InvariantCulture);
+                if (string.Equals(key, name, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(key, "@" + name, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(key, ":" + name, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = item.Value;
+                    declaredType = item.Value?.GetType();
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        var props = ParameterPropertyCache.GetOrAdd(parameters.GetType(), BuildParameterProperties);
+        for (var i = 0; i < props.Length; i++)
+        {
+            var prop = props[i];
+            if (!string.Equals(prop.Name, name, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            value = prop.Getter(parameters);
+            declaredType = prop.PropertyType;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool HasParameter(DbCommand command, string name)

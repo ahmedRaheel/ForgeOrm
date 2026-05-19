@@ -267,6 +267,6 @@ ORDER BY {keyColumn} {direction}
             .GetType()
             .GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
             .Where(x => x.CanRead)
-            .ToDictionary(x => x.Name, x => x.GetValue(parameters), StringComparer.OrdinalIgnoreCase);
+            .ToDictionary(x => x.Name, x => ForgeRuntimeAccessorCache.Get(x, parameters), StringComparer.OrdinalIgnoreCase);
     }
 }

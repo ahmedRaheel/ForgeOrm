@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>ForgeORM.SourceGenerated</PackageId>
+    <Title>ForgeORM.SourceGenerated</Title>
+    <Description>Source-generated reader and parameter binder registration points for ForgeORM.</Description>
+    <Version>1.3.6</Version>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ForgeORM.Core\ForgeORM.Core.csproj" />
+  </ItemGroup>
+</Project>

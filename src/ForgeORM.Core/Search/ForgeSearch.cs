@@ -439,7 +439,7 @@ public sealed class ForgeSearch<T>
             .GetType()
             .GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
-            _parameters[property.Name] = property.GetValue(parameters);
+            _parameters[property.Name] = ForgeRuntimeAccessorCache.Get(property, parameters);
         }
     }
 }
@@ -631,8 +631,6 @@ internal static class ForgeSearchExpression
 
     private static object? Evaluate(Expression expression)
     {
-        return Expression.Lambda(expression)
-            .Compile()
-            .DynamicInvoke();
+        return ForgeExpressionDelegateCache.Evaluate(expression);
     }
 }

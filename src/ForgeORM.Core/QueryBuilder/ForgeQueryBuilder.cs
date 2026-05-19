@@ -511,7 +511,7 @@ public sealed class ForgeQueryBuilder<TEntity>
 
         foreach (var prop in parameters.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead))
         {
-            _parameters[prop.Name] = prop.GetValue(parameters);
+            _parameters[prop.Name] = ForgeRuntimeAccessorCache.Get(prop, parameters);
         }
     }
 
@@ -585,7 +585,7 @@ internal static class ForgeExpressionSqlBuilder
     private static object? Evaluate(Expression expression)
     {
         var converted = Expression.Convert(expression, typeof(object));
-        return Expression.Lambda<Func<object?>>(converted).Compile().Invoke();
+        return ForgeExpressionDelegateCache.Evaluate(converted);
     }
 }
 

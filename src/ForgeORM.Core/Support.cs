@@ -615,7 +615,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
         else if (_baseParameters is not null)
         {
             foreach (var property in _baseParameters.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(x => x.CanRead))
-                merged[property.Name] = property.GetValue(_baseParameters);
+                merged[property.Name] = ForgeRuntimeAccessorCache.Get(property, _baseParameters);
         }
 
         foreach (var item in _parameters) merged[item.Key] = item.Value;
@@ -637,7 +637,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
             return;
         }
         foreach (var property in parameters.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(x => x.CanRead))
-            _parameters[property.Name] = property.GetValue(parameters);
+            _parameters[property.Name] = ForgeRuntimeAccessorCache.Get(property, parameters);
     }
 }
 
@@ -713,7 +713,7 @@ internal static class ForgeNavigationSupport
             return;
 
         var ids = parents
-            .Select(parent => parentKey.GetValue(parent))
+            .Select(parent => ForgeRuntimeAccessorCache.Get(parentKey, parent!))
             .Where(x => x is not null)
             .Distinct()
             .ToArray();
@@ -733,24 +733,24 @@ internal static class ForgeNavigationSupport
         var task = (Task)queryAsync.Invoke(db, new object?[] { sql, new { Ids = ids }, null, cancellationToken })!;
         await task.ConfigureAwait(false);
 
-        var result = task.GetType().GetProperty("Result")!.GetValue(task) as System.Collections.IEnumerable;
+        var result = ForgeRuntimeMemberCache.GetTaskResult(task) as System.Collections.IEnumerable;
         if (result is null)
             return;
 
         var children = result.Cast<object>().ToList();
         foreach (var parent in parents)
         {
-            var parentId = parentKey.GetValue(parent);
-            var list = (System.Collections.IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(childType))!;
+            var parentId = ForgeRuntimeAccessorCache.Get(parentKey, parent!);
+            var list = (System.Collections.IList)ForgeRuntimeAccessorCache.Constructor(typeof(List<>).MakeGenericType(childType))();
 
             foreach (var child in children)
             {
-                var fk = childForeignKey.GetValue(child);
+                var fk = ForgeRuntimeAccessorCache.Get(childForeignKey, child);
                 if (Equals(fk, parentId))
                     list.Add(child);
             }
 
-            navigation.SetValue(parent, list);
+            ForgeRuntimeAccessorCache.Set(navigation, parent!, list);
         }
     }
 
@@ -775,7 +775,7 @@ internal static class ForgeNavigationSupport
 
         foreach (var parent in parents)
         {
-            var fkValue = fkProperty.GetValue(parent);
+            var fkValue = ForgeRuntimeAccessorCache.Get(fkProperty, parent!);
             if (fkValue is null)
                 continue;
 
@@ -783,8 +783,8 @@ internal static class ForgeNavigationSupport
             var task = (Task)queryFirstOrDefaultAsync.Invoke(db, new object?[] { sql, new { Id = fkValue }, null, cancellationToken })!;
             await task.ConfigureAwait(false);
 
-            var child = task.GetType().GetProperty("Result")!.GetValue(task);
-            navigation.SetValue(parent, child);
+            var child = ForgeRuntimeMemberCache.GetTaskResult(task);
+            ForgeRuntimeAccessorCache.Set(navigation, parent!, child);
         }
     }
 
@@ -868,7 +868,7 @@ internal static class ForgeExpressionTranslator
     private static string Operator(ExpressionType t) => t switch { ExpressionType.Equal => "=", ExpressionType.NotEqual => "<>", ExpressionType.GreaterThan => ">", ExpressionType.GreaterThanOrEqual => ">=", ExpressionType.LessThan => "<", ExpressionType.LessThanOrEqual => "<=", _ => throw new NotSupportedException("Operator not supported.") };
     private static string Value(Expression e)
     {
-        var v = Expression.Lambda(e).Compile().DynamicInvoke();
+        var v = ForgeExpressionDelegateCache.Evaluate(e);
         return v switch { null => "NULL", string s => "'" + s.Replace("'", "''") + "'", DateTime d => "'" + d.ToString("yyyy-MM-dd HH:mm:ss") + "'", bool b => b ? "1" : "0", _ => v?.ToString() ?? "NULL" };
     }
 }
@@ -942,7 +942,7 @@ internal sealed class ForgeSplitQuery<TParent> : IForgeSplitQuery<TParent>
         _includes.Add(async (parents, ct) =>
         {
             var ids = parents
-                .Select(x => parentKeyProperty.GetValue(x))
+                .Select(x => ForgeRuntimeAccessorCache.Get(parentKeyProperty, x!))
                 .Where(x => x is not null)
                 .Distinct()
                 .ToList();
@@ -955,12 +955,12 @@ internal sealed class ForgeSplitQuery<TParent> : IForgeSplitQuery<TParent>
 
             var children = await _db.QueryAsync<TChild>(sql, new { Ids = ids }, cancellationToken: ct);
             var lookup = children
-                .GroupBy(x => childForeignKeyProperty.GetValue(x))
+                .GroupBy(x => ForgeRuntimeAccessorCache.Get(childForeignKeyProperty, x!))
                 .ToDictionary(x => x.Key, x => (IReadOnlyList<TChild>)x.ToList());
 
             foreach (var parent in parents)
             {
-                var key = parentKeyProperty.GetValue(parent);
+                var key = ForgeRuntimeAccessorCache.Get(parentKeyProperty, parent!);
                 var rows = key is not null && lookup.TryGetValue(key, out var found) ? found : Array.Empty<TChild>();
                 AssignChildren(parent, rows, target, backingField);
             }
@@ -1046,14 +1046,14 @@ internal sealed class ForgeSplitQuery<TParent> : IForgeSplitQuery<TParent>
             var field = typeof(TParent).GetField(backingField, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
                 ?? throw new InvalidOperationException($"Backing field '{backingField}' was not found on {typeof(TParent).Name}.");
 
-            if (field.GetValue(parent) is IList<TChild> list)
+            if (ForgeRuntimeMemberCache.Get(field, parent!) is IList<TChild> list)
             {
                 list.Clear();
                 foreach (var child in children) list.Add(child);
                 return;
             }
 
-            field.SetValue(parent, children.ToList());
+            ForgeRuntimeMemberCache.Set(field, parent!, children.ToList());
             return;
         }
 
@@ -1066,11 +1066,11 @@ internal sealed class ForgeSplitQuery<TParent> : IForgeSplitQuery<TParent>
 
         if (property.CanWrite)
         {
-            property.SetValue(parent, ConvertChildren(children, property.PropertyType));
+            ForgeRuntimeAccessorCache.Set(property, parent!, ConvertChildren(children, property.PropertyType));
             return;
         }
 
-        if (property.GetValue(parent) is IList<TChild> existing)
+        if (ForgeRuntimeAccessorCache.Get(property, parent!) is IList<TChild> existing)
         {
             existing.Clear();
             foreach (var child in children) existing.Add(child);

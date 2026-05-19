@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
-using System.Linq.Expressions;
 using System.Reflection;
 using ForgeORM.Abstractions;
 using Microsoft.Data.SqlClient;
@@ -106,16 +105,7 @@ public partial class ForgeDb
     }
 
     private static Func<object, object?> CreateFastInsertGetter(PropertyInfo property)
-    {
-        var instance = Expression.Parameter(typeof(object), "instance");
-        var cast = Expression.Convert(instance, property.DeclaringType!);
-        var propertyAccess = Expression.Property(cast, property);
-        var convert = Expression.Convert(propertyAccess, typeof(object));
-
-        return Expression
-            .Lambda<Func<object, object?>>(convert, instance)
-            .Compile();
-    }
+        => ForgeRuntimeAccessorCache.Getter(property);
 
     private static string ResolveFastInsertTableName(Type type)
     {

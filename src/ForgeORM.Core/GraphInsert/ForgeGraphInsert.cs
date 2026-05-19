@@ -5,6 +5,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using ForgeORM.Abstractions;
 using ForgeORM.Core.Graph;
+using Microsoft.Data.SqlClient;
 
 namespace ForgeORM.Core;
 
@@ -162,7 +163,7 @@ public partial class ForgeDb
 
         var parentKeyProperty = ForgeExpression.Property(parentKey.Body);
         var childForeignKeyProperty = ForgeExpression.Property(childForeignKey.Body);
-        var childAccessor = children.Compile();
+        var childAccessor = ForgeExpressionDelegateCache.Get(children);
         var childRows = childAccessor(parent)?.ToList() ?? [];
 
         await using var connection = CreateConnection();
@@ -184,7 +185,7 @@ public partial class ForgeDb
             {
                 if (child is null) continue;
                 if (childForeignKeyProperty.CanWrite)
-                    childForeignKeyProperty.SetValue(child, ForgeObjectMapper.ConvertTo(key, childForeignKeyProperty.PropertyType));
+                    ForgeRuntimeAccessorCache.Set(childForeignKeyProperty, child!, ForgeObjectMapper.ConvertTo(key, childForeignKeyProperty.PropertyType));
 
                 ForgeEntityShape.EnsureGeneratedKey(child);
                 ResetDatabaseGeneratedIdentity(child);
@@ -264,7 +265,7 @@ public partial class ForgeDb
             {
                 var generated = await command.ExecuteScalarAsync(cancellationToken);
                 if (key.CanWrite)
-                    key.SetValue(child!, ForgeObjectMapper.ConvertTo(generated, key.PropertyType));
+                    ForgeRuntimeAccessorCache.Set(key, child!, ForgeObjectMapper.ConvertTo(generated, key.PropertyType));
             }
             else
             {
@@ -285,7 +286,7 @@ public partial class ForgeDb
             return;
 
         if (keyType == typeof(int) || keyType == typeof(long) || keyType == typeof(short))
-            key.SetValue(entity, Activator.CreateInstance(keyType));
+            ForgeRuntimeAccessorCache.Set(key, entity, ForgeRuntimeAccessorCache.DefaultValue(keyType));
     }
 
     private static async Task<TKey> InsertParentAndReturnKeyAsync<TParent, TDto, TKey>(
@@ -303,7 +304,7 @@ public partial class ForgeDb
         EnsureKeyValue(parent!, key);
         ResetDatabaseGeneratedIdentity(parent!);
 
-        var keyValue = key.GetValue(parent);
+        var keyValue = ForgeRuntimeAccessorCache.Get(key, parent!);
         var includeKeyInInsert = ShouldIncludeKeyInInsert(key, keyValue);
         var props = ForgeGraphWriteHelpers.GetInsertProperties(entity, includeKeyInInsert);
         var sql = ForgeGraphWriteHelpers.BuildInsertSql(entity, props, includeScopeIdentity: !includeKeyInInsert);
@@ -316,7 +317,7 @@ public partial class ForgeDb
         }
         else if (key.CanWrite)
         {
-            key.SetValue(parent, ForgeObjectMapper.ConvertTo(result, key.PropertyType));
+            ForgeRuntimeAccessorCache.Set(key, parent!, ForgeObjectMapper.ConvertTo(result, key.PropertyType));
         }
 
         return (TKey)ForgeObjectMapper.ConvertTo(result, typeof(TKey))!;
@@ -327,16 +328,16 @@ public partial class ForgeDb
         var type = Nullable.GetUnderlyingType(key.PropertyType) ?? key.PropertyType;
         if (type == typeof(Guid)) return true;
         if (value is null) return false;
-        if (Equals(value, Activator.CreateInstance(type))) return false;
+        if (Equals(value, ForgeRuntimeAccessorCache.DefaultValue(type))) return false;
         return type != typeof(int) && type != typeof(long) && type != typeof(short);
     }
 
     private static void EnsureKeyValue(object entity, PropertyInfo key)
     {
         var type = Nullable.GetUnderlyingType(key.PropertyType) ?? key.PropertyType;
-        var current = key.GetValue(entity);
+        var current = ForgeRuntimeAccessorCache.Get(key, entity);
         if (type == typeof(Guid) && key.CanWrite && (current is null || (Guid)current == Guid.Empty))
-            key.SetValue(entity, Guid.NewGuid());
+            ForgeRuntimeAccessorCache.Set(key, entity, Guid.NewGuid());
     }
 
     private static bool SameProperty(PropertyInfo a, PropertyInfo b)
@@ -377,7 +378,7 @@ public sealed class ForgeGraphInsertOptions<TParent, TDto>
         Expression<Func<TDto, IEnumerable<TChildDto>>> selector)
         where TChildEntity : new()
     {
-        var options = new ForgeGraphChildOptions<TDto, TChildEntity, TChildDto>(selector.Compile());
+        var options = new ForgeGraphChildOptions<TDto, TChildEntity, TChildDto>(ForgeExpressionDelegateCache.Get(selector));
         ChildMappings.Add(options);
         return options;
     }
@@ -482,7 +483,7 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
         if (_foreignKey is not null)
         {
             foreach (var entity in entities)
-                _foreignKey.SetValue(entity, ForgeObjectMapper.ConvertTo(parentKey, _foreignKey.PropertyType));
+                ForgeRuntimeAccessorCache.Set(_foreignKey, entity!, ForgeObjectMapper.ConvertTo(parentKey, _foreignKey.PropertyType));
         }
 
         foreach (var entity in entities)
@@ -603,11 +604,9 @@ internal static partial class ForgeGraphWriteHelpers
         var type = Nullable.GetUnderlyingType(identity.PropertyType)
                    ?? identity.PropertyType;
 
-        object? defaultValue = type.IsValueType
-            ? Activator.CreateInstance(type)
-            : null;
+        object? defaultValue = ForgeRuntimeAccessorCache.DefaultValue(type);
 
-        identity.SetValue(entity, defaultValue);
+        ForgeRuntimeAccessorCache.Set(identity, entity, defaultValue);
     }
 
     internal static void SetDatabaseGeneratedIdentity(
@@ -638,7 +637,7 @@ internal static partial class ForgeGraphWriteHelpers
         var converted =
             Convert.ChangeType(generatedId, targetType);
 
-        identity.SetValue(entity, converted);
+        ForgeRuntimeAccessorCache.Set(identity, entity, converted);
     }
 }
 internal static class ForgeEnumConversion
@@ -691,7 +690,7 @@ internal static class ForgeEnumConversion
         {
             var nullable = Nullable.GetUnderlyingType(targetType);
             if (nullable is not null || !targetType.IsValueType) return null;
-            return Activator.CreateInstance(targetType);
+            return ForgeRuntimeAccessorCache.DefaultValue(targetType);
         }
 
         var type = Nullable.GetUnderlyingType(targetType) ?? targetType;
@@ -720,7 +719,7 @@ internal static class ForgeTvpDataTable
 
         foreach (var row in rows)
         {
-            var values = props.Select(p => ForgeGraphWriteHelpers.NormalizeDatabaseValue(p.GetValue(row), p) ?? DBNull.Value).ToArray();
+            var values = props.Select(p => ForgeGraphWriteHelpers.NormalizeDatabaseValue(ForgeRuntimeAccessorCache.Get(p, row), p) ?? DBNull.Value).ToArray();
             table.Rows.Add(values);
         }
 
@@ -789,7 +788,7 @@ internal static partial class ForgeGraphWriteHelpers
         var parameters = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var prop in props)
-            parameters[prop.Name] = NormalizeDatabaseValue(prop.GetValue(entity), prop);
+            parameters[prop.Name] = NormalizeDatabaseValue(ForgeRuntimeAccessorCache.Get(prop, entity), prop);
 
         return parameters;
     }
@@ -827,15 +826,14 @@ internal static class ForgeSqlServerParameterConfigurator
     /// <param name="tableType">The tableType value.</param>
     public static void ConfigureStructured(DbParameter parameter, string tableType)
     {
-        var type = parameter.GetType();
-        type.GetProperty("TypeName")?.SetValue(parameter, tableType);
-
-        var sqlDbType = type.GetProperty("SqlDbType");
-        if (sqlDbType is not null)
+        if (parameter is SqlParameter sqlParameter)
         {
-            var structured = Enum.Parse(sqlDbType.PropertyType, "Structured");
-            sqlDbType.SetValue(parameter, structured);
+            sqlParameter.TypeName = tableType;
+            sqlParameter.SqlDbType = SqlDbType.Structured;
+            return;
         }
+
+        throw new NotSupportedException("Structured TVP parameters require Microsoft.Data.SqlClient.SqlParameter.");
     }
 }
 
@@ -870,8 +868,8 @@ internal static class ForgeObjectMapper
         {
             if (!sourceProps.TryGetValue(targetProp.Name, out var sourceProp)) continue;
             if (IsEnumerableButNotString(targetProp.PropertyType)) continue;
-            var value = sourceProp.GetValue(source);
-            targetProp.SetValue(target, ConvertTo(value, targetProp.PropertyType));
+            var value = ForgeRuntimeAccessorCache.Get(sourceProp, source);
+            ForgeRuntimeAccessorCache.Set(targetProp, target!, ConvertTo(value, targetProp.PropertyType));
         }
     }
 
@@ -887,7 +885,7 @@ internal static class ForgeObjectMapper
         {
             var nullable = Nullable.GetUnderlyingType(targetType);
             if (nullable is not null || !targetType.IsValueType) return null;
-            return Activator.CreateInstance(targetType);
+            return ForgeRuntimeAccessorCache.DefaultValue(targetType);
         }
 
         var type = Nullable.GetUnderlyingType(targetType) ?? targetType;
@@ -1003,9 +1001,9 @@ internal sealed class ForgeEntityShape
         var key = shape.KeyProperty;
         if (key is null || !key.CanWrite) return;
         var type = Nullable.GetUnderlyingType(key.PropertyType) ?? key.PropertyType;
-        var current = key.GetValue(entity);
+        var current = ForgeRuntimeAccessorCache.Get(key, entity);
         if (type == typeof(Guid) && (current is null || (Guid)current == Guid.Empty))
-            key.SetValue(entity, Guid.NewGuid());
+            ForgeRuntimeAccessorCache.Set(key, entity, Guid.NewGuid());
     }
 
     private static bool IsScalarColumnType(Type type)

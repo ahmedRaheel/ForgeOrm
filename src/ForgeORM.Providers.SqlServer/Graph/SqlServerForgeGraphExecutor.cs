@@ -94,7 +94,7 @@ public sealed class SqlServerForgeGraphExecutor : IForgeGraphExecutor
         foreach (var row in node.Rows)
         {
             var metadata = ForgeEntityMetadataCache.Get(row.GetType());
-            var key = metadata.KeyProperty?.GetValue(row);
+            var key = ForgeProviderAccessors.Get(metadata.KeyProperty, row!);
             _identityMap.SetDatabaseKey(row, key);
         }
     }

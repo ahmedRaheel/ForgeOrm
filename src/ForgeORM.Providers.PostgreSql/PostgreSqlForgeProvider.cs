@@ -227,7 +227,7 @@ internal static class ForgeProviderAdo
             {
                 var parameter = command.CreateParameter();
                 parameter.ParameterName = "@" + prop.Name;
-                parameter.Value = NormalizeValue(prop.GetValue(row), prop.PropertyType) ?? DBNull.Value;
+                parameter.Value = NormalizeValue(ForgeProviderAccessors.Get(prop, row!), prop.PropertyType) ?? DBNull.Value;
                 command.Parameters.Add(parameter);
             }
             total += await command.ExecuteNonQueryAsync(cancellationToken);

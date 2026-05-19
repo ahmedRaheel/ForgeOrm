@@ -497,7 +497,7 @@ public partial class ForgeDb
             var columnName = ResolveColumnName(metadata, propertyName);
             var parameterName = "set_" + propertyName;
             assignments.Add($"{columnName} = @{parameterName}");
-            parameters[parameterName] = prop.GetValue(values);
+            parameters[parameterName] = ForgeRuntimeAccessorCache.Get(prop, values);
         }
 
         if (assignments.Count == 0)
@@ -534,7 +534,7 @@ public partial class ForgeDb
         return parameters.GetType()
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(x => x.CanRead)
-            .ToDictionary(x => x.Name, x => x.GetValue(parameters), StringComparer.OrdinalIgnoreCase);
+            .ToDictionary(x => x.Name, x => ForgeRuntimeAccessorCache.Get(x, parameters), StringComparer.OrdinalIgnoreCase);
     }
 
     private static void Merge(IDictionary<string, object?> target, IReadOnlyDictionary<string, object?> source)
@@ -630,7 +630,7 @@ internal static class ForgeCoreExpressionSql
         if (expression is ConstantExpression constant)
             return constant.Value;
 
-        return Expression.Lambda(expression).Compile().DynamicInvoke();
+        return ForgeExpressionDelegateCache.Evaluate(expression);
     }
 
     private static Expression StripConvert(Expression expression)

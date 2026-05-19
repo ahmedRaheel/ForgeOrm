@@ -4,7 +4,6 @@ using System.Text.RegularExpressions;
 using System.Data;
 using System.Data.Common;
 using System.Reflection;
-using System.Linq.Expressions;
 using System.Reflection.Emit;
 
 namespace ForgeORM.Core;
@@ -251,6 +250,14 @@ public static class ForgeAdo
         if (parameters is CancellationToken)
             return;
 
+        // Scalar parameter hot path. This fixes calls like GetByIdAsync<T>(id) where the SQL
+        // contains @Id but the parameter value is a raw int/Guid/string instead of an anonymous object.
+        if (IsScalarParameterType(parameters.GetType()))
+        {
+            BindScalarParameter(command, parameters);
+            return;
+        }
+
         if (parameters is IReadOnlyDictionary<string, object?> dictionary)
         {
             foreach (var item in dictionary)
@@ -288,6 +295,43 @@ public static class ForgeAdo
         EnsureReferencedSqlParametersAreBound(command, parameters);
     }
 
+
+    private static void BindScalarParameter(DbCommand command, object value)
+    {
+        var names = command.CommandType == CommandType.Text && !string.IsNullOrWhiteSpace(command.CommandText)
+            ? SqlParameterTokenCache.GetOrAdd(command.CommandText, ExtractSqlParameterNames)
+            : Array.Empty<string>();
+
+        if (names.Length == 0)
+        {
+            BindSingleOrEnumerable(command, "Value", value, value.GetType());
+            return;
+        }
+
+        // Bind every referenced token to the scalar value. This keeps GetById (@Id),
+        // graph delete (@ParentId), and provider-specific single-value commands safe.
+        foreach (var name in names)
+        {
+            if (!HasParameter(command, name))
+                BindSingleOrEnumerable(command, name, value, value.GetType());
+        }
+    }
+
+    private static bool IsScalarParameterType(Type type)
+    {
+        type = Nullable.GetUnderlyingType(type) ?? type;
+        return type.IsPrimitive
+               || type.IsEnum
+               || type == typeof(string)
+               || type == typeof(Guid)
+               || type == typeof(decimal)
+               || type == typeof(DateTime)
+               || type == typeof(DateTimeOffset)
+               || type == typeof(DateOnly)
+               || type == typeof(TimeOnly)
+               || type == typeof(TimeSpan)
+               || type == typeof(byte[]);
+    }
 
     private static void EnsureReferencedSqlParametersAreBound(DbCommand command, object parameters)
     {
@@ -407,18 +451,23 @@ public static class ForgeAdo
         parameter.ParameterName = "@" + name;
         parameter.Value = NormalizeParameterValue(value) ?? DBNull.Value;
 
-        if (parameter.GetType().FullName is "Microsoft.Data.SqlClient.SqlParameter" or "System.Data.SqlClient.SqlParameter")
-        {
-            var sqlDbTypeProperty = parameter.GetType().GetProperty("SqlDbType");
-            if (value is DateTime) sqlDbTypeProperty?.SetValue(parameter, SqlDbType.DateTime2);
-            if (value is DateTimeOffset) sqlDbTypeProperty?.SetValue(parameter, SqlDbType.DateTimeOffset);
-        }
+        if (value is DateTime)
+            parameter.DbType = DbType.DateTime2;
+        else if (value is DateTimeOffset)
+            parameter.DbType = DbType.DateTimeOffset;
 
         command.Parameters.Add(parameter);
     }
 
     private static Action<DbCommand, object> BuildParameterWriter(Type type)
     {
+        if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
+            && ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider))
+            return provider.GetBinder(type);
+
+        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGenerated)
+            throw new InvalidOperationException($"No ForgeORM source-generated parameter binder was registered for {type.FullName}.");
+
         var props = ParameterPropertyCache.GetOrAdd(type, BuildParameterProperties);
 
         var method = new DynamicMethod(
@@ -472,13 +521,7 @@ public static class ForgeAdo
     }
 
     private static Func<object, object?> BuildParameterGetter(Type declaringType, PropertyInfo property)
-    {
-        var instance = Expression.Parameter(typeof(object), "instance");
-        var cast = Expression.Convert(instance, declaringType);
-        var access = Expression.Property(cast, property);
-        var convert = Expression.Convert(access, typeof(object));
-        return Expression.Lambda<Func<object, object?>>(convert, instance).Compile();
-    }
+        => ForgeRuntimeAccessorCache.Getter(property);
 
     private static bool IsBindableParameterProperty(PropertyInfo property)
     {

@@ -150,7 +150,7 @@ public partial class ForgeDb
         }
 
         foreach (var prop in original.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(x => x.CanRead))
-            temporal[prop.Name] = prop.GetValue(original);
+            temporal[prop.Name] = ForgeRuntimeAccessorCache.Get(prop, original);
 
         return temporal;
     }

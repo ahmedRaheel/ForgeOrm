@@ -1,3 +1,4 @@
+using ForgeORM.Core;
 namespace ForgeORM.Core.Graph;
 
 /// <summary>
@@ -54,7 +55,7 @@ public static class ForgeGraphPlanBuilder
 
         foreach (var collectionProperty in metadata.ChildCollections)
         {
-            if (collectionProperty.GetValue(entity) is not System.Collections.IEnumerable children)
+            if (ForgeRuntimeAccessorCache.Get(collectionProperty, entity) is not System.Collections.IEnumerable children)
             {
                 continue;
             }

@@ -29,7 +29,7 @@ public partial class ForgeDb
         var parentKey = parentShape.KeyProperty
             ?? throw new InvalidOperationException($"ForgeORM graph insert requires a key property on {typeof(TParent).Name}.");
         var childForeignKeyProperty = ForgeExpression.Property(childForeignKey.Body);
-        var childRows = children.Compile()(parent)?.ToList() ?? [];
+        var childRows = ForgeExpressionDelegateCache.Get(children)(parent)?.ToList() ?? [];
 
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken);
@@ -50,7 +50,7 @@ public partial class ForgeDb
             {
                 if (child is null) continue;
                 if (childForeignKeyProperty.CanWrite)
-                    childForeignKeyProperty.SetValue(child, ForgeObjectMapper.ConvertTo(key, childForeignKeyProperty.PropertyType));
+                    ForgeRuntimeAccessorCache.Set(childForeignKeyProperty, child!, ForgeObjectMapper.ConvertTo(key, childForeignKeyProperty.PropertyType));
 
                 ForgeEntityShape.EnsureGeneratedKey(child);
             }
@@ -90,7 +90,7 @@ public partial class ForgeDb
         if (children is null) throw new ArgumentNullException(nameof(children));
 
         var parent = ForgeObjectMapper.Map<TParent>(dto!);
-        var childRows = children.Compile()(dto)?.Select(child => ForgeObjectMapper.Map<TChild>(child!)).ToList() ?? [];
+        var childRows = ForgeExpressionDelegateCache.Get(children)(dto)?.Select(child => ForgeObjectMapper.Map<TChild>(child!)).ToList() ?? [];
         return InsertGraphAsync(parent, _ => childRows, childForeignKey, cancellationToken);
     }
 }

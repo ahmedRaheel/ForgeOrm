@@ -400,8 +400,8 @@ public static class ForgeChangeTracker
 
         foreach (var prop in type.GetProperties().Where(p => p.CanRead))
         {
-            var oldValue = prop.GetValue(before);
-            var newValue = prop.GetValue(after);
+            var oldValue = ForgeRuntimeAccessorCache.Get(prop, before);
+            var newValue = ForgeRuntimeAccessorCache.Get(prop, after);
 
             if (!Equals(oldValue, newValue))
             {

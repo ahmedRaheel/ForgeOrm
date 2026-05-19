@@ -78,7 +78,7 @@ public sealed class MySqlForgeGraphExecutor : IForgeGraphExecutor
         foreach (var row in node.Rows)
         {
             var metadata = ForgeEntityMetadataCache.Get(row.GetType());
-            _identityMap.SetDatabaseKey(row, metadata.KeyProperty?.GetValue(row));
+            _identityMap.SetDatabaseKey(row, ForgeProviderAccessors.Get(metadata.KeyProperty, row!));
         }
     }
 

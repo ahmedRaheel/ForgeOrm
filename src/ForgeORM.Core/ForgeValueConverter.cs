@@ -171,7 +171,7 @@ internal static class ForgeValueConverter
 
         if (string.IsNullOrWhiteSpace(text))
         {
-            return nullable ? null : Activator.CreateInstance(enumType);
+            return nullable ? null : ForgeRuntimeAccessorCache.DefaultValue(enumType);
         }
 
         if (Enum.TryParse(enumType, text, ignoreCase: true, out var parsedByName))
@@ -221,7 +221,7 @@ internal static class ForgeValueConverter
             return Enum.Parse(enumType, "Default", ignoreCase: true);
         }
 
-        return Activator.CreateInstance(enumType);
+        return ForgeRuntimeAccessorCache.DefaultValue(enumType);
     }
 
     private static bool IsNumericText(string value)
@@ -249,9 +249,7 @@ internal static class ForgeValueConverter
         if (nullable is not null)
             return null;
 
-        return type.IsValueType
-            ? Activator.CreateInstance(type)
-            : null;
+        return ForgeRuntimeAccessorCache.DefaultValue(type);
     }
 }
 

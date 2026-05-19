@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
-using System.Linq.Expressions;
 using System.Reflection;
+using ForgeORM.Core;
 
 namespace ForgeORM.Core.Compiled;
 
@@ -92,21 +92,10 @@ public static class ForgeCompiledPlanCache
 
     private static ForgeCompiledPropertyAccessor CreateAccessor(PropertyInfo property)
     {
-        var instance = Expression.Parameter(typeof(object), "instance");
-        var typed = Expression.Convert(instance, property.DeclaringType!);
-        var access = Expression.Property(typed, property);
-        var box = Expression.Convert(access, typeof(object));
-        var getter = Expression.Lambda<Func<object, object?>>(box, instance).Compile();
-
-        Action<object, object?>? setter = null;
-
-        if (property.CanWrite)
-        {
-            var value = Expression.Parameter(typeof(object), "value");
-            var converted = Expression.Convert(value, property.PropertyType);
-            var assign = Expression.Assign(access, converted);
-            setter = Expression.Lambda<Action<object, object?>>(assign, instance, value).Compile();
-        }
+        var getter = ForgeRuntimeAccessorCache.Getter(property);
+        Action<object, object?>? setter = property.CanWrite
+            ? ForgeRuntimeAccessorCache.Setter(property)
+            : null;
 
         return new ForgeCompiledPropertyAccessor
         {

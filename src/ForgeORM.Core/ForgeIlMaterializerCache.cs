@@ -19,12 +19,30 @@ internal static class ForgeIlMaterializerCache
 
     public static Func<DbDataReader, T> GetOrCreate<T>(DbDataReader reader)
     {
-        var key = CreateKey(typeof(T), reader);
+        var type = typeof(T);
+        if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
+            && ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider))
+        {
+            var sourceReader = provider.GetReader(type, reader);
+            return r => (T)sourceReader(r);
+        }
+
+        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGenerated)
+            throw new InvalidOperationException($"No ForgeORM source-generated reader was registered for {type.FullName}.");
+
+        var key = CreateKey(type, reader);
         return (Func<DbDataReader, T>)Cache.GetOrAdd(key, _ => CreateMaterializer<T>(reader));
     }
 
     public static Func<DbDataReader, object> GetOrCreate(Type type, DbDataReader reader)
     {
+        if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
+            && ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider))
+            return provider.GetReader(type, reader);
+
+        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGenerated)
+            throw new InvalidOperationException($"No ForgeORM source-generated reader was registered for {type.FullName}.");
+
         var key = CreateKey(type, reader);
         return (Func<DbDataReader, object>)ObjectCache.GetOrAdd(key, _ => CreateObjectMaterializer(type, reader));
     }
@@ -408,11 +426,9 @@ internal static class ForgeIlMaterializerCache
             var type = Nullable.GetUnderlyingType(identityProperty.PropertyType)
                        ?? identityProperty.PropertyType;
 
-            object? value = type.IsValueType
-                ? Activator.CreateInstance(type)
-                : null;
+            object? value = ForgeRuntimeAccessorCache.DefaultValue(type);
 
-            identityProperty.SetValue(entity, value);
+            ForgeRuntimeAccessorCache.Set(identityProperty, entity, value);
         }
     }
 }

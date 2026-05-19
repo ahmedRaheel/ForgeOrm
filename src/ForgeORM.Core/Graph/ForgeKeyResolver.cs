@@ -1,3 +1,4 @@
+using ForgeORM.Core;
 namespace ForgeORM.Core.Graph;
 
 /// <summary>
@@ -10,7 +11,7 @@ public sealed class ForgeKeyResolver : IForgeKeyResolver
     {
         ArgumentNullException.ThrowIfNull(entity);
         var metadata = ForgeEntityMetadataCache.Get(entity.GetType());
-        return metadata.KeyProperty?.GetValue(entity);
+        return metadata.KeyProperty is null ? null : ForgeRuntimeAccessorCache.Get(metadata.KeyProperty, entity);
     }
 
     /// <inheritdoc />
@@ -24,7 +25,7 @@ public sealed class ForgeKeyResolver : IForgeKeyResolver
             return;
         }
 
-        metadata.KeyProperty.SetValue(entity, ConvertValue(key, metadata.KeyProperty.PropertyType));
+        ForgeRuntimeAccessorCache.Set(metadata.KeyProperty, entity, ConvertValue(key, metadata.KeyProperty.PropertyType));
     }
 
     /// <inheritdoc />
@@ -69,7 +70,7 @@ public sealed class ForgeKeyResolver : IForgeKeyResolver
         }
 
         var type = value.GetType();
-        var defaultValue = type.IsValueType ? Activator.CreateInstance(type) : null;
+        var defaultValue = type.IsValueType ? ForgeRuntimeAccessorCache.DefaultValue(type) : null;
         return Equals(value, defaultValue);
     }
 }

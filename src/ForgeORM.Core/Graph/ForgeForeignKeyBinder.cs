@@ -1,3 +1,4 @@
+using ForgeORM.Core;
 using System.Reflection;
 
 namespace ForgeORM.Core.Graph;
@@ -38,7 +39,7 @@ public sealed class ForgeForeignKeyBinder : IForgeForeignKeyBinder
             return;
         }
 
-        fk.SetValue(child, ConvertValue(parentKey, fk.PropertyType));
+        ForgeRuntimeAccessorCache.Set(fk, child, ConvertValue(parentKey, fk.PropertyType));
     }
 
     /// <summary>

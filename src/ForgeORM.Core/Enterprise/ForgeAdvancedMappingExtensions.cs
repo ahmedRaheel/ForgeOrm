@@ -45,8 +45,8 @@ public static class ForgeAdvancedMappingExtensions
                 continue;
             }
 
-            var value = sourceProperty.GetValue(source);
-            targetProperty.SetValue(target, ConvertValue(value, targetProperty.PropertyType));
+            var value = ForgeRuntimeAccessorCache.Get(sourceProperty, source);
+            ForgeRuntimeAccessorCache.Set(targetProperty, target, ConvertValue(value, targetProperty.PropertyType));
         }
     }
 
@@ -57,7 +57,7 @@ public static class ForgeAdvancedMappingExtensions
         return source.GetType()
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(x => x.CanRead && !IsEnumerableButNotString(x.PropertyType))
-            .ToDictionary(x => x.Name, x => x.GetValue(source), StringComparer.OrdinalIgnoreCase);
+            .ToDictionary(x => x.Name, x => ForgeRuntimeAccessorCache.Get(x, source), StringComparer.OrdinalIgnoreCase);
     }
 
     public static TTarget FromDictionaryProjection<TTarget>(this IReadOnlyDictionary<string, object?> values)
@@ -68,7 +68,7 @@ public static class ForgeAdvancedMappingExtensions
         {
             if (values.TryGetValue(property.Name, out var value))
             {
-                property.SetValue(target, ConvertValue(value, property.PropertyType));
+                ForgeRuntimeAccessorCache.Set(property, target, ConvertValue(value, property.PropertyType));
             }
         }
 
@@ -94,7 +94,7 @@ public static class ForgeAdvancedMappingExtensions
         if (value is null || value is DBNull)
         {
             var nullable = Nullable.GetUnderlyingType(targetType);
-            return nullable is not null || !targetType.IsValueType ? null : Activator.CreateInstance(targetType);
+            return nullable is not null || !targetType.IsValueType ? null : ForgeRuntimeAccessorCache.DefaultValue(targetType);
         }
 
         var type = Nullable.GetUnderlyingType(targetType) ?? targetType;

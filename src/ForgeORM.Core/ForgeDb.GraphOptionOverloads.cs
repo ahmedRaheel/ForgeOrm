@@ -172,7 +172,7 @@ public partial class ForgeDb
         var key = shape.KeyProperty
             ?? throw new InvalidOperationException($"Entity '{typeof(T).Name}' does not have a key property configured.");
 
-        var value = key.GetValue(entity);
+        var value = ForgeRuntimeAccessorCache.Get(key, entity);
         if (value is null)
         {
             throw new InvalidOperationException($"Entity '{typeof(T).Name}' key '{key.Name}' cannot be null.");

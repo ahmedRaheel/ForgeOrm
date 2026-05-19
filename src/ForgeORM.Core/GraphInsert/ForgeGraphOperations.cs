@@ -317,7 +317,7 @@ public partial class ForgeDb
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken);
         await using var command = ForgeAdo.CreateCommand(connection, sql, parameters);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
         var rows = new List<object>();
         var materializer = ForgeIlMaterializerCache.GetOrCreate(type, reader);
         while (await reader.ReadAsync(cancellationToken))

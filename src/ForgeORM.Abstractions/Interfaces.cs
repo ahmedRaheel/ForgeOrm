@@ -809,7 +809,7 @@ public interface IForgeQueryableFactory
     IForgeQuery<T> Sql<T>(string sql, object? parameters = null);
 }
 
-public interface IForgeQuery<T>
+public interface IForgeQuery<T> : IForgeExecutableQuery
 /// <summary>
 /// Defines the Where operation.
 /// </summary>
@@ -923,6 +923,12 @@ public interface IForgeQuery<T>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ToListAsync operation.</returns>
     Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Streams rows with DbDataReader sequential access and MSIL materialization.</summary>
+    IAsyncEnumerable<T> StreamAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Processes rows in fixed-size batches without requiring callers to load the whole result set.</summary>
+    Task ProcessInBatchesAsync(int batchSize, Func<IReadOnlyList<T>, Task> processor, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the FirstOrDefault operation.
     /// </summary>

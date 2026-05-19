@@ -13,6 +13,7 @@ public static class ForgeAdo
 {
     private static readonly ConcurrentDictionary<Type, ParameterProperty[]> ParameterPropertyCache = new();
     private static readonly ConcurrentDictionary<Type, Action<DbCommand, object>> ParameterWriterCache = new();
+    private static readonly ConcurrentDictionary<string, string[]> SqlParameterTokenCache = new(StringComparer.Ordinal);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -296,19 +297,15 @@ public static class ForgeAdo
         if (string.IsNullOrWhiteSpace(command.CommandText))
             return;
 
-        var matches = Regex.Matches(
-            command.CommandText,
-            @"(?<!@)@([A-Za-z_][A-Za-z0-9_]*)",
-            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        var names = SqlParameterTokenCache.GetOrAdd(command.CommandText, ExtractSqlParameterNames);
 
-        if (matches.Count == 0)
+        if (names.Length == 0)
             return;
 
         var props = ParameterPropertyCache.GetOrAdd(parameters.GetType(), BuildParameterProperties);
 
-        foreach (Match match in matches)
+        foreach (var name in names)
         {
-            var name = match.Groups[1].Value;
 
             if (HasParameter(command, name))
                 continue;
@@ -316,12 +313,29 @@ public static class ForgeAdo
             var prop = props.FirstOrDefault(x =>
                 string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
 
-            if (prop.Property is null)
+            if (prop is null || prop.Property is null)
                 continue;
 
             var value = prop.Getter(parameters);
             BindSingleOrEnumerable(command, name, value, prop.PropertyType);
         }
+    }
+
+
+    private static string[] ExtractSqlParameterNames(string sql)
+    {
+        var matches = Regex.Matches(
+            sql,
+            @"(?<!@)@([A-Za-z_][A-Za-z0-9_]*)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        if (matches.Count == 0)
+            return Array.Empty<string>();
+
+        var result = new string[matches.Count];
+        for (var i = 0; i < matches.Count; i++)
+            result[i] = matches[i].Groups[1].Value;
+        return result.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     private static bool HasParameter(DbCommand command, string name)

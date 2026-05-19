@@ -765,14 +765,20 @@ internal static partial class ForgeGraphWriteHelpers
 
     public static string BuildInsertSql(ForgeEntityShape shape, IReadOnlyList<PropertyInfo> props, bool includeScopeIdentity)
     {
-        if (props.Count == 0)
+        var key = shape.KeyProperty;
+        var safeProps = props
+            .Where(p => p.CanRead)
+            .Where(p => key is null || !p.Name.Equals(key.Name, StringComparison.OrdinalIgnoreCase) || !IsDatabaseGeneratedIdentityKey(key))
+            .ToArray();
+
+        if (safeProps.Length == 0)
             throw new InvalidOperationException($"No insertable scalar columns were found for table {shape.TableName}.");
 
-        var columns = string.Join(", ", props.Select(ForgeEntityShape.ColumnName));
-        var values = string.Join(", ", props.Select(p => "@" + p.Name));
+        var columns = string.Join(", ", safeProps.Select(ForgeEntityShape.ColumnName));
+        var values = string.Join(", ", safeProps.Select(p => "@" + p.Name));
         var sql = $"INSERT INTO {shape.TableName} ({columns}) VALUES ({values})";
 
-        if (includeScopeIdentity)
+        if (includeScopeIdentity && key is not null && IsDatabaseGeneratedIdentityKey(key))
             sql += "; SELECT CAST(SCOPE_IDENTITY() AS int);";
 
         return sql;

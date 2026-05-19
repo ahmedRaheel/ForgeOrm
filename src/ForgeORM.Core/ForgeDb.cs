@@ -1,7 +1,6 @@
 using System.Data;
 using System.Data.Common;
 using ForgeORM.Abstractions;
-using ForgeORM.Core.Performance;
 
 namespace ForgeORM.Core;
 
@@ -67,7 +66,7 @@ public partial class ForgeDb : IForgeDb
     {
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
-        return await ForgePerformancePipeline.QueryAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+        return await ForgeAdo.QueryAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -191,7 +190,7 @@ public partial class ForgeDb : IForgeDb
     {
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
-        return await ForgePerformancePipeline.SingleOrDefaultAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+        return await ForgeAdo.QuerySingleOrDefaultAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -220,7 +219,7 @@ public partial class ForgeDb : IForgeDb
     {
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
-        return await ForgePerformancePipeline.ExecuteAsync(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+        return await ForgeAdo.ExecuteAsync(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -313,7 +312,7 @@ public partial class ForgeDb : IForgeDb
     {
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
-        return await ForgePerformancePipeline.QueryAsync<T>(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+        return await ForgeAdo.QueryAsync<T>(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -346,7 +345,7 @@ public partial class ForgeDb : IForgeDb
     {
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
-        return await ForgePerformancePipeline.SingleOrDefaultAsync<T>(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+        return await ForgeAdo.QuerySingleOrDefaultAsync<T>(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -375,7 +374,7 @@ public partial class ForgeDb : IForgeDb
     {
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
-        return await ForgePerformancePipeline.ExecuteAsync(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+        return await ForgeAdo.ExecuteAsync(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     }
 
     /// <summary>

@@ -1,7 +1,8 @@
 using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
-using ForgeORM.Core.Performance;
+using System.Linq.Expressions;
+using System.Reflection;
 using ForgeORM.Abstractions;
 using Microsoft.Data.SqlClient;
 
@@ -44,12 +45,13 @@ public partial class ForgeDb
         for (var i = 0; i < plan.Properties.Length; i++)
         {
             var property = plan.Properties[i];
+            var getter = plan.Getters[i];
 
-            var value = property.Getter(entity!);
-            value = NormalizeFastInsertParameterValue(value, property.PropertyType);
+            var value = getter(entity!);
+            value = NormalizeFastInsertParameterValue(value, property);
 
             var parameter = command.CreateParameter();
-            parameter.ParameterName = "@" + property.PropertyName;
+            parameter.ParameterName = "@" + property.Name;
             parameter.Value = value ?? DBNull.Value;
 
             ApplyProviderParameterType(parameter, value);
@@ -67,25 +69,85 @@ public partial class ForgeDb
 
     private static ForgeFastInsertPlan CreateFastInsertPlan(Type type)
     {
-        var runtime = ForgeRuntimeEntityMetadataCache.For(type);
-        var properties = runtime.Properties
-            .Where(p => !p.IsKey && !p.IsComputed)
+        var table = ResolveFastInsertTableName(type);
+
+        var properties = type
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanRead)
+            .Where(IsFastInsertScalarColumn)
+            .Where(p => !IsFastInsertIdentityColumn(p))
+            .Where(p => p.GetCustomAttribute<ForgeComputedAttribute>() is null)
             .ToArray();
 
         if (properties.Length == 0)
             throw new InvalidOperationException($"No insertable scalar columns were found for entity '{type.Name}'.");
 
-        var columns = properties.Select(p => p.ColumnName).ToArray();
-        var parameters = properties.Select(p => "@" + p.PropertyName).ToArray();
+        var columns = properties
+            .Select(p => p.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? p.Name)
+            .ToArray();
+
+        var parameters = properties
+            .Select(p => "@" + p.Name)
+            .ToArray();
+
+        var sql =
+            $"INSERT INTO {table} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters)});";
+
+        var getters = properties
+            .Select(CreateFastInsertGetter)
+            .ToArray();
 
         return new ForgeFastInsertPlan
         {
-            Sql = $"INSERT INTO {runtime.TableName} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters)});",
-            Properties = properties
+            Sql = sql,
+            Properties = properties,
+            Getters = getters
         };
     }
 
-    private static object? NormalizeFastInsertParameterValue(object? value, Type propertyType)
+    private static Func<object, object?> CreateFastInsertGetter(PropertyInfo property)
+    {
+        var instance = Expression.Parameter(typeof(object), "instance");
+        var cast = Expression.Convert(instance, property.DeclaringType!);
+        var propertyAccess = Expression.Property(cast, property);
+        var convert = Expression.Convert(propertyAccess, typeof(object));
+
+        return Expression
+            .Lambda<Func<object, object?>>(convert, instance)
+            .Compile();
+    }
+
+    private static string ResolveFastInsertTableName(Type type)
+    {
+        return type.GetCustomAttribute<ForgeTableAttribute>()?.Name ?? type.Name;
+    }
+
+    private static bool IsFastInsertIdentityColumn(PropertyInfo property)
+    {
+        return property.Name.Equals("Id", StringComparison.OrdinalIgnoreCase)
+            || property.GetCustomAttribute<ForgeKeyAttribute>() is not null;
+    }
+
+    private static bool IsFastInsertScalarColumn(PropertyInfo property)
+    {
+        var type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+
+        if (type.IsEnum)
+            return true;
+
+        return type.IsPrimitive
+            || type == typeof(string)
+            || type == typeof(Guid)
+            || type == typeof(decimal)
+            || type == typeof(DateTime)
+            || type == typeof(DateTimeOffset)
+            || type == typeof(DateOnly)
+            || type == typeof(TimeOnly)
+            || type == typeof(TimeSpan)
+            || type == typeof(byte[]);
+    }
+
+    private static object? NormalizeFastInsertParameterValue(object? value, PropertyInfo property)
     {
         if (value is null)
             return null;
@@ -155,5 +217,7 @@ internal sealed class ForgeFastInsertPlan
 {
     public required string Sql { get; init; }
 
-    public required ForgeRuntimePropertyPlan[] Properties { get; init; }
+    public required PropertyInfo[] Properties { get; init; }
+
+    public required Func<object, object?>[] Getters { get; init; }
 }

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
-using ForgeORM.Core.Performance;
+using System.Linq.Expressions;
+using System.Reflection;
 
 namespace ForgeORM.Core.Compiled;
 
@@ -44,33 +45,75 @@ public static class ForgeCompiledPlanCache
 
     private static ForgeCompiledEntityPlan Build(Type type)
     {
-        var runtime = ForgeRuntimeEntityMetadataCache.For(type);
-        var props = runtime.Properties
-            .Select(p => new ForgeCompiledPropertyAccessor
-            {
-                Name = p.PropertyName,
-                PropertyType = p.PropertyType,
-                Getter = p.Getter,
-                Setter = p.Setter
-            })
+        var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanRead && IsScalar(p.PropertyType))
+            .Select(CreateAccessor)
             .ToList();
 
-        var key = runtime.Key is null
-            ? null
-            : props.FirstOrDefault(x => x.Name.Equals(runtime.Key.PropertyName, StringComparison.OrdinalIgnoreCase));
+        var key = props.FirstOrDefault(x => x.Name.Equals("Id", StringComparison.OrdinalIgnoreCase));
+        var table = type.Name.EndsWith("s", StringComparison.OrdinalIgnoreCase) ? type.Name : type.Name + "s";
+
+        var nonKey = props.Where(p => key is null || !p.Name.Equals(key.Name, StringComparison.OrdinalIgnoreCase)).ToList();
+        var columns = string.Join(", ", nonKey.Select(p => p.Name));
+        var values = string.Join(", ", nonKey.Select(p => "@" + p.Name));
+        var set = string.Join(", ", nonKey.Select(p => $"{p.Name} = @{p.Name}"));
 
         return new ForgeCompiledEntityPlan
         {
             EntityType = type,
-            TableName = runtime.TableName,
+            TableName = table,
             Properties = props,
             Key = key,
-            InsertSql = runtime.InsertSql,
-            SelectByIdSql = runtime.Key is null
-                ? $"SELECT {runtime.SelectColumnsSql} FROM {runtime.TableName};"
-                : $"SELECT {runtime.SelectColumnsSql} FROM {runtime.TableName} WHERE {runtime.Key.ColumnName} = @{runtime.Key.PropertyName};",
-            UpdateSql = runtime.UpdateSql,
-            DeleteSql = runtime.DeleteSql
+            InsertSql = $"INSERT INTO {table} ({columns}) VALUES ({values});",
+            SelectByIdSql = key is null ? $"SELECT {BuildSelectColumns(props)} FROM {table};" : $"SELECT {BuildSelectColumns(props)} FROM {table} WHERE {key.Name} = @Id;",
+            UpdateSql = key is null ? $"-- No key for {type.Name}" : $"UPDATE {table} SET {set} WHERE {key.Name} = @{key.Name};",
+            DeleteSql = key is null ? $"-- No key for {type.Name}" : $"DELETE FROM {table} WHERE {key.Name} = @Id;"
+        };
+    }
+
+    private static string BuildSelectColumns(IReadOnlyList<ForgeCompiledPropertyAccessor> props)
+        => props.Count == 0 ? "*" : string.Join(", ", props.Select(p => p.Name));
+
+    private static bool IsScalar(Type type)
+    {
+        var actual = Nullable.GetUnderlyingType(type) ?? type;
+        return actual.IsPrimitive
+               || actual.IsEnum
+               || actual == typeof(string)
+               || actual == typeof(Guid)
+               || actual == typeof(decimal)
+               || actual == typeof(DateTime)
+               || actual == typeof(DateTimeOffset)
+               || actual == typeof(DateOnly)
+               || actual == typeof(TimeOnly)
+               || actual == typeof(TimeSpan)
+               || actual == typeof(byte[]);
+    }
+
+    private static ForgeCompiledPropertyAccessor CreateAccessor(PropertyInfo property)
+    {
+        var instance = Expression.Parameter(typeof(object), "instance");
+        var typed = Expression.Convert(instance, property.DeclaringType!);
+        var access = Expression.Property(typed, property);
+        var box = Expression.Convert(access, typeof(object));
+        var getter = Expression.Lambda<Func<object, object?>>(box, instance).Compile();
+
+        Action<object, object?>? setter = null;
+
+        if (property.CanWrite)
+        {
+            var value = Expression.Parameter(typeof(object), "value");
+            var converted = Expression.Convert(value, property.PropertyType);
+            var assign = Expression.Assign(access, converted);
+            setter = Expression.Lambda<Action<object, object?>>(assign, instance, value).Compile();
+        }
+
+        return new ForgeCompiledPropertyAccessor
+        {
+            Name = property.Name,
+            PropertyType = property.PropertyType,
+            Getter = getter,
+            Setter = setter
         };
     }
 }

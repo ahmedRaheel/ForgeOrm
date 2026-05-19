@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Linq.Expressions;
 using System.Reflection;
 using ForgeORM.Core;
 
@@ -104,7 +105,7 @@ public static class ForgeFrameExtensions
     }
 }
 
-public sealed class ForgeFrameQuery<T>
+public sealed partial class ForgeFrameQuery<T>
 {
     private readonly ForgeDb _db;
     private string? _sql;
@@ -112,6 +113,8 @@ public sealed class ForgeFrameQuery<T>
     private string? _table;
     private readonly List<string> _where = [];
     private string? _orderBy;
+    private bool _parallel;
+    private int _maxDegreeOfParallelism = Environment.ProcessorCount;
 
     internal ForgeFrameQuery(ForgeDb db) => _db = db;
 
@@ -140,6 +143,37 @@ public sealed class ForgeFrameQuery<T>
     /// <param name="orderBy">The orderBy value.</param>
     /// <returns>The result of the OrderBy operation.</returns>
     public ForgeFrameQuery<T> OrderBy(string orderBy) { _orderBy = orderBy; return this; }
+
+
+    internal void EnableParallelExecution() => _parallel = true;
+    internal void SetMaxDegreeOfParallelism(int degree) => _maxDegreeOfParallelism = Math.Max(1, degree);
+
+    /// <summary>Expression-based frame filter using the same SQL translator as Set&lt;T&gt;().Where(...).</summary>
+    public ForgeFrameQuery<T> Where(Expression<Func<T, bool>> predicate)
+    {
+        _where.Add(ForgeExpressionTranslator.Translate(predicate));
+        return this;
+    }
+
+    /// <summary>Aggregates a decimal column directly from the database. Parallel mode is preserved for future provider parallel plans.</summary>
+    public Task<decimal> SumAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
+        => ExecuteDecimalAggregateAsync("SUM", selector, cancellationToken);
+
+    public Task<decimal> AverageAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
+        => ExecuteDecimalAggregateAsync("AVG", selector, cancellationToken);
+
+    public Task<decimal> MinAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
+        => ExecuteDecimalAggregateAsync("MIN", selector, cancellationToken);
+
+    public Task<decimal> MaxAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
+        => ExecuteDecimalAggregateAsync("MAX", selector, cancellationToken);
+
+    private Task<decimal> ExecuteDecimalAggregateAsync(string aggregate, LambdaExpression selector, CancellationToken cancellationToken)
+    {
+        var column = ForgeExpressionTranslator.MemberName(selector);
+        var sql = $"SELECT COALESCE({aggregate}({column}), 0) FROM ({BuildSql()}) ForgeFrameAggregate";
+        return _db.ExecuteScalarAsync<decimal>(sql, _parameters, cancellationToken: cancellationToken);
+    }
 
     /// <summary>
     /// Executes the ToFrameAsync operation.

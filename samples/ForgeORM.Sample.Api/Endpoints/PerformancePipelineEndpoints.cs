@@ -56,20 +56,20 @@ public static class PerformancePipelineEndpoints
             return product is null ? Results.NotFound() : Results.Ok(product);
         });
 
-        group.MapPost("/products/compiled-insert", async (ProductCreateRequest request, ForgeDb db, CancellationToken ct) =>
-        {
-            var product = new Product
-            {
-                Code = request.Code,
-                Name = request.Name,
-                Price = request.Price,
-                CategoryId = request.CategoryId,
-                BrandId = request.BrandId
-            };
+        //group.MapPost("/products/compiled-insert", async (ProductCreateRequest request, ForgeDb db, CancellationToken ct) =>
+        //{
+        //    var product = new Product
+        //    {
+        //        Code = request.Code,
+        //        Name = request.Name,
+        //        Price = request.Price,
+        //        CategoryId = request.CategoryId,
+        //        BrandId = request.BrandId
+        //    };
 
-            var affected = await db.InsertCompiledAsync(product, ct);
-            return Results.Ok(new { affected, mode = "MSIL parameter binder + cached insert SQL" });
-        });
+        //    var affected = await db.InsertCompiledAsync(product, ct);
+        //    return Results.Ok(new { affected, mode = "MSIL parameter binder + cached insert SQL" });
+        //});
 
         group.MapPut("/products/{id:int}/compiled-update", async (int id, ProductCreateRequest request, ForgeDb db, CancellationToken ct) =>
         {

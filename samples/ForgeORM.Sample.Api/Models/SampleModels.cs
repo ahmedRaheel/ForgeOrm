@@ -49,6 +49,7 @@ public sealed class Order
 {
     public int Id { get; set; }
     public int CustomerId { get; set; }
+    public int TenantId { get; set; }
     public string OrderNo { get; set; } = "";
     public OrderStatus Status { get; set; } = OrderStatus.Draft;
     public decimal GrandTotal { get; set; }
@@ -109,6 +110,7 @@ public sealed class ProductCreateRequest
 public sealed class CreateOrderRequest
 {
     public int CustomerId { get; set; }
+    public int TenantId { get; set; }
     public string OrderNo { get; set; } = "";
     public OrderStatus Status { get; set; } = OrderStatus.Draft;
     public decimal GrandTotal { get; set; }

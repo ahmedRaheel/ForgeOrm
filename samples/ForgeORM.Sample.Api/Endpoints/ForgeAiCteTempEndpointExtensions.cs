@@ -13,7 +13,7 @@ public static class ForgeAiCteTempEndpointExtensions
         {
             var answer = await db.AI.QueryAsync(
                 "Top 10 customers by revenue last month",
-                ct: ct);
+                cancellationToken: ct);
 
             return Results.Ok(answer);
         });
@@ -44,7 +44,7 @@ public static class ForgeAiCteTempEndpointExtensions
 
             var result = await db.QueryAsync<Product>(
                 "SELECT * FROM #TempProducts",
-                ct);
+                cancellationToken: ct);
 
             return Results.Ok(result);
         });

@@ -5,12 +5,14 @@ using System.Data;
 using System.Data.Common;
 using System.Reflection;
 using System.Linq.Expressions;
+using System.Reflection.Emit;
 
 namespace ForgeORM.Core;
 
 public static class ForgeAdo
 {
     private static readonly ConcurrentDictionary<Type, ParameterProperty[]> ParameterPropertyCache = new();
+    private static readonly ConcurrentDictionary<Type, Action<DbCommand, object>> ParameterWriterCache = new();
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -50,7 +52,7 @@ public static class ForgeAdo
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken);
 
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
 
         var rows = new List<T>(EstimateCapacity(sql));
         var materializer = ForgeIlMaterializerCache.GetOrCreate<T>(reader);
@@ -87,7 +89,7 @@ public static class ForgeAdo
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken);
 
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow, cancellationToken);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess, cancellationToken);
         var materializer = ForgeIlMaterializerCache.GetOrCreate<T>(reader);
 
         return await reader.ReadAsync(cancellationToken)
@@ -256,13 +258,8 @@ public static class ForgeAdo
             return;
         }
 
-        var props = ParameterPropertyCache.GetOrAdd(parameters.GetType(), BuildParameterProperties);
-
-        foreach (var prop in props)
-        {
-            var value = prop.Getter(parameters);
-            BindSingleOrEnumerable(command, prop.Name, value, prop.PropertyType);
-        }
+        var writer = ParameterWriterCache.GetOrAdd(parameters.GetType(), BuildParameterWriter);
+        writer(command, parameters);
     }
 
     private static void BindSingleOrEnumerable(
@@ -316,7 +313,7 @@ public static class ForgeAdo
 
         var parameter = command.CreateParameter();
         parameter.ParameterName = "@" + name;
-        parameter.Value = NormalizeDateValue(value) ?? DBNull.Value;
+        parameter.Value = NormalizeParameterValue(value) ?? DBNull.Value;
 
         if (parameter.GetType().FullName is "Microsoft.Data.SqlClient.SqlParameter" or "System.Data.SqlClient.SqlParameter")
         {
@@ -328,11 +325,57 @@ public static class ForgeAdo
         command.Parameters.Add(parameter);
     }
 
+    private static Action<DbCommand, object> BuildParameterWriter(Type type)
+    {
+        var props = ParameterPropertyCache.GetOrAdd(type, BuildParameterProperties);
+
+        var method = new DynamicMethod(
+            $"ForgeORM_BindParameters_{type.Name}_{Guid.NewGuid():N}",
+            typeof(void),
+            new[] { typeof(DbCommand), typeof(object) },
+            typeof(ForgeAdo),
+            skipVisibility: true);
+
+        var il = method.GetILGenerator();
+        var typed = il.DeclareLocal(type);
+
+        il.Emit(OpCodes.Ldarg_1);
+        il.Emit(type.IsValueType ? OpCodes.Unbox_Any : OpCodes.Castclass, type);
+        il.Emit(OpCodes.Stloc, typed);
+
+        var bind = typeof(ForgeAdo).GetMethod(
+            nameof(BindSingleOrEnumerable),
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        var getTypeFromHandle = typeof(Type).GetMethod(
+            nameof(Type.GetTypeFromHandle),
+            new[] { typeof(RuntimeTypeHandle) })!;
+
+        foreach (var prop in props)
+        {
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldstr, prop.Name);
+            il.Emit(OpCodes.Ldloc, typed);
+            il.Emit(OpCodes.Callvirt, prop.Property.GetMethod!);
+
+            if (prop.PropertyType.IsValueType)
+                il.Emit(OpCodes.Box, prop.PropertyType);
+
+            il.Emit(OpCodes.Ldtoken, prop.PropertyType);
+            il.Emit(OpCodes.Call, getTypeFromHandle);
+            il.Emit(OpCodes.Call, bind);
+        }
+
+        il.Emit(OpCodes.Ret);
+
+        return (Action<DbCommand, object>)method.CreateDelegate(typeof(Action<DbCommand, object>));
+    }
+
     private static ParameterProperty[] BuildParameterProperties(Type type)
     {
         return type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.CanRead && IsBindableParameterProperty(p))
-            .Select(p => new ParameterProperty(p.Name, p.PropertyType, BuildParameterGetter(type, p)))
+            .Select(p => new ParameterProperty(p.Name, p.PropertyType, p, BuildParameterGetter(type, p)))
             .ToArray();
     }
 
@@ -374,8 +417,14 @@ public static class ForgeAdo
         return 16;
     }
 
-    private static object? NormalizeDateValue(object? value)
+    private static object? NormalizeParameterValue(object? value)
     {
+        if (value is Enum enumValue)
+        {
+            var underlying = Enum.GetUnderlyingType(enumValue.GetType());
+            return Convert.ChangeType(enumValue, underlying);
+        }
+
         if (value is DateTime dateTime)
             return dateTime == default || dateTime < new DateTime(1753, 1, 1) ? DateTime.UtcNow : dateTime;
 
@@ -385,7 +434,7 @@ public static class ForgeAdo
         return value;
     }
 
-    private sealed record ParameterProperty(string Name, Type PropertyType, Func<object, object?> Getter);
+    private sealed record ParameterProperty(string Name, Type PropertyType, PropertyInfo Property, Func<object, object?> Getter);
 
     private static bool IsEnumerableParameter(object? value)
     {

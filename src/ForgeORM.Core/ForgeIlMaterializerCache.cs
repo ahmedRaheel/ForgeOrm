@@ -6,9 +6,10 @@ using System.Reflection.Emit;
 namespace ForgeORM.Core;
 
 /// <summary>
-/// High-performance MSIL materializer cache.
-/// Builds one DynamicMethod per result-shape and entity type, then reuses it for every row.
-/// This avoids reflection SetValue / Activator hot-path cost and moves ForgeORM closer to Dapper-style materialization.
+/// Dapper-style MSIL materializer cache.
+/// One DynamicMethod is emitted per entity type + result column shape and reused for every row.
+/// No PropertyInfo.SetValue, no Activator hot path, no per-row reflection.
+/// Enums are stored/read as their numeric underlying type.
 /// </summary>
 internal static class ForgeIlMaterializerCache
 {
@@ -22,6 +23,8 @@ internal static class ForgeIlMaterializerCache
 
     private static string CreateKey<T>(DbDataReader reader)
     {
+        // Built once per execution, then hits ConcurrentDictionary for repeated query shapes.
+        // Include field types to avoid reusing a plan where same names have different DB types.
         var parts = new string[(reader.FieldCount * 2) + 1];
         parts[0] = typeof(T).FullName ?? typeof(T).Name;
 
@@ -41,7 +44,7 @@ internal static class ForgeIlMaterializerCache
         var actualType = Nullable.GetUnderlyingType(targetType) ?? targetType;
 
         var method = new DynamicMethod(
-            name: $"ForgeORM_MSIL_Materialize_{SanitizeName(actualType.FullName ?? actualType.Name)}_{Guid.NewGuid():N}",
+            name: $"ForgeORM_Materialize_{SanitizeName(actualType.FullName ?? actualType.Name)}_{Guid.NewGuid():N}",
             returnType: targetType,
             parameterTypes: new[] { typeof(DbDataReader) },
             m: typeof(ForgeIlMaterializerCache).Module,
@@ -51,7 +54,7 @@ internal static class ForgeIlMaterializerCache
 
         if (ForgeMaterializer.IsScalar(actualType))
         {
-            EmitScalarReturn<T>(il, actualType);
+            EmitScalarReturn<T>(il, targetType, actualType);
             return (Func<DbDataReader, T>)method.CreateDelegate(typeof(Func<DbDataReader, T>));
         }
 
@@ -59,27 +62,18 @@ internal static class ForgeIlMaterializerCache
             ?? throw new InvalidOperationException($"{actualType.FullName} must have a parameterless constructor for MSIL materialization.");
 
         var entity = il.DeclareLocal(actualType);
-
         il.Emit(OpCodes.Newobj, ctor);
         il.Emit(OpCodes.Stloc, entity);
 
         var properties = actualType
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanWrite && ForgeMaterializer.IsScalar(p.PropertyType))
+            .Where(p => p.CanWrite && Support.IsScalarColumn(p))
             .ToDictionary(
                 p => p.GetCustomAttribute<ForgeORM.Abstractions.ForgeColumnAttribute>()?.Name ?? p.Name,
                 p => p,
                 StringComparer.OrdinalIgnoreCase);
 
         var isDbNull = typeof(DbDataReader).GetMethod(nameof(DbDataReader.IsDBNull), new[] { typeof(int) })!;
-        var getValue = typeof(DbDataReader).GetMethod(nameof(DbDataReader.GetValue), new[] { typeof(int) })!;
-        var fromDatabase = typeof(ForgeValueConverter).GetMethod(
-            nameof(ForgeValueConverter.FromDatabase),
-            BindingFlags.Public | BindingFlags.Static,
-            binder: null,
-            types: new[] { typeof(object), typeof(Type) },
-            modifiers: null)!;
-        var getTypeFromHandle = typeof(Type).GetMethod(nameof(Type.GetTypeFromHandle), new[] { typeof(RuntimeTypeHandle) })!;
 
         for (var ordinal = 0; ordinal < reader.FieldCount; ordinal++)
         {
@@ -92,24 +86,16 @@ internal static class ForgeIlMaterializerCache
                 continue;
 
             var endLabel = il.DefineLabel();
-            var converted = il.DeclareLocal(typeof(object));
 
+            // if (reader.IsDBNull(ordinal)) goto end;
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldc_I4, ordinal);
             il.Emit(OpCodes.Callvirt, isDbNull);
             il.Emit(OpCodes.Brtrue_S, endLabel);
 
-            il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldc_I4, ordinal);
-            il.Emit(OpCodes.Callvirt, getValue);
-            il.Emit(OpCodes.Ldtoken, property.PropertyType);
-            il.Emit(OpCodes.Call, getTypeFromHandle);
-            il.Emit(OpCodes.Call, fromDatabase);
-            il.Emit(OpCodes.Stloc, converted);
-
+            // entity.Property = reader.GetFieldValue<TColumn>(ordinal)
             il.Emit(OpCodes.Ldloc, entity);
-            il.Emit(OpCodes.Ldloc, converted);
-            EmitCastOrUnbox(il, property.PropertyType);
+            EmitReadValueForProperty(il, property.PropertyType, ordinal);
             il.Emit(OpCodes.Callvirt, setter);
 
             il.MarkLabel(endLabel);
@@ -121,18 +107,9 @@ internal static class ForgeIlMaterializerCache
         return (Func<DbDataReader, T>)method.CreateDelegate(typeof(Func<DbDataReader, T>));
     }
 
-    private static void EmitScalarReturn<T>(ILGenerator il, Type actualType)
+    private static void EmitScalarReturn<T>(ILGenerator il, Type targetType, Type actualType)
     {
-        var targetType = typeof(T);
         var isDbNull = typeof(DbDataReader).GetMethod(nameof(DbDataReader.IsDBNull), new[] { typeof(int) })!;
-        var getValue = typeof(DbDataReader).GetMethod(nameof(DbDataReader.GetValue), new[] { typeof(int) })!;
-        var fromDatabaseGeneric = typeof(ForgeValueConverter)
-            .GetMethods(BindingFlags.Public | BindingFlags.Static)
-            .First(x => x.Name == nameof(ForgeValueConverter.FromDatabase)
-                        && x.IsGenericMethodDefinition
-                        && x.GetParameters().Length == 1)
-            .MakeGenericMethod(targetType);
-
         var notNull = il.DefineLabel();
         var end = il.DefineLabel();
         var result = il.DeclareLocal(targetType);
@@ -147,10 +124,7 @@ internal static class ForgeIlMaterializerCache
         il.Emit(OpCodes.Br_S, end);
 
         il.MarkLabel(notNull);
-        il.Emit(OpCodes.Ldarg_0);
-        il.Emit(OpCodes.Ldc_I4_0);
-        il.Emit(OpCodes.Callvirt, getValue);
-        il.Emit(OpCodes.Call, fromDatabaseGeneric);
+        EmitReadValue(il, targetType, actualType, 0);
         il.Emit(OpCodes.Stloc, result);
 
         il.MarkLabel(end);
@@ -158,24 +132,44 @@ internal static class ForgeIlMaterializerCache
         il.Emit(OpCodes.Ret);
     }
 
-    private static void EmitCastOrUnbox(ILGenerator il, Type targetType)
+    private static void EmitReadValueForProperty(ILGenerator il, Type propertyType, int ordinal)
     {
-        var nullableUnderlying = Nullable.GetUnderlyingType(targetType);
+        var underlyingNullable = Nullable.GetUnderlyingType(propertyType);
+        var valueType = underlyingNullable ?? propertyType;
+
+        EmitReadValue(il, propertyType, valueType, ordinal);
+    }
+
+    private static void EmitReadValue(ILGenerator il, Type finalType, Type valueType, int ordinal)
+    {
+        var nullableUnderlying = Nullable.GetUnderlyingType(finalType);
+        var readType = valueType.IsEnum ? Enum.GetUnderlyingType(valueType) : valueType;
+
+        il.Emit(OpCodes.Ldarg_0);
+        il.Emit(OpCodes.Ldc_I4, ordinal);
+
+        var getFieldValue = typeof(DbDataReader)
+            .GetMethod(nameof(DbDataReader.GetFieldValue))!
+            .MakeGenericMethod(readType);
+
+        il.Emit(OpCodes.Callvirt, getFieldValue);
+
+        // Enum values are represented by their underlying numeric type on the evaluation stack.
+        // The setter accepts the enum type but the stack representation is compatible.
         if (nullableUnderlying is not null)
         {
-            il.Emit(OpCodes.Unbox_Any, nullableUnderlying);
-            var ctor = targetType.GetConstructor(new[] { nullableUnderlying })!;
+            var nullableValueType = nullableUnderlying.IsEnum
+                ? Enum.GetUnderlyingType(nullableUnderlying)
+                : nullableUnderlying;
+
+            if (nullableUnderlying.IsEnum && nullableValueType != nullableUnderlying)
+            {
+                // Numeric stack value is valid for enum nullable constructor.
+            }
+
+            var ctor = finalType.GetConstructor(new[] { nullableUnderlying })!;
             il.Emit(OpCodes.Newobj, ctor);
-            return;
         }
-
-        if (targetType.IsValueType)
-        {
-            il.Emit(OpCodes.Unbox_Any, targetType);
-            return;
-        }
-
-        il.Emit(OpCodes.Castclass, targetType);
     }
 
     private static string SanitizeName(string value)

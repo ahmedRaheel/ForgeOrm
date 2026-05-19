@@ -820,7 +820,7 @@ internal static class ForgeNavigationSupport
     }
 }
 
-public static class ForgeExpressionTranslator
+internal static class ForgeExpressionTranslator
 {
     private static readonly ConcurrentDictionary<string, string> PredicateSqlCache = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, string> MemberNameCache = new(StringComparer.Ordinal);

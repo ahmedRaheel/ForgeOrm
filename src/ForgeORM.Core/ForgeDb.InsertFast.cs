@@ -180,10 +180,11 @@ public partial class ForgeDb
 
         if (value.GetType().IsEnum)
         {
-            var storage = property.GetCustomAttribute<ForgeEnumStorageAttribute>()?.Storage ?? ForgeEnumStorage.String;
-            return storage == ForgeEnumStorage.Number
-                ? Convert.ToInt32(value)
-                : value.ToString();
+            // ForgeORM default enum strategy is numeric storage using the enum underlying type.
+            // String storage is intentionally not used in the hot path.
+            var enumType = value.GetType();
+            var underlyingType = Enum.GetUnderlyingType(enumType);
+            return Convert.ChangeType(value, underlyingType);
         }
 
         return value;

@@ -291,6 +291,7 @@ public partial class ForgeDb
             throw new InvalidOperationException($"ForgeORM graph insert requires a key property on {typeof(TParent).Name}. Use graph.Parent().Key(x => x.Id).");
 
         EnsureKeyValue(parent!, key);
+        ResetDatabaseGeneratedIdentity(parent!);
 
         var keyValue = key.GetValue(parent);
         var includeKeyInInsert = ShouldIncludeKeyInInsert(key, keyValue);
@@ -523,6 +524,8 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
         var sql = ForgeGraphWriteHelpers.BuildInsertSql(shape, props, includeScopeIdentity: false);
         foreach (var entity in entities)
         {
+            if (entity is null) continue;
+            ResetDatabaseGeneratedIdentity(entity!);
             var parameters = ForgeGraphWriteHelpers.CreateParameterDictionary(props, entity!);
             await using var command = ForgeAdo.CreateCommand(connection, sql, parameters, transaction);
             await command.ExecuteNonQueryAsync(cancellationToken);
@@ -641,8 +644,18 @@ internal static class ForgeGraphWriteHelpers
         return shape.ScalarProperties
             .Where(p => p.CanRead)
             .Where(p => !ForgeEntityShape.IsComputed(p))
-            .Where(p => key is null || includeKey || !p.Name.Equals(key.Name, StringComparison.OrdinalIgnoreCase))
+            // Numeric identity keys are database generated and must never be sent in INSERT.
+            // This prevents: Cannot insert explicit value for identity column ... IDENTITY_INSERT is OFF.
+            .Where(p => key is null || !p.Name.Equals(key.Name, StringComparison.OrdinalIgnoreCase) || (includeKey && !IsDatabaseGeneratedIdentityKey(key)))
             .ToList();
+    }
+
+    private static bool IsDatabaseGeneratedIdentityKey(PropertyInfo key)
+    {
+        var keyType = Nullable.GetUnderlyingType(key.PropertyType) ?? key.PropertyType;
+        return keyType == typeof(int)
+            || keyType == typeof(long)
+            || keyType == typeof(short);
     }
 
     public static List<PropertyInfo> GetUpdateProperties(ForgeEntityShape shape)

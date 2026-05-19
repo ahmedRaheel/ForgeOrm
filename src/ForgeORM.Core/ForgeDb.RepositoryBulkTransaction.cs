@@ -55,7 +55,7 @@ public partial class ForgeDb
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="c">The c value.</param>
     /// <returns>The result of the T operation.</returns>
-    public int Insert<T>(T entity) { var c = Provider.BuildInsert(_metadata.Resolve<T>(), entity!); return Execute(c.CommandText, c.Parameters); }
+    public int Insert<T>(T entity) => InsertFast(entity);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -63,7 +63,7 @@ public partial class ForgeDb
     /// <param name="entity">The entity value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task<int> InsertAsync<T>(T entity, CancellationToken cancellationToken = default) { var c = Provider.BuildInsert(_metadata.Resolve<T>(), entity!); return ExecuteAsync(c.CommandText, c.Parameters, cancellationToken: cancellationToken); }
+    public Task<int> InsertAsync<T>(T entity, CancellationToken cancellationToken = default) => InsertFastAsync(entity, cancellationToken);
     /// <summary>
     /// Executes the T operation.
     /// </summary>

@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using System.Linq.Expressions;
@@ -184,7 +185,7 @@ public partial class ForgeDb
             {
                 if (child is null) continue;
                 if (childForeignKeyProperty.CanWrite)
-                    childForeignKeyProperty.SetValue(child, ForgeObjectMapper.ConvertTo(key, childForeignKeyProperty.PropertyType));
+                    ForgeIlAccessors.Set(childForeignKeyProperty, child!, key);
 
                 ForgeEntityShape.EnsureGeneratedKey(child);
                 ResetDatabaseGeneratedIdentity(child);
@@ -264,7 +265,7 @@ public partial class ForgeDb
             {
                 var generated = await command.ExecuteScalarAsync(cancellationToken);
                 if (key.CanWrite)
-                    key.SetValue(child!, ForgeObjectMapper.ConvertTo(generated, key.PropertyType));
+                    ForgeIlAccessors.Set(key, child!, generated);
             }
             else
             {
@@ -285,7 +286,7 @@ public partial class ForgeDb
             return;
 
         if (keyType == typeof(int) || keyType == typeof(long) || keyType == typeof(short))
-            key.SetValue(entity, Activator.CreateInstance(keyType));
+            ForgeIlAccessors.Set(key, entity, ForgeIlAccessors.DefaultValue(keyType));
     }
 
     private static async Task<TKey> InsertParentAndReturnKeyAsync<TParent, TDto, TKey>(
@@ -303,7 +304,7 @@ public partial class ForgeDb
         EnsureKeyValue(parent!, key);
         ResetDatabaseGeneratedIdentity(parent!);
 
-        var keyValue = key.GetValue(parent);
+        var keyValue = ForgeIlAccessors.Get(key, parent!);
         var includeKeyInInsert = ShouldIncludeKeyInInsert(key, keyValue);
         var props = ForgeGraphWriteHelpers.GetInsertProperties(entity, includeKeyInInsert);
         var sql = ForgeGraphWriteHelpers.BuildInsertSql(entity, props, includeScopeIdentity: !includeKeyInInsert);
@@ -316,7 +317,7 @@ public partial class ForgeDb
         }
         else if (key.CanWrite)
         {
-            key.SetValue(parent, ForgeObjectMapper.ConvertTo(result, key.PropertyType));
+            ForgeIlAccessors.Set(key, parent!, result);
         }
 
         return (TKey)ForgeObjectMapper.ConvertTo(result, typeof(TKey))!;
@@ -327,16 +328,16 @@ public partial class ForgeDb
         var type = Nullable.GetUnderlyingType(key.PropertyType) ?? key.PropertyType;
         if (type == typeof(Guid)) return true;
         if (value is null) return false;
-        if (Equals(value, Activator.CreateInstance(type))) return false;
+        if (Equals(value, ForgeIlAccessors.DefaultValue(type))) return false;
         return type != typeof(int) && type != typeof(long) && type != typeof(short);
     }
 
     private static void EnsureKeyValue(object entity, PropertyInfo key)
     {
         var type = Nullable.GetUnderlyingType(key.PropertyType) ?? key.PropertyType;
-        var current = key.GetValue(entity);
+        var current = ForgeIlAccessors.Get(key, entity);
         if (type == typeof(Guid) && key.CanWrite && (current is null || (Guid)current == Guid.Empty))
-            key.SetValue(entity, Guid.NewGuid());
+            ForgeIlAccessors.Set(key, entity, Guid.NewGuid());
     }
 
     private static bool SameProperty(PropertyInfo a, PropertyInfo b)
@@ -482,7 +483,7 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
         if (_foreignKey is not null)
         {
             foreach (var entity in entities)
-                _foreignKey.SetValue(entity, ForgeObjectMapper.ConvertTo(parentKey, _foreignKey.PropertyType));
+                ForgeIlAccessors.Set(_foreignKey, entity!, parentKey);
         }
 
         foreach (var entity in entities)
@@ -589,10 +590,8 @@ internal static partial class ForgeGraphWriteHelpers
         if (entity is null)
             return;
 
-        var identity = entity.GetType()
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .FirstOrDefault(p =>
-                p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase));
+        var identity = ForgeIlAccessors.For(entity.GetType()).Properties
+            .FirstOrDefault(p => p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase))?.Property;
 
         if (identity is null)
             return;
@@ -603,11 +602,9 @@ internal static partial class ForgeGraphWriteHelpers
         var type = Nullable.GetUnderlyingType(identity.PropertyType)
                    ?? identity.PropertyType;
 
-        object? defaultValue = type.IsValueType
-            ? Activator.CreateInstance(type)
-            : null;
+        object? defaultValue = ForgeIlAccessors.DefaultValue(type);
 
-        identity.SetValue(entity, defaultValue);
+        ForgeIlAccessors.Set(identity, entity, defaultValue);
     }
 
     internal static void SetDatabaseGeneratedIdentity(
@@ -620,10 +617,8 @@ internal static partial class ForgeGraphWriteHelpers
         if (generatedId is null || generatedId == DBNull.Value)
             return;
 
-        var identity = entity.GetType()
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .FirstOrDefault(p =>
-                p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase));
+        var identity = ForgeIlAccessors.For(entity.GetType()).Properties
+            .FirstOrDefault(p => p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase))?.Property;
 
         if (identity is null)
             return;
@@ -638,7 +633,7 @@ internal static partial class ForgeGraphWriteHelpers
         var converted =
             Convert.ChangeType(generatedId, targetType);
 
-        identity.SetValue(entity, converted);
+        ForgeIlAccessors.Set(identity, entity, converted);
     }
 }
 internal static class ForgeEnumConversion
@@ -691,7 +686,7 @@ internal static class ForgeEnumConversion
         {
             var nullable = Nullable.GetUnderlyingType(targetType);
             if (nullable is not null || !targetType.IsValueType) return null;
-            return Activator.CreateInstance(targetType);
+            return ForgeIlAccessors.DefaultValue(targetType);
         }
 
         var type = Nullable.GetUnderlyingType(targetType) ?? targetType;
@@ -720,7 +715,7 @@ internal static class ForgeTvpDataTable
 
         foreach (var row in rows)
         {
-            var values = props.Select(p => ForgeGraphWriteHelpers.NormalizeDatabaseValue(p.GetValue(row), p) ?? DBNull.Value).ToArray();
+            var values = props.Select(p => ForgeGraphWriteHelpers.NormalizeDatabaseValue(ForgeIlAccessors.Get(p, row!), p) ?? DBNull.Value).ToArray();
             table.Rows.Add(values);
         }
 
@@ -789,7 +784,7 @@ internal static partial class ForgeGraphWriteHelpers
         var parameters = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var prop in props)
-            parameters[prop.Name] = NormalizeDatabaseValue(prop.GetValue(entity), prop);
+            parameters[prop.Name] = NormalizeDatabaseValue(ForgeIlAccessors.Get(prop, entity), prop);
 
         return parameters;
     }
@@ -820,22 +815,26 @@ internal static partial class ForgeGraphWriteHelpers
 
 internal static class ForgeSqlServerParameterConfigurator
 {
-    /// <summary>
-    /// Executes the ConfigureStructured operation.
-    /// </summary>
-    /// <param name="parameter">The parameter value.</param>
-    /// <param name="tableType">The tableType value.</param>
-    public static void ConfigureStructured(DbParameter parameter, string tableType)
-    {
-        var type = parameter.GetType();
-        type.GetProperty("TypeName")?.SetValue(parameter, tableType);
+    private static readonly ConcurrentDictionary<Type, Action<DbParameter, string>> ConfigureCache = new();
 
-        var sqlDbType = type.GetProperty("SqlDbType");
-        if (sqlDbType is not null)
+    /// <summary>Configures a SQL Server structured parameter without reflection in the execution path.</summary>
+    public static void ConfigureStructured(DbParameter parameter, string tableType)
+        => ConfigureCache.GetOrAdd(parameter.GetType(), BuildConfigurator)(parameter, tableType);
+
+    private static Action<DbParameter, string> BuildConfigurator(Type parameterType)
+    {
+        var typeName = parameterType.GetProperty("TypeName");
+        var sqlDbType = parameterType.GetProperty("SqlDbType");
+        var structured = sqlDbType is null ? null : Enum.Parse(sqlDbType.PropertyType, "Structured");
+        var setTypeName = typeName is null ? null : ForgeIlAccessors.Setter(typeName);
+        var setSqlDbType = sqlDbType is null ? null : ForgeIlAccessors.Setter(sqlDbType);
+
+        return (parameter, tableType) =>
         {
-            var structured = Enum.Parse(sqlDbType.PropertyType, "Structured");
-            sqlDbType.SetValue(parameter, structured);
-        }
+            setTypeName?.Invoke(parameter, tableType);
+            if (structured is not null)
+                setSqlDbType?.Invoke(parameter, structured);
+        };
     }
 }
 
@@ -862,16 +861,15 @@ internal static class ForgeObjectMapper
     /// <param name="target">The target value.</param>
     public static void Copy(object source, object target)
     {
-        var sourceProps = source.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanRead)
-            .ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
+        var sourcePlan = ForgeIlAccessors.For(source.GetType());
+        var targetPlan = ForgeIlAccessors.For(target.GetType());
 
-        foreach (var targetProp in target.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanWrite))
+        foreach (var targetAccessor in targetPlan.Properties.Where(p => p.Setter is not null))
         {
-            if (!sourceProps.TryGetValue(targetProp.Name, out var sourceProp)) continue;
-            if (IsEnumerableButNotString(targetProp.PropertyType)) continue;
-            var value = sourceProp.GetValue(source);
-            targetProp.SetValue(target, ConvertTo(value, targetProp.PropertyType));
+            if (!sourcePlan.ByName.TryGetValue(targetAccessor.Name, out var sourceAccessor) || sourceAccessor.Getter is null) continue;
+            if (IsEnumerableButNotString(targetAccessor.PropertyType)) continue;
+            var value = sourceAccessor.Getter(source);
+            targetAccessor.Setter!(target, ConvertTo(value, targetAccessor.PropertyType));
         }
     }
 
@@ -887,7 +885,7 @@ internal static class ForgeObjectMapper
         {
             var nullable = Nullable.GetUnderlyingType(targetType);
             if (nullable is not null || !targetType.IsValueType) return null;
-            return Activator.CreateInstance(targetType);
+            return ForgeIlAccessors.DefaultValue(targetType);
         }
 
         var type = Nullable.GetUnderlyingType(targetType) ?? targetType;
@@ -926,6 +924,9 @@ internal static class ForgeObjectMapper
 
 internal sealed class ForgeEntityShape
 {
+    private static readonly ConcurrentDictionary<Type, ForgeEntityShape> ShapeCache = new();
+    private static readonly ConcurrentDictionary<PropertyInfo, string> ColumnNameCache = new();
+    private static readonly ConcurrentDictionary<PropertyInfo, bool> ComputedCache = new();
     /// <summary>
     /// Executes the For operation.
     /// </summary>
@@ -950,11 +951,13 @@ internal sealed class ForgeEntityShape
     /// </summary>
     /// <param name="type">The type value.</param>
     /// <returns>The result of the For operation.</returns>
-    public static ForgeEntityShape For(Type type)
+    public static ForgeEntityShape For(Type type) => ShapeCache.GetOrAdd(type, Build);
+
+    private static ForgeEntityShape Build(Type type)
     {
         var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.CanRead && IsScalarColumnType(p.PropertyType))
-            .ToList();
+            .ToArray();
 
         return new ForgeEntityShape
         {
@@ -983,7 +986,7 @@ internal sealed class ForgeEntityShape
     /// <param name="property">The property value.</param>
     /// <returns>The result of the ColumnName operation.</returns>
     public static string ColumnName(PropertyInfo property)
-        => property.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? property.Name;
+        => ColumnNameCache.GetOrAdd(property, static p => p.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? p.Name);
 
     /// <summary>
     /// Executes the IsComputed operation.
@@ -991,7 +994,7 @@ internal sealed class ForgeEntityShape
     /// <param name="property">The property value.</param>
     /// <returns>The result of the IsComputed operation.</returns>
     public static bool IsComputed(PropertyInfo property)
-        => property.GetCustomAttribute<ForgeComputedAttribute>() is not null;
+        => ComputedCache.GetOrAdd(property, static p => p.GetCustomAttribute<ForgeComputedAttribute>() is not null);
 
     /// <summary>
     /// Executes the EnsureGeneratedKey operation.
@@ -1003,9 +1006,9 @@ internal sealed class ForgeEntityShape
         var key = shape.KeyProperty;
         if (key is null || !key.CanWrite) return;
         var type = Nullable.GetUnderlyingType(key.PropertyType) ?? key.PropertyType;
-        var current = key.GetValue(entity);
+        var current = ForgeIlAccessors.Get(key, entity);
         if (type == typeof(Guid) && (current is null || (Guid)current == Guid.Empty))
-            key.SetValue(entity, Guid.NewGuid());
+            ForgeIlAccessors.Set(key, entity, Guid.NewGuid());
     }
 
     private static bool IsScalarColumnType(Type type)

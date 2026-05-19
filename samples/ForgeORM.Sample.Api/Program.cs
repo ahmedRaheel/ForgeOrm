@@ -79,6 +79,4 @@ app.MapPivotExpressionFriendlyEndpoints();
 
 app.MapSearchExpressionFixedEndpoints();
 
-app.MapPerformanceShowcaseEndpoints();
-
 app.Run();

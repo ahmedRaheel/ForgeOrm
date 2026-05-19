@@ -4,7 +4,6 @@ using System.Text.RegularExpressions;
 using System.Data;
 using System.Data.Common;
 using System.Reflection;
-using System.Linq.Expressions;
 using System.Reflection.Emit;
 
 namespace ForgeORM.Core;
@@ -207,6 +206,33 @@ public static class ForgeAdo
         return ForgeValueConverter.FromDatabase<T>(value);
     }
 
+    internal static object EnsureIdParameter(object? parameters, object id)
+    {
+        if (parameters is null)
+            return new Dictionary<string, object?> { ["Id"] = id };
+
+        if (parameters is IReadOnlyDictionary<string, object?> ro && ro.Keys.Any(k => string.Equals(k.TrimStart('@', ':'), "Id", StringComparison.OrdinalIgnoreCase)))
+            return parameters;
+
+        if (parameters is IDictionary dictionary)
+        {
+            foreach (DictionaryEntry entry in dictionary)
+            {
+                if (entry.Key is not null && string.Equals(Convert.ToString(entry.Key)?.TrimStart('@', ':'), "Id", StringComparison.OrdinalIgnoreCase))
+                    return parameters;
+            }
+
+            dictionary["Id"] = id;
+            return dictionary;
+        }
+
+        var props = ParameterPropertyCache.GetOrAdd(parameters.GetType(), BuildParameterProperties);
+        if (props.Any(p => string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase)))
+            return parameters;
+
+        return new Dictionary<string, object?> { ["Id"] = id };
+    }
+
     /// <summary>
     /// Executes the CreateCommand operation.
     /// </summary>
@@ -278,17 +304,9 @@ public static class ForgeAdo
             return;
         }
 
-        // Fastest path: source-generated binder registered through ModuleInitializer.
-        if (ForgeGeneratedRegistry.TryGetParameterBinder(parameters.GetType(), out var generatedWriter))
-        {
-            generatedWriter(command, parameters);
-        }
-        else
-        {
-            // Primary runtime fast path: cached MSIL writer for anonymous objects / POCO parameter bags.
-            var writer = ParameterWriterCache.GetOrAdd(parameters.GetType(), BuildParameterWriter);
-            writer(command, parameters);
-        }
+        // Primary fast path: cached MSIL writer for anonymous objects / POCO parameter bags.
+        var writer = ParameterWriterCache.GetOrAdd(parameters.GetType(), BuildParameterWriter);
+        writer(command, parameters);
 
         // Safety net: make sure every @Parameter used by SQL is actually bound.
         // This fixes cases like GetByIdAsync where optimized pipeline generated SQL with @Id
@@ -407,8 +425,7 @@ public static class ForgeAdo
         return sql;
     }
 
-    /// <summary>Adds a normalized provider parameter. Used by MSIL binders and source-generated binders.</summary>
-    public static void AddParameter(DbCommand command, string name, object? value)
+    private static void AddParameter(DbCommand command, string name, object? value)
     {
         name = name.TrimStart('@', ':');
 
@@ -416,13 +433,8 @@ public static class ForgeAdo
         parameter.ParameterName = "@" + name;
         parameter.Value = NormalizeParameterValue(value) ?? DBNull.Value;
 
-        if (parameter.GetType().FullName is "Microsoft.Data.SqlClient.SqlParameter" or "System.Data.SqlClient.SqlParameter")
-        {
-            var sqlDbTypeProperty = parameter.GetType().GetProperty("SqlDbType");
-            if (value is DateTime) sqlDbTypeProperty?.SetValue(parameter, SqlDbType.DateTime2);
-            if (value is DateTimeOffset) sqlDbTypeProperty?.SetValue(parameter, SqlDbType.DateTimeOffset);
-        }
-
+        // Do not use reflection here. Provider-specific parameter configuration belongs in provider packages.
+        // Keeping this path reflection-free fixes high-volume Execute/Query/GetById parameter overhead.
         command.Parameters.Add(parameter);
     }
 
@@ -482,11 +494,8 @@ public static class ForgeAdo
 
     private static Func<object, object?> BuildParameterGetter(Type declaringType, PropertyInfo property)
     {
-        var instance = Expression.Parameter(typeof(object), "instance");
-        var cast = Expression.Convert(instance, declaringType);
-        var access = Expression.Property(cast, property);
-        var convert = Expression.Convert(access, typeof(object));
-        return Expression.Lambda<Func<object, object?>>(convert, instance).Compile();
+        // MSIL getter cached once per parameter property. No PropertyInfo.GetValue or Expression.Compile in execution path.
+        return ForgeIlAccessors.Getter(property);
     }
 
     private static bool IsBindableParameterProperty(PropertyInfo property)
@@ -496,7 +505,7 @@ public static class ForgeAdo
 
         var type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
 
-        if (type == typeof(string) || type == typeof(byte[]))
+        if (type == typeof(object) || type == typeof(string) || type == typeof(byte[]))
             return true;
 
         if (typeof(IEnumerable).IsAssignableFrom(type))

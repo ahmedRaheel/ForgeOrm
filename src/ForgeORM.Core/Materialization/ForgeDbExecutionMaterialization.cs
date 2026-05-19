@@ -12,7 +12,7 @@ public partial class ForgeDb
     /// <summary>
     /// Executes SQL and returns dictionary rows. Use this for pivots, reports, DataFrames and dynamic analytics projections.
     /// </summary>
-    public async Task<IReadOnlyList<Dictionary<string, object?>>> QueryDictionaryPivotAsync(
+    public async Task<IReadOnlyList<Dictionary<string, object?>>> QueryDictionaryAsync(
         string sql,
         object? parameters = null,
         CancellationToken cancellationToken = default)
@@ -40,7 +40,7 @@ public partial class ForgeDb
         string? name = null,
         CancellationToken cancellationToken = default)
     {
-        var rows = await QueryDictionaryPivotAsync(
+        var rows = await QueryDictionaryAsync(
             sql,
             parameters,
             cancellationToken);
@@ -79,7 +79,7 @@ public partial class ForgeDb
         string? name = null,
         CancellationToken cancellationToken = default)
     {
-        var rows = await QueryDictionaryPivotAsync(
+        var rows = await QueryDictionaryAsync(
             sql,
             parameters,
             cancellationToken);
@@ -103,7 +103,7 @@ public partial class ForgeDb
         object? parameters = null,
         CancellationToken cancellationToken = default)
     {
-        var rows = await QueryDictionaryPivotAsync(
+        var rows = await QueryDictionaryAsync(
             sql,
             parameters,
             cancellationToken);

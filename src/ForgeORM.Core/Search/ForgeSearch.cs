@@ -35,7 +35,6 @@ public static class ForgeSearchExtensions
 /// </summary>
 public sealed class ForgeSearch<T>
 {
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, string[]> FullTextColumnCache = new();
     private readonly ForgeDb _db;
     private readonly List<string> _columns = [];
     private readonly List<string> _where = [];
@@ -46,9 +45,6 @@ public sealed class ForgeSearch<T>
     private string? _orderBy;
     private int? _page;
     private int? _pageSize;
-    private string? _fullTextTerm;
-    private bool _fuzzy;
-    private int? _top;
 
     public ForgeSearch(ForgeDb db)
     {
@@ -296,42 +292,6 @@ public sealed class ForgeSearch<T>
         return OrderBy(column, descending: true);
     }
 
-
-    /// <summary>Applies provider-neutral full-text style search across string columns. SQL Server callers may replace this with provider-specific CONTAINS later.</summary>
-    public ForgeSearch<T> FullText(string term, params string[] columns)
-    {
-        if (string.IsNullOrWhiteSpace(term)) return this;
-        _fullTextTerm = term.Trim();
-        var targetColumns = columns.Length == 0
-            ? FullTextColumnCache.GetOrAdd(typeof(T), static type => type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => p.PropertyType == typeof(string))
-                .Select(p => p.Name)
-                .ToArray())
-            : columns;
-
-        if (targetColumns.Length == 0)
-            return this;
-
-        var name = NextParameterName("FullText");
-        _parameters[name] = "%" + _fullTextTerm + "%";
-        _where.Add("(" + string.Join(" OR ", targetColumns.Select(c => $"{c} LIKE @{name}")) + ")");
-        return this;
-    }
-
-    /// <summary>Enables fuzzy-style search mode. Current implementation uses LIKE-compatible SQL and preserves the fluent API for provider upgrades.</summary>
-    public ForgeSearch<T> Fuzzy()
-    {
-        _fuzzy = true;
-        return this;
-    }
-
-    /// <summary>Limits the result using TOP when no paging is used.</summary>
-    public ForgeSearch<T> Top(int count)
-    {
-        _top = Math.Max(1, count);
-        return this;
-    }
-
     public ForgeSearch<T> Page(int page, int pageSize)
     {
         _page = Math.Max(page, 1);
@@ -388,7 +348,7 @@ public sealed class ForgeSearch<T>
     {
         var query = Render();
 
-        return await _db.QueryDictionaryPivotAsync(
+        return await _db.QueryDictionaryAsync(
             query.Sql,
             query.Parameters,
             cancellationToken);
@@ -433,11 +393,7 @@ public sealed class ForgeSearch<T>
             ? "*"
             : string.Join(", ", _columns);
 
-        var topSql = _top.HasValue && !_page.HasValue && !_pageSize.HasValue
-            ? $"TOP ({_top.Value}) "
-            : string.Empty;
-
-        return $"SELECT {topSql}{columns} FROM {table}";
+        return $"SELECT {columns} FROM {table}";
     }
 
     private string BuildCountSql()
@@ -498,9 +454,6 @@ public sealed class ForgeProcedureSearch<T>
     private readonly Dictionary<string, object?> _parameters = new(StringComparer.OrdinalIgnoreCase);
     private int? _page;
     private int? _pageSize;
-    private string? _fullTextTerm;
-    private bool _fuzzy;
-    private int? _top;
 
     public ForgeProcedureSearch(
         ForgeDb db,

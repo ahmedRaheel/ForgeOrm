@@ -524,12 +524,70 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
         var sql = ForgeGraphWriteHelpers.BuildInsertSql(shape, props, includeScopeIdentity: false);
         foreach (var entity in entities)
         {
-            if (entity is null) continue;
-            ResetDatabaseGeneratedIdentity(entity!);
-            var parameters = ForgeGraphWriteHelpers.CreateParameterDictionary(props, entity!);
-            await using var command = ForgeAdo.CreateCommand(connection, sql, parameters, transaction);
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            if (entity is null)
+                continue;
+
+            ResetDatabaseGeneratedIdentity(entity);
+
+            var parameters =
+                ForgeGraphWriteHelpers.CreateParameterDictionary(
+                    props,
+                    entity);
+
+            await using var command =
+                ForgeAdo.CreateCommand(
+                    connection,
+                    sql,
+                    parameters,
+                    transaction);
+
+            var generatedId =
+                await command.ExecuteScalarAsync(cancellationToken);
+
+            SetDatabaseGeneratedIdentity(entity, generatedId);
         }
+    }
+    private static void ResetDatabaseGeneratedIdentity(object entity)
+    {
+        var identity = entity.GetType()
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .FirstOrDefault(p =>
+                p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase));
+
+        if (identity is null)
+            return;
+
+        if (!identity.CanWrite)
+            return;
+
+        var type = Nullable.GetUnderlyingType(identity.PropertyType)
+                   ?? identity.PropertyType;
+
+        object? defaultValue = type.IsValueType
+            ? Activator.CreateInstance(type)
+            : null;
+
+        identity.SetValue(entity, defaultValue);
+    }
+    private static void SetDatabaseGeneratedIdentity(object entity,   object? generatedId)
+    {
+        if (generatedId is null || generatedId == DBNull.Value)
+            return;
+
+        var identity = entity.GetType()
+            .GetProperties()
+            .FirstOrDefault(p =>
+                p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase));
+
+        if (identity is null || !identity.CanWrite)
+            return;
+
+        var targetType = Nullable.GetUnderlyingType(identity.PropertyType)
+                         ?? identity.PropertyType;
+
+        var converted = Convert.ChangeType(generatedId, targetType);
+
+        identity.SetValue(entity, converted);
     }
 }
 

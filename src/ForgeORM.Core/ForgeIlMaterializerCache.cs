@@ -1,3 +1,4 @@
+using ForgeORM.Abstractions;
 using System.Collections.Concurrent;
 using System.Data.Common;
 using System.Reflection;
@@ -183,4 +184,164 @@ internal static class ForgeIlMaterializerCache
 
         return new string(chars);
     }
+
+
+
+internal static class Support
+{
+    public static bool IsScalarColumn(PropertyInfo property)
+    {
+        return IsScalarColumnType(property.PropertyType);
+    }
+
+    public static bool IsScalarColumnType(Type type)
+    {
+        type = Nullable.GetUnderlyingType(type) ?? type;
+
+        return type.IsPrimitive
+            || type.IsEnum
+            || type == typeof(string)
+            || type == typeof(Guid)
+            || type == typeof(decimal)
+            || type == typeof(DateTime)
+            || type == typeof(DateTimeOffset)
+            || type == typeof(DateOnly)
+            || type == typeof(TimeOnly)
+            || type == typeof(TimeSpan)
+            || type == typeof(byte[]);
+    }
+
+    public static bool IsCollectionNavigation(PropertyInfo property)
+    {
+        if (property.PropertyType == typeof(string))
+            return false;
+
+        return property.PropertyType.IsGenericType
+            && property.PropertyType.GetGenericTypeDefinition() == typeof(List<>);
+    }
+
+    public static bool IsReferenceNavigation(PropertyInfo property)
+    {
+        if (property.PropertyType == typeof(string))
+            return false;
+
+        if (IsCollectionNavigation(property))
+            return false;
+
+        var type = Nullable.GetUnderlyingType(property.PropertyType)
+                   ?? property.PropertyType;
+
+        return type.IsClass && !IsScalarColumnType(type);
+    }
+
+    public static string ResolveTableName(Type type)
+    {
+        return type.GetCustomAttribute<ForgeTableAttribute>()?.Name
+            ?? type.Name;
+    }
+
+    public static string ResolveScalarColumns(Type type)
+    {
+        var columns = type
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(IsScalarColumn)
+            .Select(x => x.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? x.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return columns.Length == 0
+            ? "*"
+            : string.Join(", ", columns);
+    }
+
+    public static PropertyInfo[] GetScalarProperties(
+        Type type,
+        bool includeIdentity = false)
+    {
+        return type
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(x => x.CanRead)
+            .Where(IsScalarColumn)
+            .Where(x => includeIdentity || !IsIdentityColumn(x))
+            .ToArray();
+    }
+
+    public static bool IsIdentityColumn(PropertyInfo property)
+    {
+        return property.Name.Equals(
+                   "Id",
+                   StringComparison.OrdinalIgnoreCase)
+               || property.GetCustomAttributes()
+                   .Any(x => x.GetType().Name.Contains(
+                       "Key",
+                       StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static object? NormalizeParameterValue(object? value)
+    {
+        if (value is null)
+            return null;
+
+        if (value is Enum enumValue)
+        {
+            return Convert.ChangeType(
+                enumValue,
+                Enum.GetUnderlyingType(enumValue.GetType()));
+        }
+
+        if (value is DateTime dateTime)
+        {
+            if (dateTime == default ||
+                dateTime < new DateTime(1753, 1, 1))
+            {
+                return DateTime.UtcNow;
+            }
+
+            return dateTime;
+        }
+
+        if (value is DateTimeOffset dateTimeOffset)
+        {
+            if (dateTimeOffset == default)
+                return DateTimeOffset.UtcNow;
+
+            return dateTimeOffset;
+        }
+
+        return value;
+    }
+
+    public static (int Skip, int Take) NormalizePaging(
+        int skip,
+        int take)
+    {
+        if (skip < 0)
+            skip = 0;
+
+        if (take <= 0)
+            take = 1;
+
+        if (skip == take)
+            take++;
+
+        return (skip, take);
+    }
+
+    public static void ResetIdentityValue(
+        object entity,
+        PropertyInfo? identityProperty)
+    {
+        if (identityProperty is null)
+            return;
+
+        var type = Nullable.GetUnderlyingType(identityProperty.PropertyType)
+                   ?? identityProperty.PropertyType;
+
+        object? value = type.IsValueType
+            ? Activator.CreateInstance(type)
+            : null;
+
+        identityProperty.SetValue(entity, value);
+    }
+}
 }

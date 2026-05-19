@@ -305,7 +305,7 @@ public interface IForgeRawSql
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the T operation.</returns>
-    IReadOnlyList<T> Query<T>(string sql, object? parameters = null, int? timeoutSeconds = null);
+    IEnumerable<T> Query<T>(string sql, object? parameters = null, int? timeoutSeconds = null);
     /// <summary>
     /// Defines the T operation.
     /// </summary>

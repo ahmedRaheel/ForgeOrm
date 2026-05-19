@@ -1,5 +1,4 @@
 using ForgeORM.AI.Advanced;
-using ForgeORM.Core;
 using ForgeORM.VectorSearch;
 
 public static class AiVectorEndpoints

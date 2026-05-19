@@ -79,6 +79,6 @@ app.MapPivotExpressionFriendlyEndpoints();
 
 app.MapSearchExpressionFixedEndpoints();
 
-//app.MapForgeAiCteTempSamples();
+app.MapForgeAiCteTempSamples();
 
 app.Run();

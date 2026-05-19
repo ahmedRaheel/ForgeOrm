@@ -46,11 +46,11 @@ public partial class ForgeDb : IForgeDb
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the T operation.</returns>
-    public IReadOnlyList<T> Query<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
+    public IEnumerable<T> Query<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
         using var c = CreateConnection();
         c.Open();
-        return ForgeAdo.Query<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds);
+        return ForgeAdo.Query<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds).ToList();
     }
 
     /// <summary>

@@ -47,9 +47,8 @@ public static class ForgeAdo
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        var providerName = connection.GetType().FullName ?? connection.GetType().Name;
-        var compiledPlan = ForgeCompiledQueryCache.GetOrAdd(providerName, typeof(T), sql, parameters?.GetType(), () => new ForgeCompiledQueryPlan(sql, typeof(T), parameters?.GetType(), providerName, ForgeCompiledQueryCache.Fingerprint(sql)));
-        _ = ForgePerformanceCommandPlanCache.GetOrAdd(providerName, sql, commandType, parameters?.GetType());
+        _ = ForgeCompiledQueryCache.GetOrAdd(connection.GetType().Name, typeof(T), sql, parameters?.GetType(), () => new ForgeCompiledQueryPlan(sql, typeof(T), parameters?.GetType(), connection.GetType().Name, ForgeCompiledQueryCache.Fingerprint(sql)));
+        _ = ForgeCompiledQueryCache.GetOrAdd(connection.GetType().Name, typeof(T), sql, parameters?.GetType(), () => new ForgeCompiledQueryPlan(sql, typeof(T), parameters?.GetType(), connection.GetType().Name, ForgeCompiledQueryCache.Fingerprint(sql)));
         await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
 
         if (connection.State != ConnectionState.Open)
@@ -227,9 +226,15 @@ public static class ForgeAdo
         CommandType commandType = CommandType.Text,
         int? timeoutSeconds = null)
     {
-        var providerName = connection.GetType().FullName ?? connection.GetType().Name;
-        var plan = ForgePerformanceCommandPlanCache.GetOrAdd(providerName, sql, commandType, parameters?.GetType());
-        var command = ForgePerformanceCommandPlanCache.CreateCommand(connection, plan, transaction, timeoutSeconds);
+        var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.CommandType = commandType;
+
+        if (timeoutSeconds.HasValue)
+            command.CommandTimeout = timeoutSeconds.Value;
+
+        if (transaction is not null)
+            command.Transaction = transaction;
 
         BindParameters(command, parameters);
 

@@ -53,9 +53,10 @@ public static class ForgeAdo
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
         var rows = new List<T>(EstimateCapacity(sql));
+        var materializer = ForgeIlMaterializerCache.GetOrCreate<T>(reader);
 
         while (await reader.ReadAsync(cancellationToken))
-            rows.Add(ForgeMaterializer.Map<T>(reader));
+            rows.Add(materializer(reader));
 
         return rows;
     }
@@ -87,8 +88,10 @@ public static class ForgeAdo
             await connection.OpenAsync(cancellationToken);
 
         await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow, cancellationToken);
+        var materializer = ForgeIlMaterializerCache.GetOrCreate<T>(reader);
+
         return await reader.ReadAsync(cancellationToken)
-            ? ForgeMaterializer.Map<T>(reader)
+            ? materializer(reader)
             : default;
     }
 
@@ -111,7 +114,8 @@ public static class ForgeAdo
         if (!await reader.ReadAsync(cancellationToken))
             return default;
 
-        var first = ForgeMaterializer.Map<T>(reader);
+        var materializer = ForgeIlMaterializerCache.GetOrCreate<T>(reader);
+        var first = materializer(reader);
 
         if (await reader.ReadAsync(cancellationToken))
             throw new InvalidOperationException("Sequence contains more than one element.");

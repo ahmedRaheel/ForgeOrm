@@ -237,7 +237,9 @@ internal static class ForgeValueConverter
     {
         var attr = enumType.GetCustomAttribute<ForgeEnumStorageAttribute>();
 
-        return attr?.Storage ?? ForgeEnumStorage.String;
+        // ForgeORM stores enums as their numeric underlying type by default.
+        // This is faster and avoids string parsing during MSIL/DataReader materialization.
+        return attr?.Storage ?? ForgeEnumStorage.Number;
     }
 
     private static object? GetDefault(Type type)

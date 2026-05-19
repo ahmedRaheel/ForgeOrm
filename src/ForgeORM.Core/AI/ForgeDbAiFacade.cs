@@ -34,6 +34,8 @@ public sealed record ForgeAiQueryResult(
     IReadOnlyList<string> Warnings,
     IReadOnlyList<string> Explanation);
 
+public sealed record ForgeAiOptimizationResult(string Sql, IReadOnlyList<string> Suggestions);
+
 /// <summary>
 /// AI facade exposed directly from ForgeDb/ForgeDbContext as db.AI.
 /// This is intentionally routed through the existing ForgeDb query pipeline; no separate Fast API is introduced.
@@ -68,6 +70,26 @@ public sealed class ForgeDbAiFacade
             rows,
             plan.Warnings,
             plan.Explanation);
+    }
+
+
+    /// <summary>Returns deterministic SQL optimization suggestions without executing the supplied SQL.</summary>
+    public Task<ForgeAiOptimizationResult> OptimizeAsync(string sql, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(sql))
+            throw new ArgumentException("SQL cannot be empty.", nameof(sql));
+
+        var suggestions = new List<string>();
+        if (sql.Contains("SELECT *", StringComparison.OrdinalIgnoreCase))
+            suggestions.Add("Replace SELECT * with explicit columns to reduce I/O and improve materialization speed.");
+        if (sql.Contains("ORDER BY", StringComparison.OrdinalIgnoreCase) && !sql.Contains("OFFSET", StringComparison.OrdinalIgnoreCase))
+            suggestions.Add("Ensure the ORDER BY column has a supporting index.");
+        if (sql.Contains("WHERE", StringComparison.OrdinalIgnoreCase))
+            suggestions.Add("Check that predicate columns are covered by indexes and parameter types match column types.");
+        if (suggestions.Count == 0)
+            suggestions.Add("SQL shape looks acceptable. Validate with actual execution plan and BenchmarkDotNet.");
+
+        return Task.FromResult(new ForgeAiOptimizationResult(sql, suggestions));
     }
 
     private static ForgeAiSqlPlan BuildPlan(string prompt, ForgeAiQueryOptions options)

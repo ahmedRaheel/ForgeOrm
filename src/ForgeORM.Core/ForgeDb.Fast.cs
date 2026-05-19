@@ -42,15 +42,15 @@ public partial class ForgeDb
         return ForgeAdo.Query<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds);
     }
 
-    /// <summary>
-    /// Fast raw SQL list path. Skips expression translation and navigation processing.
-    /// </summary>
-    public async Task<IReadOnlyList<T>> QueryFastAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-    {
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(cancellationToken);
-        return await ForgeAdo.QueryAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
-    }
+    ///// <summary>
+    ///// Fast raw SQL list path. Skips expression translation and navigation processing.
+    ///// </summary>
+    //public async Task<IReadOnlyList<T>> QueryFastAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+    //{
+    //    await using var connection = CreateConnection();
+    //    await connection.OpenAsync(cancellationToken);
+    //    return await ForgeAdo.QueryAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+    //}
 
     /// <summary>
     /// Fast raw SQL single-row path. Skips expression translation and navigation processing.

@@ -10,14 +10,8 @@ public static class QueryBuilderEndpoints
         var group = app.MapGroup("/query-builder").WithTags("03 Query Builder / AST / Pagination / CTE / Temp Table");
 
         group.MapGet("/string/products", async (decimal minPrice, IForgeDynamicQueryBuilder qb, ForgeDbContext db, CancellationToken ct) =>
-        {
-            var CustomerId = 1;
-            var result1 = db.Set<Order>()
-            .Where(x => x.CustomerId == CustomerId)
-            .ToListAsync();
-
-
-
+        {         
+           
             var q = qb.Select("p.Id", "p.Code", "p.Name", "p.Price", "c.Name AS CategoryName", "b.Name AS BrandName")
                 .From("dbo.Products p")
                 .LeftJoin("dbo.Categories c", "c.Id = p.CategoryId")

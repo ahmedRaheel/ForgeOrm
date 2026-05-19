@@ -538,7 +538,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
             ForgeLockBehavior.UpdateLock => " WITH (UPDLOCK)",
             ForgeLockBehavior.RowLock => " WITH (ROWLOCK)",
             ForgeLockBehavior.HoldLock => " WITH (HOLDLOCK)",
-            _ => ExecutionOptions.ReadConsistency == ForgeReadConsistency.ReadUncommitted ? " WITH (NOLOCK)" : string.Empty
+            _ => ExecutionOptions.ReadConsistency == ForgeORM.Abstractions.ForgeReadConsistency.ReadUncommitted ? " WITH (NOLOCK)" : string.Empty
         };
     }
 

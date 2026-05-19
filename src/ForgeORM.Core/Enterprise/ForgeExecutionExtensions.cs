@@ -10,7 +10,7 @@ public static class ForgeExecutionExtensions
     public static T NoLock<T>(this T query) where T : IForgeExecutableQuery
     {
         query.ExecutionOptions.LockBehavior = ForgeLockBehavior.NoLock;
-        query.ExecutionOptions.ReadConsistency = ForgeReadConsistency.ReadUncommitted;
+        query.ExecutionOptions.ReadConsistency = ForgeORM.Abstractions.ForgeReadConsistency.ReadUncommitted;
         return query;
     }
 
@@ -40,11 +40,11 @@ public static class ForgeExecutionExtensions
 
     public static T SnapshotRead<T>(this T query) where T : IForgeExecutableQuery
     {
-        query.ExecutionOptions.ReadConsistency = ForgeReadConsistency.Snapshot;
+        query.ExecutionOptions.ReadConsistency = ForgeORM.Abstractions.ForgeReadConsistency.Snapshot;
         return query;
     }
 
-    public static T WithReadConsistency<T>(this T query, ForgeReadConsistency consistency) where T : IForgeExecutableQuery
+    public static T WithReadConsistency<T>(this T query, ForgeORM.Abstractions.ForgeReadConsistency consistency) where T : IForgeExecutableQuery
     {
         query.ExecutionOptions.ReadConsistency = consistency;
         return query;

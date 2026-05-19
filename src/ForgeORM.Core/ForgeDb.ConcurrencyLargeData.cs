@@ -12,7 +12,8 @@ public enum ForgeReadConsistency
     Snapshot,
     UpdateLock,
     ReadPast,
-    RowLock
+    RowLock,
+    ReadUncommitted
 }
 
 /// <summary>

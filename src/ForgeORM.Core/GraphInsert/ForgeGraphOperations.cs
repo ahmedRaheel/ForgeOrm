@@ -177,7 +177,7 @@ public partial class ForgeDb
             affected += await ForgeAdo.ExecuteAsync(
                 connection,
                 parentCommand.CommandText,
-                parentCommand.Parameters,
+                parentCommand.Parameters ?? new Dictionary<string, object?> { ["Id"] = id },
                 transaction,
                 parentCommand.CommandType,
                 parentCommand.TimeoutSeconds,

@@ -94,7 +94,7 @@ public partial class ForgeDb
         return await ForgeAdo.ExecuteAsync(
             connection,
             parentCommand.CommandText,
-            parentCommand.Parameters,
+            parentCommand.Parameters ?? new Dictionary<string, object?> { ["Id"] = id },
             commandType: parentCommand.CommandType,
             timeoutSeconds: parentCommand.TimeoutSeconds,
             cancellationToken: cancellationToken);

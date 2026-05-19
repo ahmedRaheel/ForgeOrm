@@ -126,6 +126,8 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     private int? _skip;
     private int? _take;
     private readonly List<PropertyInfo> _includes = [];
+    private string? _temporalClause;
+    private readonly Dictionary<string, object?> _temporalParameters = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Executes the ForgeQuery operation.
@@ -254,6 +256,36 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     public IForgeQuery<T> Take(int count)
     {
         _take = count;
+        return this;
+    }
+
+
+    public IForgeQuery<T> TemporalAll()
+    {
+        _temporalClause = "FOR SYSTEM_TIME ALL";
+        return this;
+    }
+
+    public IForgeQuery<T> TemporalAsOf(DateTime asOfUtc)
+    {
+        _temporalClause = "FOR SYSTEM_TIME AS OF @TemporalAsOf";
+        _temporalParameters["TemporalAsOf"] = asOfUtc;
+        return this;
+    }
+
+    public IForgeQuery<T> TemporalBetween(DateTime fromUtc, DateTime toUtc)
+    {
+        _temporalClause = "FOR SYSTEM_TIME BETWEEN @TemporalFrom AND @TemporalTo";
+        _temporalParameters["TemporalFrom"] = fromUtc;
+        _temporalParameters["TemporalTo"] = toUtc;
+        return this;
+    }
+
+    public IForgeQuery<T> TemporalContainedIn(DateTime fromUtc, DateTime toUtc)
+    {
+        _temporalClause = "FOR SYSTEM_TIME CONTAINED IN (@TemporalFrom, @TemporalTo)";
+        _temporalParameters["TemporalFrom"] = fromUtc;
+        _temporalParameters["TemporalTo"] = toUtc;
         return this;
     }
 
@@ -456,7 +488,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
 
     private string BuildBaseSql(int? top = null)
     {
-        var sql = _baseSql ?? $"SELECT {(top.HasValue ? "TOP " + top.Value + " " : string.Empty)}{BuildColumnList()} FROM {_meta.TableName}";
+        var sql = _baseSql ?? $"SELECT {(top.HasValue ? "TOP " + top.Value + " " : string.Empty)}{BuildColumnList()} FROM {_meta.TableName}{(string.IsNullOrWhiteSpace(_temporalClause) ? string.Empty : " " + _temporalClause)}";
         if (_where.Count > 0) sql += " WHERE " + string.Join(" AND ", _where);
         return sql;
     }
@@ -498,6 +530,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
             _baseSql ?? string.Empty,
             _meta.TableName,
             string.Join("&", _where),
+            _temporalClause ?? string.Empty,
             orderBy ?? string.Empty,
             skip?.ToString() ?? string.Empty,
             take?.ToString() ?? string.Empty,
@@ -515,7 +548,30 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
             cancellationToken: cancellationToken);
     }
 
-    private object? BuildParameters() => _parameters.Count == 0 ? _baseParameters : _parameters;
+    private object? BuildParameters()
+    {
+        if (_temporalParameters.Count == 0)
+            return _parameters.Count == 0 ? _baseParameters : _parameters;
+
+        var merged = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        if (_baseParameters is IReadOnlyDictionary<string, object?> readonlyDictionary)
+        {
+            foreach (var item in readonlyDictionary) merged[item.Key] = item.Value;
+        }
+        else if (_baseParameters is IDictionary<string, object?> dictionary)
+        {
+            foreach (var item in dictionary) merged[item.Key] = item.Value;
+        }
+        else if (_baseParameters is not null)
+        {
+            foreach (var property in _baseParameters.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(x => x.CanRead))
+                merged[property.Name] = property.GetValue(_baseParameters);
+        }
+
+        foreach (var item in _parameters) merged[item.Key] = item.Value;
+        foreach (var item in _temporalParameters) merged[item.Key] = item.Value;
+        return merged;
+    }
 
     private void MergeParameters(object? parameters)
     {

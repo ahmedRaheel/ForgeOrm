@@ -11,34 +11,10 @@ public static class QueryBuilderEndpoints
 
         group.MapGet("/string/products", async (decimal minPrice, IForgeDynamicQueryBuilder qb, ForgeDbContext db, CancellationToken ct) =>
         {
-            //var CustomerId = 1;
-            //var order = new Orderv2
-            //{
-            //    OrderNo = $"Forge-{Guid.NewGuid():N}",
-            //    CustomerId = CustomerId,
-              
-            //    GrandTotal = 575,
-            //    Status = "Pending",
-            //    OrderDate = DateTime.UtcNow,
-            //    CreatedAt = DateTime.UtcNow
-            //};
-            //order.Items = new List<OrderItemv2>();
-            //order.Items.Add(new OrderItemv2() 
-            //{
-            //     LineTotal = 100,
-            //      ProductId = 1,
-            //       Quantity = 10,
-            //        UnitPrice = 10,
-            //});
-           
-            
-
-            //await db.InsertGraphAsync<Orderv2, OrderItemv2, int>(
-            //    order,
-            //    x => x.Items,
-            //    x => x.Id,
-            //    x => x.OrderId
-            //    );
+            var CustomerId = 1;
+            var result1 = db.Set<Order>()
+            .Where(x => x.CustomerId == CustomerId)
+            .ToListAsync();
 
 
 

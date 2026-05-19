@@ -58,10 +58,7 @@ public static class ForgeDbConnectionExtensions
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the T operation.</returns>
     public static T? QueryFirstOrDefault<T>(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null)
-    {
-        EnsureOpen(connection);
-        return ForgeAdo.QueryFirstOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds).GetAwaiter().GetResult();
-    }
+        => connection.Query<T>(sql, parameters, transaction, commandType, timeoutSeconds).FirstOrDefault();
 
     /// <summary>
     /// Executes the T operation.
@@ -76,10 +73,7 @@ public static class ForgeDbConnectionExtensions
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
     public static async Task<T?> QueryFirstOrDefaultAsync<T>(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-    {
-        await EnsureOpenAsync(connection, cancellationToken);
-        return await ForgeAdo.QueryFirstOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken);
-    }
+        => (await connection.QueryAsync<T>(sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken)).FirstOrDefault();
 
     /// <summary>
     /// Executes the T operation.
@@ -93,10 +87,7 @@ public static class ForgeDbConnectionExtensions
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the T operation.</returns>
     public static T QuerySingle<T>(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null)
-    {
-        var item = QuerySingleOrDefault<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds);
-        return item is not null ? item : throw new InvalidOperationException("Sequence contains no elements.");
-    }
+        => connection.Query<T>(sql, parameters, transaction, commandType, timeoutSeconds).Single();
 
     /// <summary>
     /// Executes the T operation.
@@ -111,10 +102,7 @@ public static class ForgeDbConnectionExtensions
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
     public static async Task<T> QuerySingleAsync<T>(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-    {
-        var item = await QuerySingleOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken);
-        return item is not null ? item : throw new InvalidOperationException("Sequence contains no elements.");
-    }
+        => (await connection.QueryAsync<T>(sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken)).Single();
 
     /// <summary>
     /// Executes the T operation.
@@ -128,10 +116,7 @@ public static class ForgeDbConnectionExtensions
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the T operation.</returns>
     public static T? QuerySingleOrDefault<T>(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null)
-    {
-        EnsureOpen(connection);
-        return ForgeAdo.QuerySingleOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds).GetAwaiter().GetResult();
-    }
+        => connection.Query<T>(sql, parameters, transaction, commandType, timeoutSeconds).SingleOrDefault();
 
     /// <summary>
     /// Executes the T operation.
@@ -146,10 +131,7 @@ public static class ForgeDbConnectionExtensions
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
     public static async Task<T?> QuerySingleOrDefaultAsync<T>(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-    {
-        await EnsureOpenAsync(connection, cancellationToken);
-        return await ForgeAdo.QuerySingleOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken);
-    }
+        => (await connection.QueryAsync<T>(sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken)).SingleOrDefault();
 
     /// <summary>
     /// Executes the Execute operation.

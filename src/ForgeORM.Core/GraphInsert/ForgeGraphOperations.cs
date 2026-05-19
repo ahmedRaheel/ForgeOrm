@@ -173,15 +173,15 @@ public partial class ForgeDb
                 affected += await ForgeAdo.ExecuteAsync(connection, sql, new Dictionary<string, object?> { ["ParentId"] = id }, transaction, cancellationToken: cancellationToken);
             }
 
-            var parentCommand = Provider.BuildDelete(_metadata.Resolve<T>(), id);
+            var parentShape = ForgeEntityShape.For(typeof(T));
+            var parentKey = parentShape.KeyProperty ?? throw new InvalidOperationException($"ForgeORM graph delete requires a key property on {typeof(T).Name}.");
+            var parentSql = $"DELETE FROM {parentShape.TableName} WHERE {ForgeEntityShape.ColumnName(parentKey)} = @Id";
             affected += await ForgeAdo.ExecuteAsync(
                 connection,
-                parentCommand.CommandText,
-                parentCommand.Parameters ?? new Dictionary<string, object?> { ["Id"] = id },
+                parentSql,
+                new Dictionary<string, object?> { ["Id"] = id, [parentKey.Name] = id },
                 transaction,
-                parentCommand.CommandType,
-                parentCommand.TimeoutSeconds,
-                cancellationToken);
+                cancellationToken: cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
             return affected;
@@ -317,7 +317,7 @@ public partial class ForgeDb
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken);
         await using var command = ForgeAdo.CreateCommand(connection, sql, parameters);
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var rows = new List<object>();
         var materializer = ForgeIlMaterializerCache.GetOrCreate(type, reader);
         while (await reader.ReadAsync(cancellationToken))

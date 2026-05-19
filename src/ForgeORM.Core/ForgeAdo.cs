@@ -13,7 +13,6 @@ public static class ForgeAdo
 {
     private static readonly ConcurrentDictionary<Type, ParameterProperty[]> ParameterPropertyCache = new();
     private static readonly ConcurrentDictionary<Type, Action<DbCommand, object>> ParameterWriterCache = new();
-    private static readonly ConcurrentDictionary<string, string[]> SqlParameterTokenCache = new(StringComparer.Ordinal);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -289,7 +288,7 @@ public static class ForgeAdo
     }
 
 
-    private static void EnsureReferencedSqlParametersAreBound(DbCommand command, object? parameters)
+    private static void EnsureReferencedSqlParametersAreBound(DbCommand command, object parameters)
     {
         if (command.CommandType != CommandType.Text)
             return;
@@ -297,151 +296,32 @@ public static class ForgeAdo
         if (string.IsNullOrWhiteSpace(command.CommandText))
             return;
 
-        var tokens = SqlParameterTokenCache.GetOrAdd(command.CommandText, ExtractParameterTokens);
-        if (tokens.Length == 0)
+        var matches = Regex.Matches(
+            command.CommandText,
+            @"(?<!@)@([A-Za-z_][A-Za-z0-9_]*)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        if (matches.Count == 0)
             return;
-
-        // If caller supplied no parameter bag, leave provider to throw the real SQL error.
-        // Do not throw NullReferenceException inside ForgeORM.
-        if (parameters is null || parameters is CancellationToken)
-            return;
-
-        if (parameters is IReadOnlyDictionary<string, object?> roDictionary)
-        {
-            for (var i = 0; i < tokens.Length; i++)
-            {
-                var name = tokens[i];
-                if (HasParameter(command, name))
-                    continue;
-
-                if (TryGetDictionaryValue(roDictionary, name, out var value))
-                    BindSingleOrEnumerable(command, name, value, value?.GetType());
-            }
-
-            return;
-        }
-
-        if (parameters is IDictionary dictionary)
-        {
-            for (var i = 0; i < tokens.Length; i++)
-            {
-                var name = tokens[i];
-                if (HasParameter(command, name))
-                    continue;
-
-                if (TryGetDictionaryValue(dictionary, name, out var value))
-                    BindSingleOrEnumerable(command, name, value, value?.GetType());
-            }
-
-            return;
-        }
 
         var props = ParameterPropertyCache.GetOrAdd(parameters.GetType(), BuildParameterProperties);
 
-        for (var i = 0; i < tokens.Length; i++)
+        foreach (Match match in matches)
         {
-            var name = tokens[i];
+            var name = match.Groups[1].Value;
 
             if (HasParameter(command, name))
                 continue;
 
-            ParameterProperty? matched = null;
-            for (var p = 0; p < props.Length; p++)
-            {
-                if (string.Equals(props[p].Name, name, StringComparison.OrdinalIgnoreCase))
-                {
-                    matched = props[p];
-                    break;
-                }
-            }
+            var prop = props.FirstOrDefault(x =>
+                string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
 
-            if (matched is null)
+            if (prop.Property is null)
                 continue;
 
-            var value = matched.Getter(parameters);
-            BindSingleOrEnumerable(command, name, value, matched.PropertyType);
+            var value = prop.Getter(parameters);
+            BindSingleOrEnumerable(command, name, value, prop.PropertyType);
         }
-    }
-
-    private static string[] ExtractParameterTokens(string sql)
-    {
-        if (string.IsNullOrWhiteSpace(sql))
-            return Array.Empty<string>();
-
-        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < sql.Length; i++)
-        {
-            if (sql[i] != '@')
-                continue;
-
-            // Skip escaped @@ tokens such as SQL Server system variables.
-            if (i + 1 < sql.Length && sql[i + 1] == '@')
-            {
-                i++;
-                continue;
-            }
-
-            var start = i + 1;
-            if (start >= sql.Length)
-                continue;
-
-            var first = sql[start];
-            if (!(char.IsLetter(first) || first == '_'))
-                continue;
-
-            var end = start + 1;
-            while (end < sql.Length)
-            {
-                var ch = sql[end];
-                if (!(char.IsLetterOrDigit(ch) || ch == '_'))
-                    break;
-                end++;
-            }
-
-            set.Add(sql.Substring(start, end - start));
-            i = end - 1;
-        }
-
-        if (set.Count == 0)
-            return Array.Empty<string>();
-
-        var result = new string[set.Count];
-        set.CopyTo(result);
-        return result;
-    }
-
-    private static bool TryGetDictionaryValue(IReadOnlyDictionary<string, object?> dictionary, string name, out object? value)
-    {
-        if (dictionary.TryGetValue(name, out value))
-            return true;
-
-        foreach (var item in dictionary)
-        {
-            if (string.Equals(item.Key?.TrimStart('@', ':'), name, StringComparison.OrdinalIgnoreCase))
-            {
-                value = item.Value;
-                return true;
-            }
-        }
-
-        value = null;
-        return false;
-    }
-
-    private static bool TryGetDictionaryValue(IDictionary dictionary, string name, out object? value)
-    {
-        foreach (DictionaryEntry item in dictionary)
-        {
-            var key = Convert.ToString(item.Key, System.Globalization.CultureInfo.InvariantCulture);
-            if (string.Equals(key?.TrimStart('@', ':'), name, StringComparison.OrdinalIgnoreCase))
-            {
-                value = item.Value;
-                return true;
-            }
-        }
-
-        value = null;
-        return false;
     }
 
     private static bool HasParameter(DbCommand command, string name)

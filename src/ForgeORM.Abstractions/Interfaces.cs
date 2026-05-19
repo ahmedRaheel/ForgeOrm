@@ -1,3 +1,4 @@
+using System;
 using System.Data.Common;
 using System.Linq.Expressions;
 
@@ -886,6 +887,11 @@ public interface IForgeQuery<T>
     /// <param name="count">The count value.</param>
     /// <returns>The result of the Take operation.</returns>
     IForgeQuery<T> Take(int count);
+
+    IForgeQuery<T> TemporalAll();
+    IForgeQuery<T> TemporalAsOf(DateTime asOfUtc);
+    IForgeQuery<T> TemporalBetween(DateTime fromUtc, DateTime toUtc);
+    IForgeQuery<T> TemporalContainedIn(DateTime fromUtc, DateTime toUtc);
 
     /// <summary>
     /// Includes a reference or collection navigation property. Included navigations are loaded by split query only.

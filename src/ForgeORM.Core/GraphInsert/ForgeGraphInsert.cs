@@ -734,36 +734,14 @@ internal static partial class ForgeGraphWriteHelpers
     public static List<PropertyInfo> GetInsertProperties(ForgeEntityShape shape, bool includeKey = false)
     {
         var key = shape.KeyProperty;
-        var result = new List<PropertyInfo>();
 
-        foreach (var p in shape.ScalarProperties)
-        {
-            if (!p.CanRead)
-                continue;
-
-            if (ForgeEntityShape.IsComputed(p))
-                continue;
-
-            // Database generated numeric identity keys must never be included in INSERT SQL.
-            // This prevents SQL like: INSERT INTO OrderItems (Id, ...) VALUES (@Id, ...)
-            // and fixes: Must declare scalar variable @Id / explicit identity insert errors.
-            var isKey = key is not null && p.Name.Equals(key.Name, StringComparison.OrdinalIgnoreCase);
-            var isConventionalId = p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase);
-            var isDatabaseGenerated = IsDatabaseGeneratedIdentityKey(p);
-
-            if ((isKey || isConventionalId) && isDatabaseGenerated)
-            {
-                if (!includeKey)
-                    continue;
-
-                // Even when includeKey is requested, only allow non-database-generated keys.
-                continue;
-            }
-
-            result.Add(p);
-        }
-
-        return result;
+        return shape.ScalarProperties
+            .Where(p => p.CanRead)
+            .Where(p => !ForgeEntityShape.IsComputed(p))
+            // Numeric identity keys are database generated and must never be sent in INSERT.
+            // This prevents: Cannot insert explicit value for identity column ... IDENTITY_INSERT is OFF.
+            .Where(p => key is null || !p.Name.Equals(key.Name, StringComparison.OrdinalIgnoreCase) || (includeKey && !IsDatabaseGeneratedIdentityKey(key)))
+            .ToList();
     }
 
     private static bool IsDatabaseGeneratedIdentityKey(PropertyInfo key)
@@ -790,17 +768,8 @@ internal static partial class ForgeGraphWriteHelpers
         if (props.Count == 0)
             throw new InvalidOperationException($"No insertable scalar columns were found for table {shape.TableName}.");
 
-        var columnsList = new List<string>(props.Count);
-        var valuesList = new List<string>(props.Count);
-
-        foreach (var prop in props)
-        {
-            columnsList.Add(ForgeEntityShape.ColumnName(prop));
-            valuesList.Add("@" + prop.Name);
-        }
-
-        var columns = string.Join(", ", columnsList);
-        var values = string.Join(", ", valuesList);
+        var columns = string.Join(", ", props.Select(ForgeEntityShape.ColumnName));
+        var values = string.Join(", ", props.Select(p => "@" + p.Name));
         var sql = $"INSERT INTO {shape.TableName} ({columns}) VALUES ({values})";
 
         if (includeScopeIdentity)
@@ -814,11 +783,7 @@ internal static partial class ForgeGraphWriteHelpers
         var parameters = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var prop in props)
-        {
-            // Only properties that were used to build SQL are added.
-            // If Id is excluded from INSERT SQL, @Id will not be required.
             parameters[prop.Name] = NormalizeDatabaseValue(prop.GetValue(entity), prop);
-        }
 
         return parameters;
     }

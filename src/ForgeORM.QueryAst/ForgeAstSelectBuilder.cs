@@ -1,3 +1,4 @@
+using System;
 using ForgeORM.Abstractions;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -24,6 +25,7 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
     private int? _skip;
     private int? _take;
     private object? _rawParameters;
+    private string? _temporalClause;
 
     /// <summary>
     /// Executes the Columns operation.
@@ -72,6 +74,36 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
     public IForgeAstSelectBuilder<T> From(string? tableName = null)
     {
         _table = tableName ?? ResolveTableName(typeof(T));
+        return this;
+    }
+
+
+    public IForgeAstSelectBuilder<T> TemporalAll()
+    {
+        _temporalClause = "FOR SYSTEM_TIME ALL";
+        return this;
+    }
+
+    public IForgeAstSelectBuilder<T> TemporalAsOf(DateTime asOfUtc)
+    {
+        _temporalClause = "FOR SYSTEM_TIME AS OF @TemporalAsOf";
+        _parameters["TemporalAsOf"] = asOfUtc;
+        return this;
+    }
+
+    public IForgeAstSelectBuilder<T> TemporalBetween(DateTime fromUtc, DateTime toUtc)
+    {
+        _temporalClause = "FOR SYSTEM_TIME BETWEEN @TemporalFrom AND @TemporalTo";
+        _parameters["TemporalFrom"] = fromUtc;
+        _parameters["TemporalTo"] = toUtc;
+        return this;
+    }
+
+    public IForgeAstSelectBuilder<T> TemporalContainedIn(DateTime fromUtc, DateTime toUtc)
+    {
+        _temporalClause = "FOR SYSTEM_TIME CONTAINED IN (@TemporalFrom, @TemporalTo)";
+        _parameters["TemporalFrom"] = fromUtc;
+        _parameters["TemporalTo"] = toUtc;
         return this;
     }
 
@@ -753,6 +785,8 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
     {
         sql.Append(" FROM ");
         sql.Append(_table);
+        if (!string.IsNullOrWhiteSpace(_temporalClause))
+            sql.Append(' ').Append(_temporalClause);
         if (!string.IsNullOrWhiteSpace(_alias))
             sql.Append(' ').Append(_alias);
     }

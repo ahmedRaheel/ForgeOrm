@@ -136,28 +136,3 @@ public sealed class NdpStatement
 
     public string Sector { get; set; } = string.Empty;
 }
-[ForgeTable("Orders")]
-public sealed class Orderv2
-{
-    public int Id { get; set; }
-    public string OrderNo { get; set; } = string.Empty;
-    public int CustomerId { get; set; }
-    public DateTime OrderDate { get; set; }
-    public string Status { get; set; } = string.Empty;
-    public decimal SubTotal { get; set; }
-    public decimal Tax { get; set; }
-    public decimal GrandTotal { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public Customer? Customer { get; set; }
-    public List<OrderItemv2> Items { get; set; } = new List<OrderItemv2>();
-}
-[ForgeTable("OrderItems")]
-public sealed class OrderItemv2
-{
-    public int Id { get; set; }
-    public int OrderId { get; set; }
-    public int ProductId { get; set; }
-    public int Quantity { get; set; }
-    public decimal UnitPrice { get; set; }
-    public decimal LineTotal { get; set; }
-}

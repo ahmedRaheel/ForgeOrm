@@ -12,9 +12,9 @@ public static class AdvancedDbSurfaceEndpoints
         group.MapGet("/search/fulltext", async (ForgeDbContext db, CancellationToken ct) =>
         {
             var products = await db.Search<Product>()
-                //.FullText("wireless keyboard")
-                //.Fuzzy()
-                //.Top(20)
+                .FullText("wireless keyboard")
+                .Fuzzy()
+                .Top(20)
                 .ToListAsync(ct);
 
             return Results.Ok(products);
@@ -40,14 +40,14 @@ public static class AdvancedDbSurfaceEndpoints
             return Results.Ok(path);
         });
 
-        //group.MapGet("/ai/optimize", async (ForgeDbContext db, CancellationToken ct) =>
-        //{
-        //    var suggestions = await db.AI.OptimizeAsync(
-        //        "SELECT * FROM Orders WHERE CustomerId = @CustomerId ORDER BY CreatedAt DESC",
-        //        ct);
+        group.MapGet("/ai/optimize", async (ForgeDbContext db, CancellationToken ct) =>
+        {
+            var suggestions = await db.AI.OptimizeAsync(
+                "SELECT * FROM Orders WHERE CustomerId = @CustomerId ORDER BY CreatedAt DESC",
+                ct);
 
-        //    return Results.Ok(suggestions);
-        //});
+            return Results.Ok(suggestions);
+        });
 
         group.MapPost("/workflow/order-approval", async (ForgeDbContext db, int orderId, CancellationToken ct) =>
         {
@@ -107,18 +107,18 @@ public static class AdvancedDbSurfaceEndpoints
         group.MapGet("/frame/vectorized", async (ForgeDbContext db, CancellationToken ct) =>
         {
             var frame = await db.Frame<Order>().ToFrameAsync(ct);
-            var sum = frame.Vectorized()
+            var filtered = frame.Vectorized()
                 .Where("GrandTotal", ForgeVectorOperator.GreaterThan, 10000m)
                 .Sum("GrandTotal");
 
-            return Results.Ok(new { sum });
+            return Results.Ok(new { sum = filtered });
         });
 
         group.MapGet("/shards/eu", async (ForgeDbContext db, int tenantId, CancellationToken ct) =>
         {
             var rows = await db.Set<Order>()
                 .UseShard("EU")
-                //.Where(x => x.TenantId == tenantId)
+                .Where(x => x.TenantId == tenantId)
                 .ToListAsync(ct);
 
             return Results.Ok(rows);

@@ -22,7 +22,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
-builder.Services.AddForgeOrm(options => options.UseSqlServer(connectionString));
+builder.Services.AddForgeOrm(options =>
+{
+    options.UseSqlServer(connectionString);
+    options.UseCompilationMode(ForgeOrmCompilationMode.Auto);
+});
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddForgeMemoryQueryCaching();
 builder.Services.AddForgeTelemetry();

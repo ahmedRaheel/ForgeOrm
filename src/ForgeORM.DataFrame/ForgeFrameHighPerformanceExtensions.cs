@@ -1,5 +1,4 @@
 using System.Linq.Expressions;
-using System.Globalization;
 using System.Threading.Tasks;
 using ForgeORM.Core;
 
@@ -43,8 +42,6 @@ public static class ForgeFrameHighPerformanceExtensions
 
     public static ForgeVectorizedFrame Vectorized(this ForgeDataFrame frame) => new(frame);
 
-    public static ForgeVectorizedFrame<T> Vectorized<T>(this ForgeDataFrame frame) => new(frame);
-
     public static ForgeDataFrame SortByDescending(this ForgeDataFrame frame, string column) => frame.SortBy(column, descending: true);
 
     public static ForgeDataFrame Take(this ForgeDataFrame frame, int count) => frame.Head(count);
@@ -77,66 +74,40 @@ public static class ForgeFrameHighPerformanceExtensions
 public sealed class ForgeVectorizedFrame
 {
     private readonly ForgeDataFrame _frame;
-    private int _maxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount);
 
     internal ForgeVectorizedFrame(ForgeDataFrame frame) => _frame = frame;
 
-    public ForgeVectorizedFrame Where(string column, ForgeVectorOperator op, object? value)
-        => new(_frame.Where(row => Compare(ForgeDataFrame.Get(row, column), op, value)))
-        {
-            _maxDegreeOfParallelism = _maxDegreeOfParallelism
-        };
-
-    public ForgeVectorizedFrame MaxDegreeOfParallelism(int degree)
+    public ForgeDataFrame Where(string column, ForgeVectorOperator op, object? value)
     {
-        if (degree <= 0) throw new ArgumentOutOfRangeException(nameof(degree));
-        _maxDegreeOfParallelism = degree;
-        return this;
+        return _frame.Where(row => Compare(ForgeDataFrame.Get(row, column), op, value));
     }
-
-    public ForgeDataFrame ToFrame() => _frame;
-
-    public int Count(string? column = null)
-    {
-        if (string.IsNullOrWhiteSpace(column)) return _frame.Rows.Count;
-        return _frame.Rows.Count(r => ForgeDataFrame.Get(r, column!) is not null and not DBNull);
-    }
-
-    public decimal Sum(string column) => NumericValues(column).Sum();
-
-    public decimal Average(string column)
-    {
-        var values = NumericValues(column).ToArray();
-        return values.Length == 0 ? 0m : values.Average();
-    }
-
-    public object? Min(string column) => ComparableValues(column).OrderBy(x => x).FirstOrDefault();
-
-    public object? Max(string column) => ComparableValues(column).OrderByDescending(x => x).FirstOrDefault();
 
     public object? Aggregate(string column, ForgeAggregate aggregate)
-        => aggregate switch
+    {
+        var values = _frame.Rows.Select(r => ForgeDataFrame.Get(r, column)).ToArray();
+        return aggregate switch
         {
-            ForgeAggregate.Count => Count(column),
-            ForgeAggregate.Sum => Sum(column),
-            ForgeAggregate.Average => Average(column),
-            ForgeAggregate.Min => Min(column),
-            ForgeAggregate.Max => Max(column),
+            ForgeAggregate.Count => values.Count(v => v is not null and not DBNull),
+            ForgeAggregate.Sum => values.Select(ForgeDataFrame.ToDecimal).Where(x => x.HasValue).Sum(x => x!.Value),
+            ForgeAggregate.Average => Average(values),
+            ForgeAggregate.Min => values.Where(x => x is IComparable).Cast<IComparable>().OrderBy(x => x).FirstOrDefault(),
+            ForgeAggregate.Max => values.Where(x => x is IComparable).Cast<IComparable>().OrderByDescending(x => x).FirstOrDefault(),
             _ => null
         };
+    }
 
-    private IEnumerable<decimal> NumericValues(string column)
-        => _frame.Rows.Select(r => ForgeDataFrame.ToDecimal(ForgeDataFrame.Get(r, column))).Where(x => x.HasValue).Select(x => x!.Value);
+    private static decimal? Average(IEnumerable<object?> values)
+    {
+        var list = values.Select(ForgeDataFrame.ToDecimal).Where(x => x.HasValue).Select(x => x!.Value).ToArray();
+        return list.Length == 0 ? null : list.Average();
+    }
 
-    private IEnumerable<IComparable> ComparableValues(string column)
-        => _frame.Rows.Select(r => ForgeDataFrame.Get(r, column)).Where(x => x is IComparable).Cast<IComparable>();
-
-    internal static bool Compare(object? current, ForgeVectorOperator op, object? expected)
+    private static bool Compare(object? current, ForgeVectorOperator op, object? expected)
     {
         if (op is ForgeVectorOperator.Contains or ForgeVectorOperator.StartsWith or ForgeVectorOperator.EndsWith)
         {
-            var left = Convert.ToString(current, CultureInfo.InvariantCulture) ?? string.Empty;
-            var right = Convert.ToString(expected, CultureInfo.InvariantCulture) ?? string.Empty;
+            var left = Convert.ToString(current, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+            var right = Convert.ToString(expected, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
             return op switch
             {
                 ForgeVectorOperator.Contains => left.Contains(right, StringComparison.OrdinalIgnoreCase),
@@ -166,104 +137,37 @@ public sealed class ForgeVectorizedFrame
         var l = ForgeDataFrame.ToDecimal(left);
         var r = ForgeDataFrame.ToDecimal(right);
         if (l.HasValue && r.HasValue) return l.Value.CompareTo(r.Value);
-        return string.Compare(Convert.ToString(left, CultureInfo.InvariantCulture), Convert.ToString(right, CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase);
+        return string.Compare(Convert.ToString(left), Convert.ToString(right), StringComparison.OrdinalIgnoreCase);
     }
 }
 
-public sealed class ForgeVectorizedFrame<T>
+public static class ForgeVectorizedFrameAggregateExtensions
 {
-    private readonly ForgeDataFrame _frame;
-    private int _maxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount);
-
-    internal ForgeVectorizedFrame(ForgeDataFrame frame) => _frame = frame;
-
-    public ForgeVectorizedFrame<T> Where(Expression<Func<T, bool>> predicate)
+    public static decimal Sum(this ForgeDataFrame frame, string column)
     {
-        ArgumentNullException.ThrowIfNull(predicate);
-        var compiled = predicate.Compile();
-        var rows = _frame.Rows.Where(row => compiled(Materialize(row))).Select(row => new Dictionary<string, object?>(row, StringComparer.OrdinalIgnoreCase));
-        return new ForgeVectorizedFrame<T>(new ForgeDataFrame(rows)) { _maxDegreeOfParallelism = _maxDegreeOfParallelism };
+        if (frame is null) throw new ArgumentNullException(nameof(frame));
+        return frame.Rows
+            .Select(row => ForgeDataFrame.Get(row, column))
+            .Select(ForgeDataFrame.ToDecimal)
+            .Where(value => value.HasValue)
+            .Sum(value => value!.Value);
     }
 
-    public ForgeVectorizedFrame<T> Where(string column, ForgeVectorOperator op, object? value)
-        => new(new ForgeVectorizedFrame(_frame).Where(column, op, value).ToFrame()) { _maxDegreeOfParallelism = _maxDegreeOfParallelism };
-
-    public ForgeVectorizedFrame<T> MaxDegreeOfParallelism(int degree)
+    public static decimal Average(this ForgeDataFrame frame, string column)
     {
-        if (degree <= 0) throw new ArgumentOutOfRangeException(nameof(degree));
-        _maxDegreeOfParallelism = degree;
-        return this;
+        if (frame is null) throw new ArgumentNullException(nameof(frame));
+        var values = frame.Rows
+            .Select(row => ForgeDataFrame.Get(row, column))
+            .Select(ForgeDataFrame.ToDecimal)
+            .Where(value => value.HasValue)
+            .Select(value => value!.Value)
+            .ToArray();
+        return values.Length == 0 ? 0m : values.Average();
     }
 
-    public ForgeDataFrame ToFrame() => _frame;
-
-    public decimal Sum(Expression<Func<T, decimal>> selector)
+    public static int Count(this ForgeDataFrame frame, string column)
     {
-        ArgumentNullException.ThrowIfNull(selector);
-        var compiled = selector.Compile();
-        return _frame.Rows
-            .AsParallel()
-            .WithDegreeOfParallelism(_maxDegreeOfParallelism)
-            .Select(row => compiled(Materialize(row)))
-            .Sum();
-    }
-
-    public decimal Average(Expression<Func<T, decimal>> selector)
-    {
-        ArgumentNullException.ThrowIfNull(selector);
-        var compiled = selector.Compile();
-        return _frame.Rows
-            .AsParallel()
-            .WithDegreeOfParallelism(_maxDegreeOfParallelism)
-            .Select(row => compiled(Materialize(row)))
-            .DefaultIfEmpty(0m)
-            .Average();
-    }
-
-    public decimal Min(Expression<Func<T, decimal>> selector)
-    {
-        ArgumentNullException.ThrowIfNull(selector);
-        var compiled = selector.Compile();
-        return _frame.Rows
-            .AsParallel()
-            .WithDegreeOfParallelism(_maxDegreeOfParallelism)
-            .Select(row => compiled(Materialize(row)))
-            .DefaultIfEmpty(0m)
-            .Min();
-    }
-
-    public decimal Max(Expression<Func<T, decimal>> selector)
-    {
-        ArgumentNullException.ThrowIfNull(selector);
-        var compiled = selector.Compile();
-        return _frame.Rows
-            .AsParallel()
-            .WithDegreeOfParallelism(_maxDegreeOfParallelism)
-            .Select(row => compiled(Materialize(row)))
-            .DefaultIfEmpty(0m)
-            .Max();
-    }
-
-    public decimal Sum(string column) => new ForgeVectorizedFrame(_frame).MaxDegreeOfParallelism(_maxDegreeOfParallelism).Sum(column);
-    public decimal Average(string column) => new ForgeVectorizedFrame(_frame).MaxDegreeOfParallelism(_maxDegreeOfParallelism).Average(column);
-    public object? Min(string column) => new ForgeVectorizedFrame(_frame).MaxDegreeOfParallelism(_maxDegreeOfParallelism).Min(column);
-    public object? Max(string column) => new ForgeVectorizedFrame(_frame).MaxDegreeOfParallelism(_maxDegreeOfParallelism).Max(column);
-
-    private static T Materialize(IReadOnlyDictionary<string, object?> row)
-    {
-        var obj = Activator.CreateInstance<T>();
-        foreach (var property in typeof(T).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
-        {
-            if (!property.CanWrite) continue;
-            if (!row.TryGetValue(property.Name, out var value) || value is null or DBNull) continue;
-            var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-            if (targetType.IsEnum)
-            {
-                property.SetValue(obj, value is string s ? Enum.Parse(targetType, s, ignoreCase: true) : Enum.ToObject(targetType, value));
-                continue;
-            }
-            property.SetValue(obj, Convert.ChangeType(value, targetType, CultureInfo.InvariantCulture));
-        }
-        return obj;
+        if (frame is null) throw new ArgumentNullException(nameof(frame));
+        return frame.Rows.Count(row => ForgeDataFrame.Get(row, column) is not null and not DBNull);
     }
 }

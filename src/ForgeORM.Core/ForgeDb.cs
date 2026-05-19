@@ -69,6 +69,10 @@ public partial class ForgeDb : IForgeDb
         return await ForgeAdo.QueryAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     }
 
+    /// <summary>Executes a SQL query when no parameters are needed and only a cancellation token is supplied.</summary>
+    public Task<IReadOnlyList<T>> QueryAsync<T>(string sql, CancellationToken cancellationToken)
+        => QueryAsync<T>(sql, parameters: null, timeoutSeconds: null, cancellationToken: cancellationToken);
+
     /// <summary>
     /// Executes the T operation.
     /// </summary>

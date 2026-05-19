@@ -1,5 +1,6 @@
 using System.Reflection;
 using ForgeORM.Abstractions;
+using ForgeORM.Core.Performance;
 
 namespace ForgeORM.Core;
 
@@ -115,22 +116,17 @@ public partial class ForgeDb
     }
 
     private static string ResolveTableName<T>()
-        => typeof(T).GetCustomAttribute<ForgeTableAttribute>()?.Name ?? typeof(T).Name;
+        => ForgeRuntimeEntityMetadataCache.For<T>().TableName;
 
     private static string ResolveKeyColumn<T>()
-    {
-        var key = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .FirstOrDefault(x => x.GetCustomAttribute<ForgeKeyAttribute>() is not null ||
-                                 x.Name.Equals("Id", StringComparison.OrdinalIgnoreCase));
-        return key?.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? key?.Name ?? "Id";
-    }
+        => ForgeRuntimeEntityMetadataCache.For<T>().Key?.ColumnName ?? "Id";
 
     private static string ResolveScalarColumns<T>()
     {
-        var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(x => x.CanRead && ForgeMaterializer.IsScalar(x.PropertyType))
-            .Where(x => x.GetCustomAttribute<ForgeComputedAttribute>() is null)
-            .Select(x => x.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? x.Name)
+        var plan = ForgeRuntimeEntityMetadataCache.For<T>();
+        var props = plan.Properties
+            .Where(x => !x.IsComputed)
+            .Select(x => x.ColumnName)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 

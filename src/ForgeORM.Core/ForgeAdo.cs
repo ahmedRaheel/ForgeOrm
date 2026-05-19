@@ -4,8 +4,8 @@ using System.Text.RegularExpressions;
 using System.Data;
 using System.Data.Common;
 using System.Reflection;
-using System.Linq.Expressions;
 using System.Reflection.Emit;
+using Microsoft.Data.SqlClient;
 
 namespace ForgeORM.Core;
 
@@ -407,11 +407,10 @@ public static class ForgeAdo
         parameter.ParameterName = "@" + name;
         parameter.Value = NormalizeParameterValue(value) ?? DBNull.Value;
 
-        if (parameter.GetType().FullName is "Microsoft.Data.SqlClient.SqlParameter" or "System.Data.SqlClient.SqlParameter")
+        if (parameter is SqlParameter sqlParameter)
         {
-            var sqlDbTypeProperty = parameter.GetType().GetProperty("SqlDbType");
-            if (value is DateTime) sqlDbTypeProperty?.SetValue(parameter, SqlDbType.DateTime2);
-            if (value is DateTimeOffset) sqlDbTypeProperty?.SetValue(parameter, SqlDbType.DateTimeOffset);
+            if (value is DateTime) sqlParameter.SqlDbType = SqlDbType.DateTime2;
+            if (value is DateTimeOffset) sqlParameter.SqlDbType = SqlDbType.DateTimeOffset;
         }
 
         command.Parameters.Add(parameter);
@@ -448,7 +447,7 @@ public static class ForgeAdo
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldstr, prop.Name);
             il.Emit(OpCodes.Ldloc, typed);
-            il.Emit(OpCodes.Callvirt, prop.Property.GetMethod!);
+            il.Emit(type.IsValueType ? OpCodes.Call : OpCodes.Callvirt, prop.Property.GetMethod!);
 
             if (prop.PropertyType.IsValueType)
                 il.Emit(OpCodes.Box, prop.PropertyType);
@@ -473,11 +472,23 @@ public static class ForgeAdo
 
     private static Func<object, object?> BuildParameterGetter(Type declaringType, PropertyInfo property)
     {
-        var instance = Expression.Parameter(typeof(object), "instance");
-        var cast = Expression.Convert(instance, declaringType);
-        var access = Expression.Property(cast, property);
-        var convert = Expression.Convert(access, typeof(object));
-        return Expression.Lambda<Func<object, object?>>(convert, instance).Compile();
+        var method = new DynamicMethod(
+            $"ForgeORM_GetParameter_{declaringType.Name}_{property.Name}_{Guid.NewGuid():N}",
+            typeof(object),
+            new[] { typeof(object) },
+            typeof(ForgeAdo),
+            skipVisibility: true);
+
+        var il = method.GetILGenerator();
+        il.Emit(OpCodes.Ldarg_0);
+        il.Emit(declaringType.IsValueType ? OpCodes.Unbox_Any : OpCodes.Castclass, declaringType);
+        il.Emit(declaringType.IsValueType ? OpCodes.Call : OpCodes.Callvirt, property.GetMethod!);
+
+        if (property.PropertyType.IsValueType)
+            il.Emit(OpCodes.Box, property.PropertyType);
+
+        il.Emit(OpCodes.Ret);
+        return (Func<object, object?>)method.CreateDelegate(typeof(Func<object, object?>));
     }
 
     private static bool IsBindableParameterProperty(PropertyInfo property)

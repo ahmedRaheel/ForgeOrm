@@ -467,7 +467,7 @@ public sealed class ForgeQueryBuilder<TEntity>
     {
         var started = DateTimeOffset.UtcNow;
         var query = Render();
-        var rows = await ForgeCompiledQueryCache.GetOrExecuteAsync(
+        var rows = await ForgeQueryResultCache.GetOrExecuteAsync(
             query.Sql,
             query.Parameters,
             CacheDuration,
@@ -648,7 +648,7 @@ public static class ForgeQueryBuilderIndexSuggestionEngine
 }
 
 /// <summary>Small in-memory compiled/rendered query cache foundation.</summary>
-public static class ForgeCompiledQueryCache
+public static class ForgeQueryResultCache
 {
     private static readonly Dictionary<string, (DateTimeOffset Expires, object Rows)> Cache = new(StringComparer.Ordinal);
 

@@ -65,7 +65,7 @@ public partial class ForgeDb
     /// <summary>
     /// Inserts an entity using the cached runtime entity plan and MSIL parameter binder.
     /// </summary>
-    public Task<int> InsertCompiledAsync<T>(T entity, CancellationToken cancellationToken = default)
+    public Task<int> InsertCompiledv1Async<T>(T entity, CancellationToken cancellationToken = default)
     {
         var plan = ForgeRuntimeEntityMetadataCache.For<T>();
         return ExecuteFastAsync(plan.InsertSql, entity, cancellationToken: cancellationToken);

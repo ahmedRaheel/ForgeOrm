@@ -1,3 +1,5 @@
+using ForgeORM.Core.Enums;
+
 namespace ForgeORM.Core;
 
 /// <summary>

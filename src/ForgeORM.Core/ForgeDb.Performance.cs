@@ -34,7 +34,7 @@ public partial class ForgeDb
     /// <summary>
     /// Executes a SQL query through the centralized Forge performance pipeline.
     /// </summary>
-    public async Task<IReadOnlyList<T>> QueryFastAsync<T>(
+    public async Task<IReadOnlyList<T>> QueryFastV1Async<T>(
         string sql,
         object? parameters = null,
         int? timeoutSeconds = null,

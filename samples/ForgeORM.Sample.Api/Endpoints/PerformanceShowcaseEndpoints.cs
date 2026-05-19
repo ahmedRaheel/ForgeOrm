@@ -13,14 +13,14 @@ public static class PerformanceShowcaseEndpoints
             return Results.Ok(new { engine = "Source-generated reader when registered, otherwise cached MSIL reader", count = rows.Count, rows });
         });
 
-        group.MapGet("/orders/stream", async (ForgeDbContext db, CancellationToken ct) =>
-        {
-            const string sql = "select Id, OrderNo, CustomerId, GrandTotal, Status from Orders order by Id";
-            var count = 0;
-            await foreach (var _ in db.StreamAsync<Order>(sql, cancellationToken: ct))
-                count++;
-            return Results.Ok(new { streamed = count, mode = "SequentialAccess + cached materializer" });
-        });
+        //group.MapGet("/orders/stream", async (ForgeDbContext db, CancellationToken ct) =>
+        //{
+        //    const string sql = "select Id, OrderNo, CustomerId, GrandTotal, Status from Orders order by Id";
+        //    var count = 0;
+        //    await foreach (var _ in db.StreamAsync<Order>(sql, cancellationToken: ct))
+        //        count++;
+        //    return Results.Ok(new { streamed = count, mode = "SequentialAccess + cached materializer" });
+        //});
 
         group.MapPost("/orders/parameters", async (ForgeDbContext db, OrderSearchRequest request, CancellationToken ct) =>
         {

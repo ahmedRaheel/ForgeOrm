@@ -72,7 +72,7 @@ public static class ForgeAdo
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public static async Task<T?> QuerySingleOrDefaultAsync<T>(
+    public static async Task<T?> QueryFirstOrDefaultAsync<T>(
         DbConnection connection,
         string sql,
         object? parameters = null,
@@ -90,6 +90,33 @@ public static class ForgeAdo
         return await reader.ReadAsync(cancellationToken)
             ? ForgeMaterializer.Map<T>(reader)
             : default;
+    }
+
+    public static async Task<T?> QuerySingleOrDefaultAsync<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters = null,
+        DbTransaction? transaction = null,
+        CommandType commandType = CommandType.Text,
+        int? timeoutSeconds = null,
+        CancellationToken cancellationToken = default)
+    {
+        await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
+
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken);
+
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+
+        if (!await reader.ReadAsync(cancellationToken))
+            return default;
+
+        var first = ForgeMaterializer.Map<T>(reader);
+
+        if (await reader.ReadAsync(cancellationToken))
+            throw new InvalidOperationException("Sequence contains more than one element.");
+
+        return first;
     }
     /// <summary>
     /// Executes the Execute operation.

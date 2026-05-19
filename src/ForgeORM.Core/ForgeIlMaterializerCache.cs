@@ -30,7 +30,7 @@ internal static class ForgeIlMaterializerCache
         if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGenerated)
             throw new InvalidOperationException($"No ForgeORM source-generated reader was registered for {type.FullName}.");
 
-        var key = CreateKey(type, reader);
+        var key = ForgeReaderShapeCache.CreateKey(type, reader);
         return (Func<DbDataReader, T>)Cache.GetOrAdd(key, _ => CreateMaterializer<T>(reader));
     }
 
@@ -43,7 +43,7 @@ internal static class ForgeIlMaterializerCache
         if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGenerated)
             throw new InvalidOperationException($"No ForgeORM source-generated reader was registered for {type.FullName}.");
 
-        var key = CreateKey(type, reader);
+        var key = ForgeReaderShapeCache.CreateKey(type, reader);
         return (Func<DbDataReader, object>)ObjectCache.GetOrAdd(key, _ => CreateObjectMaterializer(type, reader));
     }
 

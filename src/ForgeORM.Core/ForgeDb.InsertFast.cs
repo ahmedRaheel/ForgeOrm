@@ -9,30 +9,21 @@ namespace ForgeORM.Core;
 
 public partial class ForgeDb
 {
-    private static readonly ConcurrentDictionary<Type, ForgeFastInsertPlan> FastInsertPlans = new();
+    private static readonly ConcurrentDictionary<Type, ForgeCompiledInsertPlan> CompiledInsertPlans = new();
 
-    /// <summary>
-    /// Inserts a single entity using ForgeORM's fast insert path.
-    /// This path is designed for benchmark and high-throughput scenarios:
-    /// scalar database columns only, identity columns excluded, no graph traversal, no navigation handling.
-    /// </summary>
-    public int InsertFast<T>(T entity)
+    private int InsertCompiled<T>(T entity)
     {
-        return InsertFastAsync(entity).GetAwaiter().GetResult();
+        return InsertCompiledAsync(entity).GetAwaiter().GetResult();
     }
 
-    /// <summary>
-    /// Inserts a single entity using a cached insert plan, compiled property getters, and direct DbCommand execution.
-    /// Navigation properties such as Customer or Items are ignored; use InsertGraphAsync for aggregate graph inserts.
-    /// </summary>
-    public async Task<int> InsertFastAsync<T>(
+    private async Task<int> InsertCompiledAsync<T>(
         T entity,
         CancellationToken cancellationToken = default)
     {
         if (entity is null)
             throw new ArgumentNullException(nameof(entity));
 
-        var plan = GetOrCreateFastInsertPlan(typeof(T));
+        var plan = GetOrCreateCompiledInsertPlan(typeof(T));
 
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
@@ -47,7 +38,7 @@ public partial class ForgeDb
             var getter = plan.Getters[i];
 
             var value = getter(entity!);
-            value = NormalizeFastInsertParameterValue(value, property);
+            value = NormalizeCompiledInsertParameterValue(value, property);
 
             var parameter = command.CreateParameter();
             parameter.ParameterName = "@" + property.Name;
@@ -61,20 +52,20 @@ public partial class ForgeDb
         return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static ForgeFastInsertPlan GetOrCreateFastInsertPlan(Type type)
+    private static ForgeCompiledInsertPlan GetOrCreateCompiledInsertPlan(Type type)
     {
-        return FastInsertPlans.GetOrAdd(type, CreateFastInsertPlan);
+        return CompiledInsertPlans.GetOrAdd(type, CreateCompiledInsertPlan);
     }
 
-    private static ForgeFastInsertPlan CreateFastInsertPlan(Type type)
+    private static ForgeCompiledInsertPlan CreateCompiledInsertPlan(Type type)
     {
-        var table = ResolveFastInsertTableName(type);
+        var table = ResolveCompiledInsertTableName(type);
 
         var properties = type
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.CanRead)
-            .Where(IsFastInsertScalarColumn)
-            .Where(p => !IsFastInsertIdentityColumn(p))
+            .Where(IsCompiledInsertScalarColumn)
+            .Where(p => !IsCompiledInsertIdentityColumn(p))
             .Where(p => p.GetCustomAttribute<ForgeComputedAttribute>() is null)
             .ToArray();
 
@@ -93,10 +84,10 @@ public partial class ForgeDb
             $"INSERT INTO {table} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", parameters)});";
 
         var getters = properties
-            .Select(CreateFastInsertGetter)
+            .Select(CreateCompiledInsertGetter)
             .ToArray();
 
-        return new ForgeFastInsertPlan
+        return new ForgeCompiledInsertPlan
         {
             Sql = sql,
             Properties = properties,
@@ -104,21 +95,21 @@ public partial class ForgeDb
         };
     }
 
-    private static Func<object, object?> CreateFastInsertGetter(PropertyInfo property)
+    private static Func<object, object?> CreateCompiledInsertGetter(PropertyInfo property)
         => ForgeRuntimeAccessorCache.Getter(property);
 
-    private static string ResolveFastInsertTableName(Type type)
+    private static string ResolveCompiledInsertTableName(Type type)
     {
         return type.GetCustomAttribute<ForgeTableAttribute>()?.Name ?? type.Name;
     }
 
-    private static bool IsFastInsertIdentityColumn(PropertyInfo property)
+    private static bool IsCompiledInsertIdentityColumn(PropertyInfo property)
     {
         return property.Name.Equals("Id", StringComparison.OrdinalIgnoreCase)
             || property.GetCustomAttribute<ForgeKeyAttribute>() is not null;
     }
 
-    private static bool IsFastInsertScalarColumn(PropertyInfo property)
+    private static bool IsCompiledInsertScalarColumn(PropertyInfo property)
     {
         var type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
 
@@ -137,7 +128,7 @@ public partial class ForgeDb
             || type == typeof(byte[]);
     }
 
-    private static object? NormalizeFastInsertParameterValue(object? value, PropertyInfo property)
+    private static object? NormalizeCompiledInsertParameterValue(object? value, PropertyInfo property)
     {
         if (value is null)
             return null;
@@ -159,23 +150,13 @@ public partial class ForgeDb
         }
 
         if (value is DateOnly dateOnly)
-        {
             return dateOnly.ToDateTime(TimeOnly.MinValue);
-        }
 
         if (value is TimeOnly timeOnly)
-        {
             return timeOnly.ToTimeSpan();
-        }
 
         if (value.GetType().IsEnum)
-        {
-            // ForgeORM default enum strategy is numeric storage using the enum underlying type.
-            // String storage is intentionally not used in the hot path.
-            var enumType = value.GetType();
-            var underlyingType = Enum.GetUnderlyingType(enumType);
-            return Convert.ChangeType(value, underlyingType);
-        }
+            return ForgeEnumBox.ToUnderlying(value);
 
         return value;
     }
@@ -203,7 +184,7 @@ public partial class ForgeDb
     }
 }
 
-internal sealed class ForgeFastInsertPlan
+internal sealed class ForgeCompiledInsertPlan
 {
     public required string Sql { get; init; }
 

@@ -670,18 +670,6 @@ public interface IForgeRepository
     Task<int> InsertAsync<T>(T entity, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Inserts a single entity using the ForgeORM fast lane.
-    /// Scalar columns only, identity excluded, no graph/navigation traversal.
-    /// </summary>
-    int InsertFast<T>(T entity);
-
-    /// <summary>
-    /// Inserts a single entity asynchronously using the ForgeORM fast lane.
-    /// Scalar columns only, identity excluded, no graph/navigation traversal.
-    /// </summary>
-    Task<int> InsertFastAsync<T>(T entity, CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Inserts multiple independent entities in a single transactional operation.
     /// Use this when the rows do not form a parent-child aggregate graph.
     /// </summary>

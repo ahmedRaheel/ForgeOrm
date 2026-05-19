@@ -47,6 +47,8 @@ public static class ForgeAdo
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
+        _ = ForgeCompiledQueryCache.GetOrAdd(connection.GetType().Name, typeof(T), sql, parameters?.GetType(), () => new ForgeCompiledQueryPlan(sql, typeof(T), parameters?.GetType(), connection.GetType().Name, ForgeCompiledQueryCache.Fingerprint(sql)));
+        _ = ForgeCompiledQueryCache.GetOrAdd(connection.GetType().Name, typeof(T), sql, parameters?.GetType(), () => new ForgeCompiledQueryPlan(sql, typeof(T), parameters?.GetType(), connection.GetType().Name, ForgeCompiledQueryCache.Fingerprint(sql)));
         await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
 
         if (connection.State != ConnectionState.Open)

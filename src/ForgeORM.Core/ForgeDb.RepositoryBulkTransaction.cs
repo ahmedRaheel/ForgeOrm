@@ -11,7 +11,7 @@ public partial class ForgeDb
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="c">The c value.</param>
     /// <returns>The result of the T operation.</returns>
-    public T? GetById<T>(object id) { var c = Provider.BuildGetById(_metadata.Resolve<T>(), id); return QuerySingleOrDefault<T>(c.CommandText, ForgeAdo.EnsureIdParameter(c.Parameters, id)); }
+    public T? GetById<T>(object id) { var c = Provider.BuildGetById(_metadata.Resolve<T>(), id); return QuerySingleOrDefault<T>(c.CommandText, c.Parameters); }
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -19,7 +19,7 @@ public partial class ForgeDb
     /// <param name="id">The id value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task<T?> GetByIdAsync<T>(object id, CancellationToken cancellationToken = default) { var c = Provider.BuildGetById(_metadata.Resolve<T>(), id); return QuerySingleOrDefaultAsync<T>(c.CommandText, ForgeAdo.EnsureIdParameter(c.Parameters, id), cancellationToken: cancellationToken); }
+    public Task<T?> GetByIdAsync<T>(object id, CancellationToken cancellationToken = default) { var c = Provider.BuildGetById(_metadata.Resolve<T>(), id); return QuerySingleOrDefaultAsync<T>(c.CommandText, c.Parameters, cancellationToken: cancellationToken); }
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -40,7 +40,7 @@ public partial class ForgeDb
     /// </summary>
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <returns>The result of the T operation.</returns>
-    public IReadOnlyList<T> GetByIds<T>(IReadOnlyCollection<int> ids) { if (ids.Count == 0) return []; var c = Provider.BuildGetByIds(_metadata.Resolve<T>(), ids); return Query<T>(c.CommandText, c.Parameters).ToList(); }
+    public IReadOnlyList<T> GetByIds<T>(IReadOnlyCollection<int> ids) { if (ids.Count == 0) return []; var c = Provider.BuildGetByIds(_metadata.Resolve<T>(), ids); return Query<T>(c.CommandText, c.Parameters); }
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -55,7 +55,7 @@ public partial class ForgeDb
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="c">The c value.</param>
     /// <returns>The result of the T operation.</returns>
-    public int Insert<T>(T entity) => InsertFast(entity);
+    public int Insert<T>(T entity) => InsertCompiled(entity);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -63,7 +63,7 @@ public partial class ForgeDb
     /// <param name="entity">The entity value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task<int> InsertAsync<T>(T entity, CancellationToken cancellationToken = default) => InsertFastAsync(entity, cancellationToken);
+    public Task<int> InsertAsync<T>(T entity, CancellationToken cancellationToken = default) => InsertCompiledAsync(entity, cancellationToken);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -85,7 +85,7 @@ public partial class ForgeDb
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="c">The c value.</param>
     /// <returns>The result of the T operation.</returns>
-    public int Delete<T>(object id) { var c = Provider.BuildDelete(_metadata.Resolve<T>(), id); return Execute(c.CommandText, ForgeAdo.EnsureIdParameter(c.Parameters, id)); }
+    public int Delete<T>(object id) { var c = Provider.BuildDelete(_metadata.Resolve<T>(), id); return Execute(c.CommandText, c.Parameters); }
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -93,7 +93,7 @@ public partial class ForgeDb
     /// <param name="id">The id value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task<int> DeleteAsync<T>(object id, CancellationToken cancellationToken = default) { var c = Provider.BuildDelete(_metadata.Resolve<T>(), id); return ExecuteAsync(c.CommandText, ForgeAdo.EnsureIdParameter(c.Parameters, id), cancellationToken: cancellationToken); }
+    public Task<int> DeleteAsync<T>(object id, CancellationToken cancellationToken = default) { var c = Provider.BuildDelete(_metadata.Resolve<T>(), id); return ExecuteAsync(c.CommandText, c.Parameters, cancellationToken: cancellationToken); }
 
     /// <summary>
     /// Executes the T operation.
@@ -106,7 +106,7 @@ public partial class ForgeDb
         var count = Provider.BuildCount(request.Sql, request.Parameters);
         var total = ExecuteScalar<int>(count.CommandText, count.Parameters);
         var page = Provider.BuildPage(request);
-        var rows = Query<T>(page.CommandText, page.Parameters).ToList();
+        var rows = Query<T>(page.CommandText, page.Parameters);
         return new ForgePagedResult<T> { Items = rows, Page = request.Page, PageSize = request.PageSize, TotalRecords = total };
     }
 

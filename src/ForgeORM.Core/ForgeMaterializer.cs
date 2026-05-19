@@ -4,6 +4,12 @@ namespace ForgeORM.Core;
 
 internal static class ForgeMaterializer
 {
+    public static Func<DbDataReader, T> GetReader<T>(DbDataReader reader)
+        => ForgeIlMaterializerCache.GetOrCreate<T>(reader);
+
+    public static Func<DbDataReader, object> GetReader(Type type, DbDataReader reader)
+        => ForgeIlMaterializerCache.GetOrCreate(type, reader);
+
     public static T Map<T>(DbDataReader reader)
         => ForgeIlMaterializerCache.GetOrCreate<T>(reader)(reader);
 

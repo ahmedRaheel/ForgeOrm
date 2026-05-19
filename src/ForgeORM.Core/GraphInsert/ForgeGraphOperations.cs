@@ -127,7 +127,7 @@ public partial class ForgeDb
         foreach (var collection in GetChildCollectionProperties(typeof(T)))
         {
             if (includeSet is not null && !includeSet.Contains(collection.Name)) continue;
-            if (!collection.CanWrite && collection.GetValue(parent) is null) continue;
+            if (!collection.CanWrite && ForgeRuntimeAccessorCache.Get(collection, parent!) is null) continue;
 
             var childType = GetCollectionItemType(collection.PropertyType);
             if (childType is null) continue;
@@ -173,15 +173,15 @@ public partial class ForgeDb
                 affected += await ForgeAdo.ExecuteAsync(connection, sql, new Dictionary<string, object?> { ["ParentId"] = id }, transaction, cancellationToken: cancellationToken);
             }
 
-            var parentCommand = Provider.BuildDelete(_metadata.Resolve<T>(), id);
+            var parentShape = ForgeEntityShape.For(typeof(T));
+            var parentKey = parentShape.KeyProperty ?? throw new InvalidOperationException($"ForgeORM graph delete requires a key property on {typeof(T).Name}.");
+            var parentSql = $"DELETE FROM {parentShape.TableName} WHERE {ForgeEntityShape.ColumnName(parentKey)} = @Id";
             affected += await ForgeAdo.ExecuteAsync(
                 connection,
-                parentCommand.CommandText,
-                parentCommand.Parameters,
+                parentSql,
+                new Dictionary<string, object?> { ["Id"] = id, [parentKey.Name] = id },
                 transaction,
-                parentCommand.CommandType,
-                parentCommand.TimeoutSeconds,
-                cancellationToken);
+                cancellationToken: cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
             return affected;
@@ -203,15 +203,19 @@ public partial class ForgeDb
         {
             var fk = FindForeignKeyProperty(entityType, parentType);
             if (fk is not null && fk.CanWrite)
-                fk.SetValue(entity, ForgeObjectMapper.ConvertTo(parentKeyValue, fk.PropertyType));
+                ForgeRuntimeAccessorCache.Set(fk, entity, ForgeObjectMapper.ConvertTo(parentKeyValue, fk.PropertyType));
         }
 
+        // For SQL Server IDENTITY keys (int/long/short), never send an explicit Id value.
+        // InsertSingleNodeAsync will use SCOPE_IDENTITY() and write the generated key back.
+        ResetDatabaseGeneratedIdentity(entity, shape);
+
         await InsertSingleNodeAsync(connection, transaction, entity, shape, cancellationToken);
-        var keyValue = key.GetValue(entity);
+        var keyValue = ForgeRuntimeAccessorCache.Get(key, entity);
 
         foreach (var collection in GetChildCollectionProperties(entityType))
         {
-            var children = ReadEnumerable(collection.GetValue(entity));
+            var children = ReadEnumerable(ForgeRuntimeAccessorCache.Get(collection, entity));
             foreach (var child in children)
                 await InsertGraphNodeAsync(connection, transaction, child, keyValue, entityType, cancellationToken);
         }
@@ -222,7 +226,7 @@ public partial class ForgeDb
         var entityType = entity.GetType();
         var shape = ForgeEntityShape.For(entityType);
         var key = shape.KeyProperty ?? throw new InvalidOperationException($"ForgeORM graph update requires a key property on {entityType.Name}.");
-        var keyValue = key.GetValue(entity);
+        var keyValue = ForgeRuntimeAccessorCache.Get(key, entity);
         var affected = await ExecuteSingleUpdateAsync(connection, transaction, entity, cancellationToken);
 
         foreach (var collection in GetChildCollectionProperties(entityType))
@@ -232,11 +236,11 @@ public partial class ForgeDb
 
             var fk = FindForeignKeyProperty(childType, entityType);
             var childKey = ForgeEntityShape.For(childType).KeyProperty;
-            var children = ReadEnumerable(collection.GetValue(entity)).ToList();
+            var children = ReadEnumerable(ForgeRuntimeAccessorCache.Get(collection, entity)).ToList();
 
             if (deleteMissingChildren && fk is not null && keyValue is not null && childKey is not null)
             {
-                var suppliedKeys = children.Select(x => childKey.GetValue(x)).Where(IsMeaningfulKey).ToList();
+                var suppliedKeys = children.Select(x => ForgeRuntimeAccessorCache.Get(childKey, x)).Where(IsMeaningfulKey).ToList();
                 var childShape = ForgeEntityShape.For(childType);
                 var deleteSql = suppliedKeys.Count == 0
                     ? $"DELETE FROM {childShape.TableName} WHERE {ForgeEntityShape.ColumnName(fk)} = @ParentId"
@@ -248,13 +252,19 @@ public partial class ForgeDb
             foreach (var child in children)
             {
                 if (fk is not null && fk.CanWrite)
-                    fk.SetValue(child, ForgeObjectMapper.ConvertTo(keyValue, fk.PropertyType));
+                    ForgeRuntimeAccessorCache.Set(fk, child, ForgeObjectMapper.ConvertTo(keyValue, fk.PropertyType));
 
                 var childShape = ForgeEntityShape.For(child.GetType());
-                var currentChildKey = childShape.KeyProperty?.GetValue(child);
-                affected += IsMeaningfulKey(currentChildKey)
-                    ? await ExecuteSingleUpdateAsync(connection, transaction, child, cancellationToken)
-                    : await InsertSingleNodeAsync(connection, transaction, child, childShape, cancellationToken);
+                var currentChildKey = childShape.KeyProperty is null ? null : ForgeRuntimeAccessorCache.Get(childShape.KeyProperty, child);
+                if (IsMeaningfulKey(currentChildKey))
+                {
+                    affected += await ExecuteSingleUpdateAsync(connection, transaction, child, cancellationToken);
+                }
+                else
+                {
+                    ResetDatabaseGeneratedIdentity(child, childShape);
+                    affected += await InsertSingleNodeAsync(connection, transaction, child, childShape, cancellationToken);
+                }
             }
         }
 
@@ -264,26 +274,25 @@ public partial class ForgeDb
     private async Task<int> InsertSingleNodeAsync(DbConnection connection, DbTransaction transaction, object entity, ForgeEntityShape shape, CancellationToken cancellationToken)
     {
         var key = shape.KeyProperty;
-        if (key is not null) EnsureKeyValue(entity, key);
+        if (key is not null)
+        {
+            EnsureKeyValue(entity, key);
+            ResetDatabaseGeneratedIdentity(entity, shape);
+        }
 
-        var keyValue = key?.GetValue(entity);
+        var keyValue = key is null ? null : ForgeRuntimeAccessorCache.Get(key, entity);
         var includeKey = key is not null && ShouldIncludeGraphKeyInInsert(key, keyValue);
-        var props = shape.ScalarProperties
-            .Where(p => p.CanRead && !ForgeEntityShape.IsComputed(p) && (key is null || includeKey || !p.Name.Equals(key.Name, StringComparison.OrdinalIgnoreCase)))
-            .ToList();
+        var props = ForgeGraphWriteHelpers.GetInsertProperties(shape, includeKey);
+        var sql = ForgeGraphWriteHelpers.BuildInsertSql(shape, props, includeScopeIdentity: key is not null && !includeKey);
 
-        var sql = $"INSERT INTO {shape.TableName} ({string.Join(", ", props.Select(ForgeEntityShape.ColumnName))}) VALUES ({string.Join(", ", props.Select(p => "@" + p.Name))})";
-        if (key is not null && !includeKey)
-            sql += "; SELECT CAST(SCOPE_IDENTITY() AS int);";
-
-        var parameters = props.ToDictionary(p => p.Name, p => ForgeEnumConversion.ToDatabaseValue(p.GetValue(entity), p), StringComparer.OrdinalIgnoreCase);
+        var parameters = ForgeGraphWriteHelpers.CreateParameterDictionary(props, entity);
         await using var command = ForgeAdo.CreateCommand(connection, sql, parameters, transaction);
 
         if (key is not null && !includeKey)
         {
             var generated = await command.ExecuteScalarAsync(cancellationToken);
             if (key.CanWrite)
-                key.SetValue(entity, ForgeObjectMapper.ConvertTo(generated, key.PropertyType));
+                ForgeRuntimeAccessorCache.Set(key, entity, ForgeObjectMapper.ConvertTo(generated, key.PropertyType));
             return 1;
         }
 
@@ -295,10 +304,11 @@ public partial class ForgeDb
         var entityType = entity.GetType();
         var shape = ForgeEntityShape.For(entityType);
         var key = shape.KeyProperty ?? throw new InvalidOperationException($"ForgeORM graph update requires a key property on {entityType.Name}.");
-        var props = shape.ScalarProperties.Where(p => p.CanRead && !ForgeEntityShape.IsComputed(p) && !p.Name.Equals(key.Name, StringComparison.OrdinalIgnoreCase)).ToList();
+        var props = ForgeGraphWriteHelpers.GetUpdateProperties(shape);
         var setClause = string.Join(", ", props.Select(p => $"{ForgeEntityShape.ColumnName(p)} = @{p.Name}"));
         var sql = $"UPDATE {shape.TableName} SET {setClause} WHERE {ForgeEntityShape.ColumnName(key)} = @{key.Name}";
-        var parameters = shape.ScalarProperties.ToDictionary(p => p.Name, p => ForgeEnumConversion.ToDatabaseValue(p.GetValue(entity), p), StringComparer.OrdinalIgnoreCase);
+        var parameters = ForgeGraphWriteHelpers.CreateParameterDictionary(props, entity);
+        parameters[key.Name] = ForgeGraphWriteHelpers.NormalizeDatabaseValue(ForgeRuntimeAccessorCache.Get(key, entity), key);
         return await ForgeAdo.ExecuteAsync(connection, sql, parameters, transaction, cancellationToken: cancellationToken);
     }
 
@@ -309,23 +319,10 @@ public partial class ForgeDb
         await using var command = ForgeAdo.CreateCommand(connection, sql, parameters);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var rows = new List<object>();
+        var materializer = ForgeIlMaterializerCache.GetOrCreate(type, reader);
         while (await reader.ReadAsync(cancellationToken))
-            rows.Add(MapRecord(type, reader));
+            rows.Add(materializer(reader));
         return rows;
-    }
-
-    private static object MapRecord(Type type, IDataRecord record)
-    {
-        var instance = Activator.CreateInstance(type) ?? throw new InvalidOperationException($"Cannot create {type.Name}.");
-        var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanWrite).ToList();
-        for (var i = 0; i < record.FieldCount; i++)
-        {
-            var name = record.GetName(i);
-            var prop = props.FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase) || ForgeEntityShape.ColumnName(p).Equals(name, StringComparison.OrdinalIgnoreCase));
-            if (prop is null || record.IsDBNull(i)) continue;
-            prop.SetValue(instance, ForgeObjectMapper.ConvertTo(record.GetValue(i), prop.PropertyType));
-        }
-        return instance;
     }
 
     private static IReadOnlyList<PropertyInfo> GetChildCollectionProperties(Type type)
@@ -361,13 +358,13 @@ public partial class ForgeDb
         if (property.CanWrite)
         {
             var listType = typeof(List<>).MakeGenericType(childType);
-            var list = (IList)Activator.CreateInstance(listType)!;
+            var list = (IList)ForgeRuntimeAccessorCache.Constructor(listType)();
             foreach (var row in rows) list.Add(row);
-            property.SetValue(parent, list);
+            ForgeRuntimeAccessorCache.Set(property, parent, list);
             return;
         }
 
-        if (property.GetValue(parent) is IList existing)
+        if (ForgeRuntimeAccessorCache.Get(property, parent) is IList existing)
         {
             foreach (var row in rows) existing.Add(row);
         }
@@ -378,8 +375,24 @@ public partial class ForgeDb
         if (value is null) return false;
         var type = Nullable.GetUnderlyingType(value.GetType()) ?? value.GetType();
         if (type == typeof(Guid)) return (Guid)value != Guid.Empty;
-        if (type.IsValueType) return !Equals(value, Activator.CreateInstance(type));
+        if (type.IsValueType) return !Equals(value, ForgeRuntimeAccessorCache.DefaultValue(type));
         return true;
+    }
+
+    private static void ResetDatabaseGeneratedIdentity(object entity, ForgeEntityShape shape)
+    {
+        var key = shape.KeyProperty;
+        if (key is null || !key.CanWrite)
+            return;
+
+        var keyType = Nullable.GetUnderlyingType(key.PropertyType) ?? key.PropertyType;
+
+        // GUID keys are client-generated. Numeric keys are database-generated identities.
+        if (keyType == typeof(Guid))
+            return;
+
+        if (keyType == typeof(int) || keyType == typeof(long) || keyType == typeof(short))
+            ForgeRuntimeAccessorCache.Set(key, entity, ForgeRuntimeAccessorCache.DefaultValue(keyType));
     }
 
     private static bool ShouldIncludeGraphKeyInInsert(PropertyInfo key, object? value)
@@ -387,7 +400,7 @@ public partial class ForgeDb
         var type = Nullable.GetUnderlyingType(key.PropertyType) ?? key.PropertyType;
         if (type == typeof(Guid)) return true;
         if (value is null) return false;
-        if (Equals(value, Activator.CreateInstance(type))) return false;
+        if (Equals(value, ForgeRuntimeAccessorCache.DefaultValue(type))) return false;
         return type != typeof(int) && type != typeof(long) && type != typeof(short);
     }
 }

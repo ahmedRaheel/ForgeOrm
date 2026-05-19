@@ -40,7 +40,7 @@ public partial class ForgeDb
     /// </summary>
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <returns>The result of the T operation.</returns>
-    public IReadOnlyList<T> GetByIds<T>(IReadOnlyCollection<int> ids) { if (ids.Count == 0) return []; var c = Provider.BuildGetByIds(_metadata.Resolve<T>(), ids); return Query<T>(c.CommandText, c.Parameters).ToList(); }
+    public IReadOnlyList<T> GetByIds<T>(IReadOnlyCollection<int> ids) { if (ids.Count == 0) return []; var c = Provider.BuildGetByIds(_metadata.Resolve<T>(), ids); return Query<T>(c.CommandText, c.Parameters); }
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -55,7 +55,7 @@ public partial class ForgeDb
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="c">The c value.</param>
     /// <returns>The result of the T operation.</returns>
-    public int Insert<T>(T entity) { var c = Provider.BuildInsert(_metadata.Resolve<T>(), entity!); return Execute(c.CommandText, c.Parameters); }
+    public int Insert<T>(T entity) => InsertCompiled(entity);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -63,7 +63,7 @@ public partial class ForgeDb
     /// <param name="entity">The entity value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task<int> InsertAsync<T>(T entity, CancellationToken cancellationToken = default) { var c = Provider.BuildInsert(_metadata.Resolve<T>(), entity!); return ExecuteAsync(c.CommandText, c.Parameters, cancellationToken: cancellationToken); }
+    public Task<int> InsertAsync<T>(T entity, CancellationToken cancellationToken = default) => InsertCompiledAsync(entity, cancellationToken);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -106,7 +106,7 @@ public partial class ForgeDb
         var count = Provider.BuildCount(request.Sql, request.Parameters);
         var total = ExecuteScalar<int>(count.CommandText, count.Parameters);
         var page = Provider.BuildPage(request);
-        var rows = Query<T>(page.CommandText, page.Parameters).ToList();
+        var rows = Query<T>(page.CommandText, page.Parameters);
         return new ForgePagedResult<T> { Items = rows, Page = request.Page, PageSize = request.PageSize, TotalRecords = total };
     }
 
@@ -326,5 +326,5 @@ public partial class ForgeDb
     /// </summary>
     /// <param name="sql">The sql value.</param>
     /// <returns>The result of the Analyze operation.</returns>
-    public ForgeQueryAnalysis Analyze(string sql) => _analyzer.Analyze(sql);
+    public  ForgeORM.Abstractions.ForgeQueryAnalysis Analyze(string sql) => _analyzer.Analyze(sql);
 }

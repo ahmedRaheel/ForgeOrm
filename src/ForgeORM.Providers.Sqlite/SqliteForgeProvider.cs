@@ -159,7 +159,7 @@ internal static class BulkFallback
     /// <returns>The result of the T operation.</returns>
     public static Task InsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken ct)
     {
-        var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead).ToList();
+        var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead && IsScalar(p.PropertyType)).ToList();
         var columns = string.Join(", ", props.Select(p => p.Name));
         var values = string.Join(", ", props.Select(p => "@" + p.Name));
         var sql = $"INSERT INTO {tableName} ({columns}) VALUES ({values})";
@@ -178,11 +178,27 @@ internal static class BulkFallback
     /// <returns>The result of the T operation.</returns>
     public static Task UpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken ct)
     {
-        var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead && !p.Name.Equals(keyColumn, StringComparison.OrdinalIgnoreCase)).ToList();
+        var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead && IsScalar(p.PropertyType) && !p.Name.Equals(keyColumn, StringComparison.OrdinalIgnoreCase)).ToList();
         var set = string.Join(", ", props.Select(p => p.Name + " = @" + p.Name));
         var sql = $"UPDATE {tableName} SET {set} WHERE {keyColumn} = @{keyColumn}";
         return ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
     }
+    private static bool IsScalar(Type type)
+    {
+        var actual = Nullable.GetUnderlyingType(type) ?? type;
+        return actual.IsPrimitive
+               || actual.IsEnum
+               || actual == typeof(string)
+               || actual == typeof(Guid)
+               || actual == typeof(decimal)
+               || actual == typeof(DateTime)
+               || actual == typeof(DateTimeOffset)
+               || actual == typeof(DateOnly)
+               || actual == typeof(TimeOnly)
+               || actual == typeof(TimeSpan)
+               || actual == typeof(byte[]);
+    }
+
 }
 
 
@@ -204,15 +220,55 @@ internal static class ForgeProviderAdo
         {
             await using var command = connection.CreateCommand();
             command.CommandText = sql;
-            foreach (var prop in typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead))
+            foreach (var prop in typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead && IsScalar(p.PropertyType)))
             {
                 var parameter = command.CreateParameter();
                 parameter.ParameterName = "@" + prop.Name;
-                parameter.Value = prop.GetValue(row) ?? DBNull.Value;
+                parameter.Value = NormalizeValue(ForgeProviderAccessors.Get(prop, row!), prop.PropertyType) ?? DBNull.Value;
                 command.Parameters.Add(parameter);
             }
             total += await command.ExecuteNonQueryAsync(cancellationToken);
         }
         return total;
     }
+    private static bool IsScalar(Type type)
+    {
+        var actual = Nullable.GetUnderlyingType(type) ?? type;
+        return actual.IsPrimitive
+               || actual.IsEnum
+               || actual == typeof(string)
+               || actual == typeof(Guid)
+               || actual == typeof(decimal)
+               || actual == typeof(DateTime)
+               || actual == typeof(DateTimeOffset)
+               || actual == typeof(DateOnly)
+               || actual == typeof(TimeOnly)
+               || actual == typeof(TimeSpan)
+               || actual == typeof(byte[]);
+    }
+
+    private static object? NormalizeValue(object? value, Type declaredType)
+    {
+        if (value is null)
+            return null;
+
+        var actual = Nullable.GetUnderlyingType(declaredType) ?? declaredType;
+
+        if (actual == typeof(DateTime))
+        {
+            var dateTime = (DateTime)value;
+            return dateTime == default || dateTime < new DateTime(1753, 1, 1)
+                ? DateTime.UtcNow
+                : dateTime;
+        }
+
+        if (actual == typeof(DateTimeOffset))
+        {
+            var dto = (DateTimeOffset)value;
+            return dto == default ? DateTimeOffset.UtcNow : dto;
+        }
+
+        return value;
+    }
+
 }

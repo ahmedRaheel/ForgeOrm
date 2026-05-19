@@ -66,3 +66,32 @@ public sealed class ForgeEnumStorageAttribute : Attribute
     /// <returns>The result of the ForgeEnumStorageAttribute operation.</returns>
     public ForgeEnumStorageAttribute(ForgeEnumStorage storage) => Storage = storage;
 }
+
+
+[AttributeUsage(AttributeTargets.Class)]
+public sealed class ForgeTemporalAttribute : Attribute
+{
+    public string? HistoryTable { get; }
+    public string PeriodStartColumn { get; }
+    public string PeriodEndColumn { get; }
+
+    public ForgeTemporalAttribute(
+        string? historyTable = null,
+        string periodStartColumn = "ValidFrom",
+        string periodEndColumn = "ValidTo")
+    {
+        HistoryTable = historyTable;
+        PeriodStartColumn = periodStartColumn;
+        PeriodEndColumn = periodEndColumn;
+    }
+}
+
+public enum ForgeTemporalMode
+{
+    None = 0,
+    All = 1,
+    AsOf = 2,
+    Between = 3,
+    FromTo = 4,
+    ContainedIn = 5
+}

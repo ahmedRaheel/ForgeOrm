@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 
 namespace ForgeORM.Core;
 
@@ -26,6 +26,22 @@ internal static class ForgeValueConverter
             return storage == ForgeEnumStorage.Number
                 ? Convert.ChangeType(value, Enum.GetUnderlyingType(type))
                 : value.ToString();
+        }
+
+        if (type == typeof(DateTime))
+        {
+            var dateTime = (DateTime)value;
+            return dateTime == default || dateTime < new DateTime(1753, 1, 1)
+                ? DateTime.UtcNow
+                : dateTime;
+        }
+
+        if (type == typeof(DateTimeOffset))
+        {
+            var dateTimeOffset = (DateTimeOffset)value;
+            return dateTimeOffset == default
+                ? DateTimeOffset.UtcNow
+                : dateTimeOffset;
         }
 
         if (type == typeof(DateOnly))
@@ -65,12 +81,7 @@ internal static class ForgeValueConverter
 
         if (actualType.IsEnum)
         {
-            if (value is string enumText)
-                return Enum.Parse(actualType, enumText, ignoreCase: true);
-
-            var enumUnderlying = Enum.GetUnderlyingType(actualType);
-            var enumValue = Convert.ChangeType(value, enumUnderlying);
-            return Enum.ToObject(actualType, enumValue!);
+            return ConvertEnum(value, actualType, targetType);
         }
 
         if (actualType == typeof(string))
@@ -152,11 +163,83 @@ internal static class ForgeValueConverter
             $"ForgeORM cannot convert database value of type '{value.GetType().FullName}' to '{actualType.FullName}'.");
     }
    
+
+    private static object? ConvertEnum(object value, Type enumType, Type targetType)
+    {
+        var nullable = Nullable.GetUnderlyingType(targetType) is not null;
+        var text = value.ToString()?.Trim();
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return nullable ? null : ForgeRuntimeAccessorCache.DefaultValue(enumType);
+        }
+
+        if (Enum.TryParse(enumType, text, ignoreCase: true, out var parsedByName))
+        {
+            return parsedByName;
+        }
+
+        // Support numeric enum storage even if the value came from a string column.
+        var enumUnderlying = Enum.GetUnderlyingType(enumType);
+
+        try
+        {
+            if (IsNumericText(text))
+            {
+                var numeric = Convert.ChangeType(text, enumUnderlying);
+                return Enum.ToObject(enumType, numeric!);
+            }
+
+            if (value is IConvertible && value is not string)
+            {
+                var numeric = Convert.ChangeType(value, enumUnderlying);
+                return Enum.ToObject(enumType, numeric!);
+            }
+        }
+        catch
+        {
+            // fall through to fallback below
+        }
+
+        // Enterprise-friendly fallback:
+        // If DB contains a value not currently present in enum, avoid crashing materialization.
+        // This keeps search/report endpoints alive when seed data or legacy DB values drift.
+        var names = Enum.GetNames(enumType);
+
+        if (names.Any(x => x.Equals("Unknown", StringComparison.OrdinalIgnoreCase)))
+        {
+            return Enum.Parse(enumType, "Unknown", ignoreCase: true);
+        }
+
+        if (names.Any(x => x.Equals("None", StringComparison.OrdinalIgnoreCase)))
+        {
+            return Enum.Parse(enumType, "None", ignoreCase: true);
+        }
+
+        if (names.Any(x => x.Equals("Default", StringComparison.OrdinalIgnoreCase)))
+        {
+            return Enum.Parse(enumType, "Default", ignoreCase: true);
+        }
+
+        return ForgeRuntimeAccessorCache.DefaultValue(enumType);
+    }
+
+    private static bool IsNumericText(string value)
+    {
+        return long.TryParse(
+            value,
+            System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out _);
+    }
+
     private static ForgeEnumStorage GetEnumStorage(Type enumType)
     {
         var attr = enumType.GetCustomAttribute<ForgeEnumStorageAttribute>();
 
-        return attr?.Storage ?? ForgeEnumStorage.String;
+        // ForgeORM stores enums as their numeric underlying type by default.
+        // This is faster and avoids string parsing during MSIL/DataReader materialization.
+        return attr?.Storage ?? ForgeEnumStorage.Number;
     }
 
     private static object? GetDefault(Type type)
@@ -166,9 +249,7 @@ internal static class ForgeValueConverter
         if (nullable is not null)
             return null;
 
-        return type.IsValueType
-            ? Activator.CreateInstance(type)
-            : null;
+        return ForgeRuntimeAccessorCache.DefaultValue(type);
     }
 }
 

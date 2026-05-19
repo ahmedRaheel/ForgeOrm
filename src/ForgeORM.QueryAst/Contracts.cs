@@ -1,3 +1,4 @@
+using System;
 using ForgeORM.Abstractions;
 using System.Linq.Expressions;
 
@@ -39,6 +40,11 @@ public interface IForgeAstSelectBuilder<T>
     /// <param name="tableName">The tableName value.</param>
     /// <returns>The result of the From operation.</returns>
     IForgeAstSelectBuilder<T> From(string? tableName = null);
+
+    IForgeAstSelectBuilder<T> TemporalAll();
+    IForgeAstSelectBuilder<T> TemporalAsOf(DateTime asOfUtc);
+    IForgeAstSelectBuilder<T> TemporalBetween(DateTime fromUtc, DateTime toUtc);
+    IForgeAstSelectBuilder<T> TemporalContainedIn(DateTime fromUtc, DateTime toUtc);
     /// <summary>
     /// Defines the As operation.
     /// </summary>

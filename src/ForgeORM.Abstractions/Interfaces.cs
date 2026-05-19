@@ -1,3 +1,4 @@
+using System;
 using System.Data.Common;
 using System.Linq.Expressions;
 
@@ -304,7 +305,7 @@ public interface IForgeRawSql
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the T operation.</returns>
-    IEnumerable<T> Query<T>(string sql, object? parameters = null, int? timeoutSeconds = null);
+    IReadOnlyList<T> Query<T>(string sql, object? parameters = null, int? timeoutSeconds = null);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -796,7 +797,7 @@ public interface IForgeQueryableFactory
     IForgeQuery<T> Sql<T>(string sql, object? parameters = null);
 }
 
-public interface IForgeQuery<T>
+public interface IForgeQuery<T> : IForgeExecutableQuery
 /// <summary>
 /// Defines the Where operation.
 /// </summary>
@@ -874,6 +875,20 @@ public interface IForgeQuery<T>
     /// <param name="count">The count value.</param>
     /// <returns>The result of the Take operation.</returns>
     IForgeQuery<T> Take(int count);
+
+    IForgeQuery<T> TemporalAll();
+    IForgeQuery<T> TemporalAsOf(DateTime asOfUtc);
+    IForgeQuery<T> TemporalBetween(DateTime fromUtc, DateTime toUtc);
+    IForgeQuery<T> TemporalContainedIn(DateTime fromUtc, DateTime toUtc);
+
+    /// <summary>
+    /// Includes a reference or collection navigation property. Included navigations are loaded by split query only.
+    /// </summary>
+    /// <typeparam name="TProperty">The navigation property type.</typeparam>
+    /// <param name="navigation">Navigation selector, for example x => x.Items or x => x.Customer.</param>
+    /// <returns>The current query.</returns>
+    IForgeQuery<T> Include<TProperty>(Expression<Func<T, TProperty>> navigation);
+
     /// <summary>
     /// Defines the Any operation.
     /// </summary>
@@ -896,6 +911,12 @@ public interface IForgeQuery<T>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ToListAsync operation.</returns>
     Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Streams rows with DbDataReader sequential access and MSIL materialization.</summary>
+    IAsyncEnumerable<T> StreamAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Processes rows in fixed-size batches without requiring callers to load the whole result set.</summary>
+    Task ProcessInBatchesAsync(int batchSize, Func<IReadOnlyList<T>, Task> processor, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the FirstOrDefault operation.
     /// </summary>
@@ -918,6 +939,48 @@ public interface IForgeQuery<T>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the CountAsync operation.</returns>
     Task<int> CountAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Executes SUM for the selected numeric column.
+    /// </summary>
+    /// <param name="selector">Column selector used for SUM.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The aggregate result.</returns>
+    Task<decimal> SumAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Executes AVG for the selected numeric column.
+    /// </summary>
+    /// <param name="selector">Column selector used for AVG.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The aggregate result.</returns>
+    Task<decimal> AverageAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Executes MIN for the selected numeric column.
+    /// </summary>
+    /// <param name="selector">Column selector used for MIN.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The aggregate result.</returns>
+    Task<decimal> MinAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Executes MAX for the selected numeric column.
+    /// </summary>
+    /// <param name="selector">Column selector used for MAX.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The aggregate result.</returns>
+    Task<decimal> MaxAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Executes expression-based paging using the current query filters and ordering.
+    /// When no ordering exists, SQL Server rendering falls back to ORDER BY 1.
+    /// </summary>
+    /// <param name="page">One-based page number.</param>
+    /// <param name="pageSize">Page size.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The paged result.</returns>
+    Task<ForgePagedResult<T>> PageAsync(int page, int pageSize, CancellationToken cancellationToken = default);
 }
 
 public interface IForgeSplitQueryFactory

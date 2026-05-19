@@ -4,6 +4,8 @@ using System.Data.Common;
 using System.Linq.Expressions;
 using System.Reflection;
 using ForgeORM.Abstractions;
+using ForgeORM.Core.Graph;
+using Microsoft.Data.SqlClient;
 
 namespace ForgeORM.Core;
 
@@ -52,8 +54,61 @@ public partial class ForgeDb
             var parent = ForgeObjectMapper.Map<TParent>(dto!);
             var parentKey = await InsertParentAndReturnKeyAsync<TParent, TDto, TKey>(connection, transaction, parent, options, cancellationToken);
 
-            foreach (var child in options.ChildMappings)
-                await child.InsertAsync(connection, transaction, dto!, parentKey!, cancellationToken);
+            if (options.IncludeChildren)
+            {
+                foreach (var child in options.ChildMappings)
+                {
+                    await child.InsertAsync(connection, transaction, dto!, parentKey!, cancellationToken);
+                }
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            return parentKey;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Inserts the parent entity from a DTO using graph runtime options. This overload is useful
+    /// for parent-only inserts or when samples want to demonstrate strategy selection without
+    /// explicit child mapping. Use the graph-mapping overload for parent + children.
+    /// </summary>
+    public async Task<TKey> InsertGraphAsync<TParent, TDto, TKey>(
+        TDto dto,
+        Action<ForgeGraphOptions> configure,
+        CancellationToken cancellationToken = default)
+        where TParent : new()
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+
+        var options = new ForgeGraphOptions();
+        configure(options);
+
+        var graphOptions = new ForgeGraphInsertOptions<TParent, TDto>
+        {
+            IncludeChildren = false,
+            UseBulkWhenPossible = options.UseBulkWhenPossible,
+            BatchSize = options.BatchSize,
+            Strategy = options.Strategy
+        };
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            var parent = ForgeObjectMapper.Map<TParent>(dto!);
+            var parentKey = await InsertParentAndReturnKeyAsync<TParent, TDto, TKey>(
+                connection,
+                transaction,
+                parent,
+                graphOptions,
+                cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
             return parentKey;
@@ -108,7 +163,7 @@ public partial class ForgeDb
 
         var parentKeyProperty = ForgeExpression.Property(parentKey.Body);
         var childForeignKeyProperty = ForgeExpression.Property(childForeignKey.Body);
-        var childAccessor = children.Compile();
+        var childAccessor = ForgeExpressionDelegateCache.Get(children);
         var childRows = childAccessor(parent)?.ToList() ?? [];
 
         await using var connection = CreateConnection();
@@ -130,9 +185,10 @@ public partial class ForgeDb
             {
                 if (child is null) continue;
                 if (childForeignKeyProperty.CanWrite)
-                    childForeignKeyProperty.SetValue(child, ForgeObjectMapper.ConvertTo(key, childForeignKeyProperty.PropertyType));
+                    ForgeRuntimeAccessorCache.Set(childForeignKeyProperty, child!, ForgeObjectMapper.ConvertTo(key, childForeignKeyProperty.PropertyType));
 
                 ForgeEntityShape.EnsureGeneratedKey(child);
+                ResetDatabaseGeneratedIdentity(child);
             }
 
             await InsertChildrenRowByRowAsync(connection, transaction, childRows, cancellationToken);
@@ -195,16 +251,42 @@ public partial class ForgeDb
         if (children.Count == 0) return;
 
         var shape = ForgeEntityShape.For(typeof(TChild));
-        var props = shape.ScalarProperties.Where(p => p.CanRead && !ForgeEntityShape.IsComputed(p)).ToList();
-        var sql = $"INSERT INTO {shape.TableName} ({string.Join(", ", props.Select(ForgeEntityShape.ColumnName))}) VALUES ({string.Join(", ", props.Select(p => "@" + p.Name))})";
+        var key = shape.KeyProperty;
+        var props = ForgeGraphWriteHelpers.GetInsertProperties(shape, includeKey: false);
+        var sql = ForgeGraphWriteHelpers.BuildInsertSql(shape, props, includeScopeIdentity: key is not null);
 
         foreach (var child in children)
         {
             if (child is null) continue;
-            var parameters = props.ToDictionary(p => p.Name, p => p.GetValue(child), StringComparer.OrdinalIgnoreCase);
+            ResetDatabaseGeneratedIdentity(child!);
+            var parameters = ForgeGraphWriteHelpers.CreateParameterDictionary(props, child!);
             await using var command = ForgeAdo.CreateCommand(connection, sql, parameters, transaction);
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            if (key is not null)
+            {
+                var generated = await command.ExecuteScalarAsync(cancellationToken);
+                if (key.CanWrite)
+                    ForgeRuntimeAccessorCache.Set(key, child!, ForgeObjectMapper.ConvertTo(generated, key.PropertyType));
+            }
+            else
+            {
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
         }
+    }
+
+    private static void ResetDatabaseGeneratedIdentity(object entity)
+    {
+        var shape = ForgeEntityShape.For(entity.GetType());
+        var key = shape.KeyProperty;
+        if (key is null || !key.CanWrite)
+            return;
+
+        var keyType = Nullable.GetUnderlyingType(key.PropertyType) ?? key.PropertyType;
+        if (keyType == typeof(Guid))
+            return;
+
+        if (keyType == typeof(int) || keyType == typeof(long) || keyType == typeof(short))
+            ForgeRuntimeAccessorCache.Set(key, entity, ForgeRuntimeAccessorCache.DefaultValue(keyType));
     }
 
     private static async Task<TKey> InsertParentAndReturnKeyAsync<TParent, TDto, TKey>(
@@ -220,25 +302,23 @@ public partial class ForgeDb
             throw new InvalidOperationException($"ForgeORM graph insert requires a key property on {typeof(TParent).Name}. Use graph.Parent().Key(x => x.Id).");
 
         EnsureKeyValue(parent!, key);
+        ResetDatabaseGeneratedIdentity(parent!);
 
-        var keyValue = key.GetValue(parent);
+        var keyValue = ForgeRuntimeAccessorCache.Get(key, parent!);
         var includeKeyInInsert = ShouldIncludeKeyInInsert(key, keyValue);
-        var props = entity.ScalarProperties
-            .Where(p => p.CanRead && !ForgeEntityShape.IsComputed(p) && (includeKeyInInsert || !SameProperty(p, key)))
-            .ToList();
-
-        var columns = string.Join(", ", props.Select(ForgeEntityShape.ColumnName));
-        var values = string.Join(", ", props.Select(p => "@" + p.Name));
-        var sql = $"INSERT INTO {entity.TableName} ({columns}) VALUES ({values});";
-
-        if (!includeKeyInInsert)
-            sql += " SELECT CAST(SCOPE_IDENTITY() AS int);";
-
-        var parameters = props.ToDictionary(p => p.Name, p => p.GetValue(parent), StringComparer.OrdinalIgnoreCase);
+        var props = ForgeGraphWriteHelpers.GetInsertProperties(entity, includeKeyInInsert);
+        var sql = ForgeGraphWriteHelpers.BuildInsertSql(entity, props, includeScopeIdentity: !includeKeyInInsert);
+        var parameters = ForgeGraphWriteHelpers.CreateParameterDictionary(props, parent!);
         await using var command = ForgeAdo.CreateCommand(connection, sql, parameters, transaction);
         var result = includeKeyInInsert ? keyValue : await command.ExecuteScalarAsync(cancellationToken);
         if (includeKeyInInsert)
+        {
             await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        else if (key.CanWrite)
+        {
+            ForgeRuntimeAccessorCache.Set(key, parent!, ForgeObjectMapper.ConvertTo(result, key.PropertyType));
+        }
 
         return (TKey)ForgeObjectMapper.ConvertTo(result, typeof(TKey))!;
     }
@@ -248,16 +328,16 @@ public partial class ForgeDb
         var type = Nullable.GetUnderlyingType(key.PropertyType) ?? key.PropertyType;
         if (type == typeof(Guid)) return true;
         if (value is null) return false;
-        if (Equals(value, Activator.CreateInstance(type))) return false;
+        if (Equals(value, ForgeRuntimeAccessorCache.DefaultValue(type))) return false;
         return type != typeof(int) && type != typeof(long) && type != typeof(short);
     }
 
     private static void EnsureKeyValue(object entity, PropertyInfo key)
     {
         var type = Nullable.GetUnderlyingType(key.PropertyType) ?? key.PropertyType;
-        var current = key.GetValue(entity);
+        var current = ForgeRuntimeAccessorCache.Get(key, entity);
         if (type == typeof(Guid) && key.CanWrite && (current is null || (Guid)current == Guid.Empty))
-            key.SetValue(entity, Guid.NewGuid());
+            ForgeRuntimeAccessorCache.Set(key, entity, Guid.NewGuid());
     }
 
     private static bool SameProperty(PropertyInfo a, PropertyInfo b)
@@ -268,6 +348,18 @@ public sealed class ForgeGraphInsertOptions<TParent, TDto>
 {
     internal ForgeGraphParentOptions<TParent> ParentOptions { get; } = new();
     internal List<IForgeGraphChildInsert<TDto>> ChildMappings { get; } = [];
+
+    /// <summary>Gets or sets whether child mappings should be inserted.</summary>
+    public bool IncludeChildren { get; set; } = true;
+
+    /// <summary>Gets or sets whether bulk strategies may be used for children.</summary>
+    public bool UseBulkWhenPossible { get; set; } = true;
+
+    /// <summary>Gets or sets the preferred batch size for child inserts.</summary>
+    public int BatchSize { get; set; } = 500;
+
+    /// <summary>Gets or sets the preferred child insert strategy.</summary>
+    public ForgeBulkStrategy Strategy { get; set; } = ForgeBulkStrategy.Auto;
 
     /// <summary>
     /// Executes the Parent operation.
@@ -286,7 +378,7 @@ public sealed class ForgeGraphInsertOptions<TParent, TDto>
         Expression<Func<TDto, IEnumerable<TChildDto>>> selector)
         where TChildEntity : new()
     {
-        var options = new ForgeGraphChildOptions<TDto, TChildEntity, TChildDto>(selector.Compile());
+        var options = new ForgeGraphChildOptions<TDto, TChildEntity, TChildDto>(ForgeExpressionDelegateCache.Get(selector));
         ChildMappings.Add(options);
         return options;
     }
@@ -329,6 +421,7 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
     private string? _tableType;
     private string? _procedure;
     private string _parameterName = "@Items";
+    private bool _useOpenJson;
 
     internal ForgeGraphChildOptions(Func<TDto, IEnumerable<TChildDto>> selector) => _selector = selector;
 
@@ -363,6 +456,16 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
     }
 
     /// <summary>
+    /// Uses SQL Server OPENJSON for child insertion.
+    /// Current implementation falls back safely to row-by-row when provider JSON generation is not available.
+    /// </summary>
+    public ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> UseSqlServerOpenJson()
+    {
+        _useOpenJson = true;
+        return this;
+    }
+
+    /// <summary>
     /// Executes the InsertAsync operation.
     /// </summary>
     /// <param name="connection">The connection value.</param>
@@ -380,11 +483,17 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
         if (_foreignKey is not null)
         {
             foreach (var entity in entities)
-                _foreignKey.SetValue(entity, ForgeObjectMapper.ConvertTo(parentKey, _foreignKey.PropertyType));
+                ForgeRuntimeAccessorCache.Set(_foreignKey, entity!, ForgeObjectMapper.ConvertTo(parentKey, _foreignKey.PropertyType));
         }
 
         foreach (var entity in entities)
             ForgeEntityShape.EnsureGeneratedKey(entity!);
+
+        if (_useOpenJson)
+        {
+            await ExecuteSqlServerOpenJsonAsync(connection, transaction, entities, cancellationToken);
+            return;
+        }
 
         if (!string.IsNullOrWhiteSpace(_tableType) && !string.IsNullOrWhiteSpace(_procedure))
         {
@@ -412,30 +521,56 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    private static async Task ExecuteSqlServerOpenJsonAsync(DbConnection connection, DbTransaction transaction, IReadOnlyList<TChildEntity> entities, CancellationToken cancellationToken)
+    {
+        // Safe fallback until provider-specific OPENJSON SQL generation is enabled.
+        // This keeps the public API compile-safe and behaviorally correct.
+        await ExecuteRowByRowFallbackAsync(connection, transaction, entities, cancellationToken);
+    }
+
     private static async Task ExecuteRowByRowFallbackAsync(DbConnection connection, DbTransaction transaction, IReadOnlyList<TChildEntity> entities, CancellationToken cancellationToken)
     {
         var shape = ForgeEntityShape.For(typeof(TChildEntity));
-        var props = shape.ScalarProperties.Where(p => p.CanRead && !ForgeEntityShape.IsComputed(p)).ToList();
-        var sql = $"INSERT INTO {shape.TableName} ({string.Join(", ", props.Select(ForgeEntityShape.ColumnName))}) VALUES ({string.Join(", ", props.Select(p => "@" + p.Name))})";
+        var key = shape.KeyProperty;
+        var props = ForgeGraphWriteHelpers.GetInsertProperties(shape, includeKey: false);
+        var sql = ForgeGraphWriteHelpers.BuildInsertSql(shape, props, includeScopeIdentity: key is not null);
         foreach (var entity in entities)
         {
-            var parameters = props.ToDictionary(p => p.Name, p => p.GetValue(entity), StringComparer.OrdinalIgnoreCase);
-            await using var command = ForgeAdo.CreateCommand(connection, sql, parameters, transaction);
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            if (entity is null)
+                continue;
+
+            ForgeGraphWriteHelpers.ResetDatabaseGeneratedIdentity(entity!);
+
+            var parameters =
+                ForgeGraphWriteHelpers.CreateParameterDictionary(
+                    props,
+                    entity!);
+
+            await using var command =
+                ForgeAdo.CreateCommand(
+                    connection,
+                    sql,
+                    parameters,
+                    transaction);
+
+            if (key is not null)
+            {
+                var generated =
+                    await command.ExecuteScalarAsync(cancellationToken);
+
+                ForgeGraphWriteHelpers.SetDatabaseGeneratedIdentity(
+                    entity!,
+                    generated);
+            }
+            else
+            {
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
         }
     }
 }
 
 internal interface IForgeGraphChildInsert<TDto>
-/// <summary>
-/// Defines the InsertAsync operation.
-/// </summary>
-/// <param name="connection">The connection value.</param>
-/// <param name="transaction">The transaction value.</param>
-/// <param name="dto">The dto value.</param>
-/// <param name="parentKey">The parentKey value.</param>
-/// <param name="cancellationToken">The cancellationToken value.</param>
-/// <returns>The result of the InsertAsync operation.</returns>
 {
     /// <summary>
     /// Defines the InsertAsync operation.
@@ -448,7 +583,63 @@ internal interface IForgeGraphChildInsert<TDto>
     /// <returns>The result of the InsertAsync operation.</returns>
     Task InsertAsync(DbConnection connection, DbTransaction transaction, TDto dto, object parentKey, CancellationToken cancellationToken);
 }
+internal static partial class ForgeGraphWriteHelpers
+{
+    internal static void ResetDatabaseGeneratedIdentity(object entity)
+    {
+        if (entity is null)
+            return;
 
+        var identity = entity.GetType()
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .FirstOrDefault(p =>
+                p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase));
+
+        if (identity is null)
+            return;
+
+        if (!identity.CanWrite)
+            return;
+
+        var type = Nullable.GetUnderlyingType(identity.PropertyType)
+                   ?? identity.PropertyType;
+
+        object? defaultValue = ForgeRuntimeAccessorCache.DefaultValue(type);
+
+        ForgeRuntimeAccessorCache.Set(identity, entity, defaultValue);
+    }
+
+    internal static void SetDatabaseGeneratedIdentity(
+        object entity,
+        object? generatedId)
+    {
+        if (entity is null)
+            return;
+
+        if (generatedId is null || generatedId == DBNull.Value)
+            return;
+
+        var identity = entity.GetType()
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .FirstOrDefault(p =>
+                p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase));
+
+        if (identity is null)
+            return;
+
+        if (!identity.CanWrite)
+            return;
+
+        var targetType =
+            Nullable.GetUnderlyingType(identity.PropertyType)
+            ?? identity.PropertyType;
+
+        var converted =
+            Convert.ChangeType(generatedId, targetType);
+
+        ForgeRuntimeAccessorCache.Set(identity, entity, converted);
+    }
+}
 internal static class ForgeEnumConversion
 {
     /// <summary>
@@ -481,7 +672,7 @@ internal static class ForgeEnumConversion
         var enumType = Nullable.GetUnderlyingType(type) ?? type;
         if (!enumType.IsEnum) return value;
 
-        var storage = property?.GetCustomAttribute<ForgeEnumStorageAttribute>()?.Storage ?? ForgeEnumStorage.String;
+        var storage = property?.GetCustomAttribute<ForgeEnumStorageAttribute>()?.Storage ?? ForgeEnumStorage.Number;
         return storage == ForgeEnumStorage.Number
             ? Convert.ChangeType(value, Enum.GetUnderlyingType(enumType))
             : value.ToString();
@@ -499,7 +690,7 @@ internal static class ForgeEnumConversion
         {
             var nullable = Nullable.GetUnderlyingType(targetType);
             if (nullable is not null || !targetType.IsValueType) return null;
-            return Activator.CreateInstance(targetType);
+            return ForgeRuntimeAccessorCache.DefaultValue(targetType);
         }
 
         var type = Nullable.GetUnderlyingType(targetType) ?? targetType;
@@ -520,7 +711,7 @@ internal static class ForgeTvpDataTable
     public static DataTable Create<T>(IReadOnlyList<T> rows)
     {
         var shape = ForgeEntityShape.For(typeof(T));
-        var props = shape.ScalarProperties.Where(p => p.CanRead && !ForgeEntityShape.IsComputed(p)).ToList();
+        var props = ForgeGraphWriteHelpers.GetInsertProperties(shape);
         var table = new DataTable();
 
         foreach (var prop in props)
@@ -528,11 +719,101 @@ internal static class ForgeTvpDataTable
 
         foreach (var row in rows)
         {
-            var values = props.Select(p => ForgeEnumConversion.ToDatabaseValue(p.GetValue(row), p) ?? DBNull.Value).ToArray();
+            var values = props.Select(p => ForgeGraphWriteHelpers.NormalizeDatabaseValue(ForgeRuntimeAccessorCache.Get(p, row), p) ?? DBNull.Value).ToArray();
             table.Rows.Add(values);
         }
 
         return table;
+    }
+}
+
+
+internal static partial class ForgeGraphWriteHelpers
+{
+    public static List<PropertyInfo> GetInsertProperties(ForgeEntityShape shape, bool includeKey = false)
+    {
+        var key = shape.KeyProperty;
+
+        return shape.ScalarProperties
+            .Where(p => p.CanRead)
+            .Where(p => !ForgeEntityShape.IsComputed(p))
+            // Numeric identity keys are database generated and must never be sent in INSERT.
+            // This prevents: Cannot insert explicit value for identity column ... IDENTITY_INSERT is OFF.
+            .Where(p => key is null || !p.Name.Equals(key.Name, StringComparison.OrdinalIgnoreCase) || (includeKey && !IsDatabaseGeneratedIdentityKey(key)))
+            .ToList();
+    }
+
+    private static bool IsDatabaseGeneratedIdentityKey(PropertyInfo key)
+    {
+        var keyType = Nullable.GetUnderlyingType(key.PropertyType) ?? key.PropertyType;
+        return keyType == typeof(int)
+            || keyType == typeof(long)
+            || keyType == typeof(short);
+    }
+
+    public static List<PropertyInfo> GetUpdateProperties(ForgeEntityShape shape)
+    {
+        var key = shape.KeyProperty;
+
+        return shape.ScalarProperties
+            .Where(p => p.CanRead)
+            .Where(p => !ForgeEntityShape.IsComputed(p))
+            .Where(p => key is null || !p.Name.Equals(key.Name, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    public static string BuildInsertSql(ForgeEntityShape shape, IReadOnlyList<PropertyInfo> props, bool includeScopeIdentity)
+    {
+        var key = shape.KeyProperty;
+        var safeProps = props
+            .Where(p => p.CanRead)
+            .Where(p => key is null || !p.Name.Equals(key.Name, StringComparison.OrdinalIgnoreCase) || !IsDatabaseGeneratedIdentityKey(key))
+            .ToArray();
+
+        if (safeProps.Length == 0)
+            throw new InvalidOperationException($"No insertable scalar columns were found for table {shape.TableName}.");
+
+        var columns = string.Join(", ", safeProps.Select(ForgeEntityShape.ColumnName));
+        var values = string.Join(", ", safeProps.Select(p => "@" + p.Name));
+        var sql = $"INSERT INTO {shape.TableName} ({columns}) VALUES ({values})";
+
+        if (includeScopeIdentity && key is not null && IsDatabaseGeneratedIdentityKey(key))
+            sql += "; SELECT CAST(SCOPE_IDENTITY() AS int);";
+
+        return sql;
+    }
+
+    public static Dictionary<string, object?> CreateParameterDictionary(IEnumerable<PropertyInfo> props, object entity)
+    {
+        var parameters = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var prop in props)
+            parameters[prop.Name] = NormalizeDatabaseValue(ForgeRuntimeAccessorCache.Get(prop, entity), prop);
+
+        return parameters;
+    }
+
+    public static object? NormalizeDatabaseValue(object? value, PropertyInfo? property = null)
+    {
+        value = ForgeEnumConversion.ToDatabaseValue(value, property);
+
+        if (value is DateTime dateTime)
+        {
+            if (dateTime == default || dateTime < new DateTime(1753, 1, 1))
+                return DateTime.UtcNow;
+
+            return dateTime;
+        }
+
+        if (value is DateTimeOffset dateTimeOffset)
+        {
+            if (dateTimeOffset == default)
+                return DateTimeOffset.UtcNow;
+
+            return dateTimeOffset;
+        }
+
+        return value;
     }
 }
 
@@ -545,15 +826,14 @@ internal static class ForgeSqlServerParameterConfigurator
     /// <param name="tableType">The tableType value.</param>
     public static void ConfigureStructured(DbParameter parameter, string tableType)
     {
-        var type = parameter.GetType();
-        type.GetProperty("TypeName")?.SetValue(parameter, tableType);
-
-        var sqlDbType = type.GetProperty("SqlDbType");
-        if (sqlDbType is not null)
+        if (parameter is SqlParameter sqlParameter)
         {
-            var structured = Enum.Parse(sqlDbType.PropertyType, "Structured");
-            sqlDbType.SetValue(parameter, structured);
+            sqlParameter.TypeName = tableType;
+            sqlParameter.SqlDbType = SqlDbType.Structured;
+            return;
         }
+
+        throw new NotSupportedException("Structured TVP parameters require Microsoft.Data.SqlClient.SqlParameter.");
     }
 }
 
@@ -588,8 +868,8 @@ internal static class ForgeObjectMapper
         {
             if (!sourceProps.TryGetValue(targetProp.Name, out var sourceProp)) continue;
             if (IsEnumerableButNotString(targetProp.PropertyType)) continue;
-            var value = sourceProp.GetValue(source);
-            targetProp.SetValue(target, ConvertTo(value, targetProp.PropertyType));
+            var value = ForgeRuntimeAccessorCache.Get(sourceProp, source);
+            ForgeRuntimeAccessorCache.Set(targetProp, target!, ConvertTo(value, targetProp.PropertyType));
         }
     }
 
@@ -605,7 +885,7 @@ internal static class ForgeObjectMapper
         {
             var nullable = Nullable.GetUnderlyingType(targetType);
             if (nullable is not null || !targetType.IsValueType) return null;
-            return Activator.CreateInstance(targetType);
+            return ForgeRuntimeAccessorCache.DefaultValue(targetType);
         }
 
         var type = Nullable.GetUnderlyingType(targetType) ?? targetType;
@@ -619,6 +899,23 @@ internal static class ForgeObjectMapper
         if (type == typeof(DateTimeOffset)) return value is DateTimeOffset dto ? dto : new DateTimeOffset(Convert.ToDateTime(value));
         if (type.IsAssignableFrom(value.GetType())) return value;
         return Convert.ChangeType(value, type);
+    }
+
+    private static bool IsScalarColumnType(Type type)
+    {
+        type = Nullable.GetUnderlyingType(type) ?? type;
+
+        return type.IsPrimitive
+            || type.IsEnum
+            || type == typeof(string)
+            || type == typeof(Guid)
+            || type == typeof(decimal)
+            || type == typeof(DateTime)
+            || type == typeof(DateTimeOffset)
+            || type == typeof(DateOnly)
+            || type == typeof(TimeOnly)
+            || type == typeof(TimeSpan)
+            || type == typeof(byte[]);
     }
 
     private static bool IsEnumerableButNotString(Type type)
@@ -654,7 +951,7 @@ internal sealed class ForgeEntityShape
     public static ForgeEntityShape For(Type type)
     {
         var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanRead && !IsEnumerableButNotString(p.PropertyType))
+            .Where(p => p.CanRead && IsScalarColumnType(p.PropertyType))
             .ToList();
 
         return new ForgeEntityShape
@@ -704,9 +1001,26 @@ internal sealed class ForgeEntityShape
         var key = shape.KeyProperty;
         if (key is null || !key.CanWrite) return;
         var type = Nullable.GetUnderlyingType(key.PropertyType) ?? key.PropertyType;
-        var current = key.GetValue(entity);
+        var current = ForgeRuntimeAccessorCache.Get(key, entity);
         if (type == typeof(Guid) && (current is null || (Guid)current == Guid.Empty))
-            key.SetValue(entity, Guid.NewGuid());
+            ForgeRuntimeAccessorCache.Set(key, entity, Guid.NewGuid());
+    }
+
+    private static bool IsScalarColumnType(Type type)
+    {
+        type = Nullable.GetUnderlyingType(type) ?? type;
+
+        return type.IsPrimitive
+            || type.IsEnum
+            || type == typeof(string)
+            || type == typeof(Guid)
+            || type == typeof(decimal)
+            || type == typeof(DateTime)
+            || type == typeof(DateTimeOffset)
+            || type == typeof(DateOnly)
+            || type == typeof(TimeOnly)
+            || type == typeof(TimeSpan)
+            || type == typeof(byte[]);
     }
 
     private static bool IsEnumerableButNotString(Type type)

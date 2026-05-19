@@ -46,11 +46,11 @@ public partial class ForgeDb : IForgeDb
     /// <param name="parameters">The parameters value.</param>
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the T operation.</returns>
-    public IEnumerable<T> Query<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
+    public IReadOnlyList<T> Query<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
         using var c = CreateConnection();
         c.Open();
-        return ForgeAdo.Query<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds).ToList();
+        return ForgeAdo.Query<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds);
     }
 
     /// <summary>
@@ -78,7 +78,10 @@ public partial class ForgeDb : IForgeDb
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the T operation.</returns>
     public T QueryFirst<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
-        => Query<T>(sql, parameters, timeoutSeconds).First();
+    {
+        var item = QueryFirstOrDefault<T>(sql, parameters, timeoutSeconds);
+        return item is not null ? item : throw new InvalidOperationException("Sequence contains no elements.");
+    }
 
     /// <summary>
     /// Executes the T operation.
@@ -90,7 +93,10 @@ public partial class ForgeDb : IForgeDb
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
     public async Task<T> QueryFirstAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-        => (await QueryAsync<T>(sql, parameters, timeoutSeconds, cancellationToken)).First();
+    {
+        var item = await QueryFirstOrDefaultAsync<T>(sql, parameters, timeoutSeconds, cancellationToken);
+        return item is not null ? item : throw new InvalidOperationException("Sequence contains no elements.");
+    }
 
     /// <summary>
     /// Executes the T operation.
@@ -101,7 +107,13 @@ public partial class ForgeDb : IForgeDb
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the T operation.</returns>
     public T? QueryFirstOrDefault<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
-        => Query<T>(sql, parameters, timeoutSeconds).FirstOrDefault();
+    {
+        using var c = CreateConnection();
+        c.Open();
+        return ForgeAdo.QueryFirstOrDefaultAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds)
+            .GetAwaiter()
+            .GetResult();
+    }
 
     /// <summary>
     /// Executes the T operation.
@@ -113,7 +125,11 @@ public partial class ForgeDb : IForgeDb
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
     public async Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-        => (await QueryAsync<T>(sql, parameters, timeoutSeconds, cancellationToken)).FirstOrDefault();
+    {
+        await using var c = CreateConnection();
+        await c.OpenAsync(cancellationToken);
+        return await ForgeAdo.QueryFirstOrDefaultAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+    }
 
     /// <summary>
     /// Executes the T operation.
@@ -124,7 +140,10 @@ public partial class ForgeDb : IForgeDb
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the T operation.</returns>
     public T QuerySingle<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
-        => Query<T>(sql, parameters, timeoutSeconds).Single();
+    {
+        var item = QuerySingleOrDefault<T>(sql, parameters, timeoutSeconds);
+        return item is not null ? item : throw new InvalidOperationException("Sequence contains no elements.");
+    }
 
     /// <summary>
     /// Executes the T operation.
@@ -136,7 +155,10 @@ public partial class ForgeDb : IForgeDb
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
     public async Task<T> QuerySingleAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-        => (await QueryAsync<T>(sql, parameters, timeoutSeconds, cancellationToken)).Single();
+    {
+        var item = await QuerySingleOrDefaultAsync<T>(sql, parameters, timeoutSeconds, cancellationToken);
+        return item is not null ? item : throw new InvalidOperationException("Sequence contains no elements.");
+    }
 
     /// <summary>
     /// Executes the T operation.
@@ -147,7 +169,13 @@ public partial class ForgeDb : IForgeDb
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the T operation.</returns>
     public T? QuerySingleOrDefault<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
-        => Query<T>(sql, parameters, timeoutSeconds).SingleOrDefault();
+    {
+        using var c = CreateConnection();
+        c.Open();
+        return ForgeAdo.QuerySingleOrDefaultAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds)
+            .GetAwaiter()
+            .GetResult();
+    }
 
     /// <summary>
     /// Executes the T operation.
@@ -159,7 +187,11 @@ public partial class ForgeDb : IForgeDb
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
     public async Task<T?> QuerySingleOrDefaultAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-        => (await QueryAsync<T>(sql, parameters, timeoutSeconds, cancellationToken)).SingleOrDefault();
+    {
+        await using var c = CreateConnection();
+        await c.OpenAsync(cancellationToken);
+        return await ForgeAdo.QuerySingleOrDefaultAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+    }
 
     /// <summary>
     /// Executes the Execute operation.
@@ -292,7 +324,13 @@ public partial class ForgeDb : IForgeDb
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the T operation.</returns>
     public T? QueryProcedureSingleOrDefault<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null)
-        => QueryProcedure<T>(procedureName, parameters, timeoutSeconds).SingleOrDefault();
+    {
+        using var c = CreateConnection();
+        c.Open();
+        return ForgeAdo.QuerySingleOrDefaultAsync<T>(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds)
+            .GetAwaiter()
+            .GetResult();
+    }
 
     /// <summary>
     /// Executes the T operation.
@@ -304,7 +342,11 @@ public partial class ForgeDb : IForgeDb
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
     public async Task<T?> QueryProcedureSingleOrDefaultAsync<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-        => (await QueryProcedureAsync<T>(procedureName, parameters, timeoutSeconds, cancellationToken)).SingleOrDefault();
+    {
+        await using var c = CreateConnection();
+        await c.OpenAsync(cancellationToken);
+        return await ForgeAdo.QuerySingleOrDefaultAsync<T>(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+    }
 
     /// <summary>
     /// Executes the ExecuteProcedure operation.
@@ -467,5 +509,10 @@ public partial class ForgeDb : IForgeDb
             sql,
             parameters,
             cancellationToken: cancellationToken);
+    }
+
+    Abstractions.ForgeQueryAnalysis IForgeDiagnostics.Analyze(string sql)
+    {
+        throw new NotImplementedException();
     }
 }

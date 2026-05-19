@@ -1,5 +1,6 @@
 using ForgeORM.Abstractions;
 using ForgeORM.Core.Search;
+using ForgeORM.Core.SavedQueries;
 
 namespace ForgeORM.Core;
 
@@ -42,5 +43,10 @@ public class ForgeDbContext : ForgeDb
 
     /// <summary>ForgeORM stored procedure search builder.</summary>
     public ForgeProcedureSearch<T> SearchProcedure<T>(string procedureName) => new(this, procedureName);
+
+    private ForgeSavedQueryManager? _savedQueries;
+
+    /// <summary>Reusable saved query manager.</summary>
+    public ForgeSavedQueryManager SavedQueries => _savedQueries ??= new ForgeSavedQueryManager(this);
 
 }

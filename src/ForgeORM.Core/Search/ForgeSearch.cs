@@ -1,36 +1,41 @@
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
-using ForgeORM.Abstractions;
+using ForgeORM.Core;
+using ForgeORM.QueryAst;
 
 namespace ForgeORM.Core.Search;
 
 /// <summary>
-/// Public ForgeORM search API. This belongs to the ForgeORM library, not sample projects.
-/// Samples should only compose searches by calling db.Search&lt;T&gt;().
+/// Entry-point extensions for enterprise search.
 /// </summary>
 public static class ForgeSearchExtensions
 {
     /// <summary>
-    /// Executes the T operation.
+    /// Starts a dynamic search query.
     /// </summary>
-    /// <typeparam name="T">The type used by the operation.</typeparam>
-    /// <param name="db">The db value.</param>
-    /// <returns>The result of the T operation.</returns>
-    public static ForgeSearch<T> Search<T>(this IForgeDb db) => new(db);
+    public static ForgeSearch<T> Search<T>(this ForgeDb db)
+    {
+        return new ForgeSearch<T>(db);
+    }
+
     /// <summary>
-    /// Executes the T operation.
+    /// Starts a stored-procedure-backed search query.
     /// </summary>
-    /// <typeparam name="T">The type used by the operation.</typeparam>
-    /// <param name="db">The db value.</param>
-    /// <param name="procedureName">The procedureName value.</param>
-    /// <returns>The result of the T operation.</returns>
-    public static ForgeProcedureSearch<T> SearchProcedure<T>(this IForgeDb db, string procedureName) => new(db, procedureName);
+    public static ForgeProcedureSearch<T> SearchProcedure<T>(
+        this ForgeDb db,
+        string procedureName)
+    {
+        return new ForgeProcedureSearch<T>(db, procedureName);
+    }
 }
 
+/// <summary>
+/// Dynamic enterprise search builder. This belongs in the package, not the sample.
+/// </summary>
 public sealed class ForgeSearch<T>
 {
-    private readonly IForgeDb _db;
+    private readonly ForgeDb _db;
     private readonly List<string> _columns = [];
     private readonly List<string> _where = [];
     private readonly Dictionary<string, object?> _parameters = new(StringComparer.OrdinalIgnoreCase);
@@ -41,62 +46,35 @@ public sealed class ForgeSearch<T>
     private int? _page;
     private int? _pageSize;
 
-    /// <summary>
-    /// Executes the ForgeSearch operation.
-    /// </summary>
-    /// <param name="db">The db value.</param>
-    /// <returns>The result of the ForgeSearch operation.</returns>
-    public ForgeSearch(IForgeDb db) => _db = db;
+    public ForgeSearch(ForgeDb db)
+    {
+        _db = db;
+    }
 
-    /// <summary>
-    /// Executes the Select operation.
-    /// </summary>
-    /// <param name="stringcolumns">The stringcolumns value.</param>
-    /// <returns>The result of the Select operation.</returns>
     public ForgeSearch<T> Select(params string[] columns)
     {
         _columns.AddRange(columns);
         return this;
     }
 
-    /// <summary>
-    /// Executes the Select operation.
-    /// </summary>
-    /// <param name="object">The object value.</param>
-    /// <returns>The result of the Select operation.</returns>
     public ForgeSearch<T> Select(params Expression<Func<T, object?>>[] columns)
     {
-        _columns.AddRange(columns.Select(ForgeSearchExpression.MemberName));
+        _columns.AddRange(columns.Select(ForgeSearchExpression.Column));
         return this;
     }
 
-    /// <summary>
-    /// Executes the From operation.
-    /// </summary>
-    /// <param name="table">The table value.</param>
-    /// <returns>The result of the From operation.</returns>
     public ForgeSearch<T> From(string table)
     {
         _table = table;
         return this;
     }
 
-    /// <summary>
-    /// Executes the FromSql operation.
-    /// </summary>
-    /// <param name="sql">The sql value.</param>
-    /// <returns>The result of the FromSql operation.</returns>
     public ForgeSearch<T> FromSql(string sql)
     {
         _fromSql = sql;
         return this;
     }
 
-    /// <summary>
-    /// Executes the Where operation.
-    /// </summary>
-    /// <param name="predicate">The predicate value.</param>
-    /// <returns>The result of the Where operation.</returns>
     public ForgeSearch<T> Where(Expression<Func<T, bool>> predicate)
     {
         var translated = ForgeSearchExpression.Translate(predicate, _parameterIndex);
@@ -106,16 +84,11 @@ public sealed class ForgeSearch<T>
         return this;
     }
 
-    /// <summary>
-    /// Executes the WhereIf operation.
-    /// </summary>
-    /// <param name="condition">The condition value.</param>
-    /// <param name="predicate">The predicate value.</param>
-    /// <returns>The result of the WhereIf operation.</returns>
     public ForgeSearch<T> WhereIf(bool condition, Expression<Func<T, bool>> predicate)
-        => condition ? Where(predicate) : this;
+    {
+        return condition ? Where(predicate) : this;
+    }
 
-    /// <summary>Advanced escape hatch for hand-written SQL predicates.</summary>
     public ForgeSearch<T> Where(string sql, object? parameters = null)
     {
         _where.Add(sql);
@@ -123,134 +96,202 @@ public sealed class ForgeSearch<T>
         return this;
     }
 
-    /// <summary>Advanced escape hatch for optional hand-written SQL predicates.</summary>
     public ForgeSearch<T> WhereIf(bool condition, string sql, object? parameters = null)
-        => condition ? Where(sql, parameters) : this;
-
-    /// <summary>
-    /// Executes the TValue operation.
-    /// </summary>
-    /// <typeparam name="TValue">The type used by the operation.</typeparam>
-    /// <param name="column">The column value.</param>
-    /// <param name="value">The value value.</param>
-    /// <returns>The result of the TValue operation.</returns>
-    public ForgeSearch<T> Optional<TValue>(Expression<Func<T, TValue>> column, TValue? value)
     {
-        if (value is null) return this;
-        return Optional(ForgeSearchExpression.MemberName(column), value);
+        return condition ? Where(sql, parameters) : this;
     }
 
-    /// <summary>
-    /// Executes the TValue operation.
-    /// </summary>
-    /// <typeparam name="TValue">The type used by the operation.</typeparam>
-    /// <param name="column">The column value.</param>
-    /// <param name="value">The value value.</param>
-    /// <returns>The result of the TValue operation.</returns>
     public ForgeSearch<T> Optional<TValue>(string column, TValue? value)
     {
-        if (value is null) return this;
+        if (value is null)
+        {
+            return this;
+        }
+
         var name = NextParameterName(column);
         _where.Add($"{column} = @{name}");
-        _parameters[name] = ForgeSearchExpression.NormalizeParameterValue(value);
+        _parameters[name] = value;
         return this;
     }
 
-    /// <summary>
-    /// Executes the OptionalLike operation.
-    /// </summary>
-    /// <param name="column">The column value.</param>
-    /// <param name="value">The value value.</param>
-    /// <returns>The result of the OptionalLike operation.</returns>
-    public ForgeSearch<T> OptionalLike(Expression<Func<T, string?>> column, string? value)
-        => OptionalLike(ForgeSearchExpression.MemberName(column), value);
+    public ForgeSearch<T> Optional<TValue>(
+        Expression<Func<T, TValue>> column,
+        TValue? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
 
-    /// <summary>
-    /// Executes the OptionalLike operation.
-    /// </summary>
-    /// <param name="column">The column value.</param>
-    /// <param name="value">The value value.</param>
-    /// <returns>The result of the OptionalLike operation.</returns>
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, int>> column,
+        int? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, int?>> column,
+        int? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, long>> column,
+        long? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, long?>> column,
+        long? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, Guid>> column,
+        Guid? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, Guid?>> column,
+        Guid? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, decimal>> column,
+        decimal? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, decimal?>> column,
+        decimal? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, DateTime>> column,
+        DateTime? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, DateTime?>> column,
+        DateTime? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, DateTimeOffset>> column,
+        DateTimeOffset? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
+    public ForgeSearch<T> Optional(
+        Expression<Func<T, DateTimeOffset?>> column,
+        DateTimeOffset? value)
+    {
+        return Optional(ForgeSearchExpression.Column(column), value);
+    }
+
     public ForgeSearch<T> OptionalLike(string column, string? value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return this;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return this;
+        }
+
         var name = NextParameterName(column);
         _where.Add($"{column} LIKE @{name}");
         _parameters[name] = $"%{value}%";
         return this;
     }
 
-    /// <summary>
-    /// Executes the TValue operation.
-    /// </summary>
-    /// <typeparam name="TValue">The type used by the operation.</typeparam>
-    /// <param name="column">The column value.</param>
-    /// <param name="from">The from value.</param>
-    /// <param name="to">The to value.</param>
-    /// <returns>The result of the TValue operation.</returns>
-    public ForgeSearch<T> OptionalBetween<TValue>(Expression<Func<T, TValue>> column, TValue? from, TValue? to)
-        => OptionalBetween(ForgeSearchExpression.MemberName(column), from, to);
+    public ForgeSearch<T> OptionalLike(
+        Expression<Func<T, string?>> column,
+        string? value)
+    {
+        return OptionalLike(ForgeSearchExpression.Column(column), value);
+    }
 
-    /// <summary>
-    /// Executes the TValue operation.
-    /// </summary>
-    /// <typeparam name="TValue">The type used by the operation.</typeparam>
-    /// <param name="column">The column value.</param>
-    /// <param name="from">The from value.</param>
-    /// <param name="to">The to value.</param>
-    /// <returns>The result of the TValue operation.</returns>
-    public ForgeSearch<T> OptionalBetween<TValue>(string column, TValue? from, TValue? to)
+    public ForgeSearch<T> OptionalBetween<TValue>(
+        string column,
+        TValue? from,
+        TValue? to)
+        where TValue : struct
     {
         if (from is not null)
         {
             var name = NextParameterName(column + "From");
             _where.Add($"{column} >= @{name}");
-            _parameters[name] = ForgeSearchExpression.NormalizeParameterValue(from);
+            _parameters[name] = from.Value;
         }
+
         if (to is not null)
         {
             var name = NextParameterName(column + "To");
             _where.Add($"{column} <= @{name}");
-            _parameters[name] = ForgeSearchExpression.NormalizeParameterValue(to);
+            _parameters[name] = to.Value;
         }
+
         return this;
     }
 
-    /// <summary>
-    /// Executes the OrderBy operation.
-    /// </summary>
-    /// <param name="column">The column value.</param>
-    /// <returns>The result of the OrderBy operation.</returns>
-    public ForgeSearch<T> OrderBy(Expression<Func<T, object?>> column)
+    public ForgeSearch<T> OptionalBetween<TValue>(
+        Expression<Func<T, TValue>> column,
+        TValue? from,
+        TValue? to)
+        where TValue : struct
     {
-        _orderBy = ForgeSearchExpression.MemberName(column) + " ASC";
-        return this;
+        return OptionalBetween(
+            ForgeSearchExpression.Column(column),
+            from,
+            to);
     }
 
-    /// <summary>
-    /// Executes the OrderByDescending operation.
-    /// </summary>
-    /// <param name="column">The column value.</param>
-    /// <returns>The result of the OrderByDescending operation.</returns>
-    public ForgeSearch<T> OrderByDescending(Expression<Func<T, object?>> column)
+    public ForgeSearch<T> OptionalBetween<TValue>(
+        Expression<Func<T, TValue?>> column,
+        TValue? from,
+        TValue? to)
+        where TValue : struct
     {
-        _orderBy = ForgeSearchExpression.MemberName(column) + " DESC";
-        return this;
+        return OptionalBetween(
+            ForgeSearchExpression.Column(column),
+            from,
+            to);
     }
 
-    /// <summary>Advanced escape hatch for hand-written ORDER BY clauses.</summary>
     public ForgeSearch<T> OrderBy(string orderBy)
     {
         _orderBy = orderBy;
         return this;
     }
 
-    /// <summary>
-    /// Executes the Page operation.
-    /// </summary>
-    /// <param name="page">The page value.</param>
-    /// <param name="pageSize">The pageSize value.</param>
-    /// <returns>The result of the Page operation.</returns>
+    public ForgeSearch<T> OrderBy<TValue>(
+        Expression<Func<T, TValue>> column,
+        bool descending = false)
+    {
+        _orderBy = ForgeSearchExpression.Column(column) + (descending ? " DESC" : " ASC");
+        return this;
+    }
+
+    public ForgeSearch<T> OrderByDescending<TValue>(
+        Expression<Func<T, TValue>> column)
+    {
+        return OrderBy(column, descending: true);
+    }
+
     public ForgeSearch<T> Page(int page, int pageSize)
     {
         _page = Math.Max(page, 1);
@@ -258,45 +299,76 @@ public sealed class ForgeSearch<T>
         return this;
     }
 
-    /// <summary>
-    /// Executes the Render operation.
-    /// </summary>
-    /// <returns>The result of the Render operation.</returns>
-    public ForgeRenderedSearchSql Render()
+    public ForgeRenderedSql Render()
     {
-        var sql = new StringBuilder(BuildBaseSql());
-        if (_where.Count > 0) sql.Append(" WHERE ").Append(string.Join(" AND ", _where));
-        if (!string.IsNullOrWhiteSpace(_orderBy)) sql.Append(" ORDER BY ").Append(_orderBy);
+        var sql = new StringBuilder();
+        var baseSql = BuildBaseSql();
+
+        sql.Append(baseSql);
+
+        if (_where.Count > 0)
+        {
+            sql.Append(" WHERE ").Append(string.Join(" AND ", _where));
+        }
+
+        if (!string.IsNullOrWhiteSpace(_orderBy))
+        {
+            sql.Append(" ORDER BY ").Append(_orderBy);
+        }
+
         if (_page.HasValue && _pageSize.HasValue)
         {
-            if (string.IsNullOrWhiteSpace(_orderBy)) sql.Append(" ORDER BY 1");
+            if (string.IsNullOrWhiteSpace(_orderBy))
+            {
+                sql.Append(" ORDER BY 1");
+            }
+
             var skip = (_page.Value - 1) * _pageSize.Value;
             sql.Append($" OFFSET {skip} ROWS FETCH NEXT {_pageSize.Value} ROWS ONLY");
         }
-        return new ForgeRenderedSearchSql(sql.ToString(), _parameters);
+
+        return new ForgeRenderedSql(sql.ToString(), _parameters);
     }
 
-    /// <summary>
-    /// Executes the ToListAsync operation.
-    /// </summary>
-    /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The result of the ToListAsync operation.</returns>
-    public async Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default)
+    public string ToSql() => Render().Sql;
+
+    public async Task<IReadOnlyList<T>> ToListAsync(
+        CancellationToken cancellationToken = default)
     {
         var query = Render();
-        return await _db.QueryAsync<T>(query.Sql, query.Parameters, cancellationToken: cancellationToken);
+
+        return await _db.QueryAsync<T>(
+            query.Sql,
+            query.Parameters,
+            cancellationToken: cancellationToken);
     }
 
-    /// <summary>
-    /// Executes the ToPagedAsync operation.
-    /// </summary>
-    /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The result of the ToPagedAsync operation.</returns>
-    public async Task<ForgePagedResult<T>> ToPagedAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<Dictionary<string, object?>>> ToDictionaryAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var query = Render();
+
+        return await _db.QueryDictionaryAsync(
+            query.Sql,
+            query.Parameters,
+            cancellationToken);
+    }
+
+    public async Task<ForgePagedResult<T>> ToPagedAsync(
+        CancellationToken cancellationToken = default)
     {
         var dataQuery = Render();
-        var total = await _db.ExecuteScalarAsync<int>(BuildCountSql(), _parameters, cancellationToken: cancellationToken);
-        var items = await _db.QueryAsync<T>(dataQuery.Sql, dataQuery.Parameters, cancellationToken: cancellationToken);
+        var countSql = BuildCountSql();
+        var total = await _db.ExecuteScalarAsync<int>(
+            countSql,
+            _parameters,
+            cancellationToken: cancellationToken);
+
+        var items = await _db.QueryAsync<T>(
+            dataQuery.Sql,
+            dataQuery.Parameters,
+            cancellationToken: cancellationToken);
+
         return new ForgePagedResult<T>
         {
             Items = items,
@@ -308,112 +380,112 @@ public sealed class ForgeSearch<T>
 
     private string BuildBaseSql()
     {
-        if (!string.IsNullOrWhiteSpace(_fromSql)) return _fromSql.Trim();
-        var table = string.IsNullOrWhiteSpace(_table) ? ForgeSearchExpression.ResolveTableName(typeof(T)) : _table;
-        var columns = _columns.Count == 0 ? "*" : string.Join(", ", _columns);
+        if (!string.IsNullOrWhiteSpace(_fromSql))
+        {
+            return _fromSql.Trim();
+        }
+
+        var table = string.IsNullOrWhiteSpace(_table)
+            ? typeof(T).Name
+            : _table;
+
+        var columns = _columns.Count == 0
+            ? "*"
+            : string.Join(", ", _columns);
+
         return $"SELECT {columns} FROM {table}";
     }
 
     private string BuildCountSql()
     {
         var baseSql = BuildBaseSql();
-        var whereSql = _where.Count == 0 ? string.Empty : " WHERE " + string.Join(" AND ", _where);
+        var whereSql = _where.Count == 0
+            ? string.Empty
+            : " WHERE " + string.Join(" AND ", _where);
+
         return $"SELECT COUNT(1) FROM ({baseSql}{whereSql}) ForgeSearchCount";
     }
 
     private string NextParameterName(string column)
     {
         var clean = new string(column.Where(char.IsLetterOrDigit).ToArray());
-        return (string.IsNullOrWhiteSpace(clean) ? "p" : clean) + _parameterIndex++;
+
+        if (string.IsNullOrWhiteSpace(clean))
+        {
+            clean = "p";
+        }
+
+        return clean + _parameterIndex++;
     }
 
     private void Merge(object? parameters)
     {
-        if (parameters is null) return;
-        if (parameters is IReadOnlyDictionary<string, object?> dictionary)
+        if (parameters is null)
         {
-            foreach (var item in dictionary) _parameters[item.Key] = ForgeSearchExpression.NormalizeParameterValue(item.Value);
             return;
         }
-        foreach (var property in parameters.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
-            _parameters[property.Name] = ForgeSearchExpression.NormalizeParameterValue(property.GetValue(parameters), property);
+
+        if (parameters is IReadOnlyDictionary<string, object?> dictionary)
+        {
+            foreach (var item in dictionary)
+            {
+                _parameters[item.Key] = item.Value;
+            }
+
+            return;
+        }
+
+        foreach (var property in parameters
+            .GetType()
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            _parameters[property.Name] = ForgeRuntimeAccessorCache.Get(property, parameters);
+        }
     }
 }
 
+/// <summary>
+/// Stored-procedure-backed search builder.
+/// </summary>
 public sealed class ForgeProcedureSearch<T>
 {
-    private readonly IForgeDb _db;
+    private readonly ForgeDb _db;
     private readonly string _procedureName;
     private readonly Dictionary<string, object?> _parameters = new(StringComparer.OrdinalIgnoreCase);
     private int? _page;
     private int? _pageSize;
 
-    /// <summary>
-    /// Executes the ForgeProcedureSearch operation.
-    /// </summary>
-    /// <param name="db">The db value.</param>
-    /// <param name="procedureName">The procedureName value.</param>
-    /// <returns>The result of the ForgeProcedureSearch operation.</returns>
-    public ForgeProcedureSearch(IForgeDb db, string procedureName)
+    public ForgeProcedureSearch(
+        ForgeDb db,
+        string procedureName)
     {
         _db = db;
         _procedureName = procedureName;
     }
 
-    /// <summary>
-    /// Executes the With operation.
-    /// </summary>
-    /// <param name="name">The name value.</param>
-    /// <param name="value">The value value.</param>
-    /// <returns>The result of the With operation.</returns>
-    public ForgeProcedureSearch<T> With(string name, object? value)
+    public ForgeProcedureSearch<T> With(
+        string name,
+        object? value)
     {
-        _parameters[Normalize(name)] = ForgeSearchExpression.NormalizeParameterValue(value);
+        _parameters[Normalize(name)] = value;
         return this;
     }
 
-    /// <summary>
-    /// Executes the TValue operation.
-    /// </summary>
-    /// <typeparam name="TValue">The type used by the operation.</typeparam>
-    /// <param name="parameter">The parameter value.</param>
-    /// <param name="value">The value value.</param>
-    /// <returns>The result of the TValue operation.</returns>
-    public ForgeProcedureSearch<T> With<TValue>(Expression<Func<T, TValue>> parameter, TValue? value)
-        => With(ForgeSearchExpression.MemberName(parameter), value);
-
-    /// <summary>
-    /// Executes the WithOptional operation.
-    /// </summary>
-    /// <param name="name">The name value.</param>
-    /// <param name="value">The value value.</param>
-    /// <returns>The result of the WithOptional operation.</returns>
-    public ForgeProcedureSearch<T> WithOptional(string name, object? value)
+    public ForgeProcedureSearch<T> WithOptional(
+        string name,
+        object? value)
     {
-        if (value is not null) With(name, value);
+        if (value is not null)
+        {
+            With(name, value);
+        }
+
         return this;
     }
 
-    /// <summary>
-    /// Executes the TValue operation.
-    /// </summary>
-    /// <typeparam name="TValue">The type used by the operation.</typeparam>
-    /// <param name="parameter">The parameter value.</param>
-    /// <param name="value">The value value.</param>
-    /// <returns>The result of the TValue operation.</returns>
-    public ForgeProcedureSearch<T> WithOptional<TValue>(Expression<Func<T, TValue>> parameter, TValue? value)
-    {
-        if (value is not null) With(parameter, value);
-        return this;
-    }
-
-    /// <summary>
-    /// Executes the Page operation.
-    /// </summary>
-    /// <param name="page">The page value.</param>
-    /// <param name="pageSize">The pageSize value.</param>
-    /// <returns>The result of the Page operation.</returns>
-    public ForgeProcedureSearch<T> Page(int page, int pageSize)
+    public ForgeProcedureSearch<T> Page(
+        int page,
+        int pageSize)
     {
         _page = Math.Max(page, 1);
         _pageSize = Math.Max(pageSize, 1);
@@ -422,22 +494,20 @@ public sealed class ForgeProcedureSearch<T>
         return this;
     }
 
-    /// <summary>
-    /// Executes the ToListAsync operation.
-    /// </summary>
-    /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The result of the ToListAsync operation.</returns>
-    public Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default)
-        => _db.QueryProcedureAsync<T>(_procedureName, _parameters, cancellationToken: cancellationToken);
+    public Task<IReadOnlyList<T>> ToListAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return _db.QueryProcedureAsync<T>(
+            _procedureName,
+            _parameters,
+            cancellationToken: cancellationToken);
+    }
 
-    /// <summary>
-    /// Executes the ToPagedAsync operation.
-    /// </summary>
-    /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The result of the ToPagedAsync operation.</returns>
-    public async Task<ForgePagedResult<T>> ToPagedAsync(CancellationToken cancellationToken = default)
+    public async Task<ForgePagedResult<T>> ToPagedAsync(
+        CancellationToken cancellationToken = default)
     {
         var items = await ToListAsync(cancellationToken);
+
         return new ForgePagedResult<T>
         {
             Items = items,
@@ -447,84 +517,71 @@ public sealed class ForgeProcedureSearch<T>
         };
     }
 
-    private static string Normalize(string name) => name.TrimStart('@', ':');
+    private static string Normalize(string name)
+    {
+        return name.TrimStart('@', ':');
+    }
 }
 
-public sealed record ForgeRenderedSearchSql(string Sql, object? Parameters = null);
+public sealed class ForgePagedResult<T>
+{
+    public required IReadOnlyList<T> Items { get; init; }
 
-internal sealed record ForgeSearchExpressionResult(string Sql, IReadOnlyDictionary<string, object?> Parameters);
+    public int Page { get; init; }
+
+    public int PageSize { get; init; }
+
+    public int TotalRecords { get; init; }
+
+    public int TotalPages => PageSize <= 0
+        ? 0
+        : (int)Math.Ceiling(TotalRecords / (double)PageSize);
+}
+
+internal sealed record ForgeSearchExpressionResult(
+    string Sql,
+    IReadOnlyDictionary<string, object?> Parameters);
 
 internal static class ForgeSearchExpression
 {
-    /// <summary>
-    /// Executes the T operation.
-    /// </summary>
-    /// <typeparam name="T">The type used by the operation.</typeparam>
-    /// <param name="expression">The expression value.</param>
-    /// <param name="startIndex">The startIndex value.</param>
-    /// <returns>The result of the T operation.</returns>
-    public static ForgeSearchExpressionResult Translate<T>(Expression<Func<T, bool>> expression, int startIndex)
+    public static ForgeSearchExpressionResult Translate<T>(
+        Expression<Func<T, bool>> expression,
+        int startIndex)
     {
         var parameters = new Dictionary<string, object?>();
-        var sql = TranslateNode(expression.Body, parameters, ref startIndex);
-        return new ForgeSearchExpressionResult(sql, parameters);
+        var sql = TranslateNode(
+            expression.Body,
+            parameters,
+            ref startIndex);
+
+        return new ForgeSearchExpressionResult(
+            sql,
+            parameters);
     }
 
-    /// <summary>
-    /// Executes the TValue operation.
-    /// </summary>
-    /// <typeparam name="T">The type used by the operation.</typeparam>
-    /// <typeparam name="TValue">The type used by the operation.</typeparam>
-    /// <param name="expression">The expression value.</param>
-    /// <returns>The result of the TValue operation.</returns>
-    public static string MemberName<T, TValue>(Expression<Func<T, TValue>> expression)
-        => MemberName(expression.Body);
-
-    /// <summary>
-    /// Executes the MemberName operation.
-    /// </summary>
-    /// <param name="expression">The expression value.</param>
-    /// <returns>The result of the MemberName operation.</returns>
-    public static string MemberName(Expression expression)
+    public static string Column<T, TValue>(
+        Expression<Func<T, TValue>> expression)
     {
-        expression = StripConvert(expression);
+        return Column(expression.Body);
+    }
+
+    public static string Column(Expression expression)
+    {
+        while (expression is UnaryExpression unary)
+        {
+            expression = unary.Operand;
+        }
+
         return expression is MemberExpression member
-            ? ColumnName(member.Member)
-            : throw new NotSupportedException($"Expression must point to a member. Found: {expression.NodeType} - {expression}");
+            ? member.Member.Name
+            : throw new NotSupportedException("Expression must point to a property.");
     }
 
-    /// <summary>
-    /// Executes the ResolveTableName operation.
-    /// </summary>
-    /// <param name="type">The type value.</param>
-    /// <returns>The result of the ResolveTableName operation.</returns>
-    public static string ResolveTableName(Type type)
+    private static string TranslateNode(
+        Expression expression,
+        Dictionary<string, object?> parameters,
+        ref int index)
     {
-        var attr = type.GetCustomAttribute<ForgeTableAttribute>();
-        if (attr is not null) return attr.Name;
-        return type.Name.EndsWith("s", StringComparison.OrdinalIgnoreCase) ? type.Name : type.Name + "s";
-    }
-
-    /// <summary>
-    /// Executes the NormalizeParameterValue operation.
-    /// </summary>
-    /// <param name="value">The value value.</param>
-    /// <param name="member">The member value.</param>
-    /// <returns>The result of the NormalizeParameterValue operation.</returns>
-    public static object? NormalizeParameterValue(object? value, MemberInfo? member = null)
-    {
-        if (value is null) return null;
-        var valueType = Nullable.GetUnderlyingType(value.GetType()) ?? value.GetType();
-        if (!valueType.IsEnum) return value;
-
-        var storage = member?.GetCustomAttribute<ForgeEnumStorageAttribute>()?.Storage ?? ForgeEnumStorage.String;
-        return storage == ForgeEnumStorage.Number ? Convert.ToInt64(value) : value.ToString();
-    }
-
-    private static string TranslateNode(Expression expression, Dictionary<string, object?> parameters, ref int index)
-    {
-        expression = StripConvert(expression);
-
         if (expression is BinaryExpression binary)
         {
             if (binary.NodeType is ExpressionType.AndAlso or ExpressionType.OrElse)
@@ -532,73 +589,40 @@ internal static class ForgeSearchExpression
                 var left = TranslateNode(binary.Left, parameters, ref index);
                 var right = TranslateNode(binary.Right, parameters, ref index);
                 var op = binary.NodeType == ExpressionType.AndAlso ? "AND" : "OR";
+
                 return $"({left}) {op} ({right})";
             }
 
-            var member = Member(binary.Left);
-            var value = Evaluate(binary.Right);
-            var parameter = AddParameter(NormalizeParameterValue(value, member.Member), parameters, ref index);
-            return $"{ColumnName(member.Member)} {Operator(binary.NodeType)} {parameter}";
+            var member = Column(binary.Left);
+            var parameter = AddParameter(
+                Evaluate(binary.Right),
+                parameters,
+                ref index);
+
+            return $"{member} {Operator(binary.NodeType)} {parameter}";
         }
 
-        if (expression is MethodCallExpression call)
-            return TranslateMethodCall(call, parameters, ref index);
-
-        throw new NotSupportedException($"Only simple search expressions are supported. Found: {expression.NodeType} - {expression}");
+        throw new NotSupportedException("Only simple search expressions are supported.");
     }
 
-    private static string TranslateMethodCall(MethodCallExpression call, Dictionary<string, object?> parameters, ref int index)
+    private static string Operator(ExpressionType type)
     {
-        if (call.Method.Name == nameof(string.Contains) && call.Object is not null)
+        return type switch
         {
-            var member = Member(call.Object);
-            var value = Evaluate(call.Arguments[0]);
-            var parameter = AddParameter($"%{value}%", parameters, ref index);
-            return $"{ColumnName(member.Member)} LIKE {parameter}";
-        }
-
-        if (call.Method.Name == nameof(string.StartsWith) && call.Object is not null)
-        {
-            var member = Member(call.Object);
-            var value = Evaluate(call.Arguments[0]);
-            var parameter = AddParameter($"{value}%", parameters, ref index);
-            return $"{ColumnName(member.Member)} LIKE {parameter}";
-        }
-
-        if (call.Method.Name == nameof(string.EndsWith) && call.Object is not null)
-        {
-            var member = Member(call.Object);
-            var value = Evaluate(call.Arguments[0]);
-            var parameter = AddParameter($"%{value}", parameters, ref index);
-            return $"{ColumnName(member.Member)} LIKE {parameter}";
-        }
-
-        throw new NotSupportedException($"Search method {call.Method.Name} is not supported yet.");
+            ExpressionType.Equal => "=",
+            ExpressionType.NotEqual => "<>",
+            ExpressionType.GreaterThan => ">",
+            ExpressionType.GreaterThanOrEqual => ">=",
+            ExpressionType.LessThan => "<",
+            ExpressionType.LessThanOrEqual => "<=",
+            _ => throw new NotSupportedException($"Operator {type} is not supported.")
+        };
     }
 
-    private static MemberExpression Member(Expression expression)
-    {
-        expression = StripConvert(expression);
-        return expression is MemberExpression member
-            ? member
-            : throw new NotSupportedException($"Left side must be a member expression. Found: {expression.NodeType} - {expression}");
-    }
-
-    private static string ColumnName(MemberInfo member)
-        => member.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? member.Name;
-
-    private static string Operator(ExpressionType type) => type switch
-    {
-        ExpressionType.Equal => "=",
-        ExpressionType.NotEqual => "<>",
-        ExpressionType.GreaterThan => ">",
-        ExpressionType.GreaterThanOrEqual => ">=",
-        ExpressionType.LessThan => "<",
-        ExpressionType.LessThanOrEqual => "<=",
-        _ => throw new NotSupportedException($"Operator {type} is not supported.")
-    };
-
-    private static string AddParameter(object? value, Dictionary<string, object?> parameters, ref int index)
+    private static string AddParameter(
+        object? value,
+        Dictionary<string, object?> parameters,
+        ref int index)
     {
         var name = "s" + index++;
         parameters[name] = value;
@@ -607,20 +631,6 @@ internal static class ForgeSearchExpression
 
     private static object? Evaluate(Expression expression)
     {
-        expression = StripConvert(expression);
-        return Expression.Lambda(expression).Compile().DynamicInvoke();
-    }
-
-    private static Expression StripConvert(Expression expression)
-    {
-        while (expression is UnaryExpression unary &&
-               (unary.NodeType == ExpressionType.Convert ||
-                unary.NodeType == ExpressionType.ConvertChecked ||
-                unary.NodeType == ExpressionType.TypeAs))
-        {
-            expression = unary.Operand;
-        }
-
-        return expression;
+        return ForgeExpressionDelegateCache.Evaluate(expression);
     }
 }

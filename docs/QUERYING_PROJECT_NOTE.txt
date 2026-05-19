@@ -1,0 +1,1 @@
+ForgeORM.Querying project added. Add it to the solution from Visual Studio if you want it visible in Solution Explorer.

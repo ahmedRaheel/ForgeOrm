@@ -104,21 +104,21 @@ public static class AdvancedDbSurfaceEndpoints
             return Results.Ok(new { revenue });
         });
 
-        //group.MapGet("/frame/vectorized", async (ForgeDbContext db, CancellationToken ct) =>
-        //{
-        //    var frame = await db.Frame<Order>().ToFrameAsync(ct);
-        //    var filtered = frame.Vectorized()
-        //        .Where("GrandTotal", ForgeVectorOperator.GreaterThan, 10000m)
-        //        .Sum("GrandTotal");
+        group.MapGet("/frame/vectorized", async (ForgeDbContext db, CancellationToken ct) =>
+        {
+            var frame = await db.Frame<Order>().ToFrameAsync(ct);
+            var filtered = frame.Vectorized()
+                .Where("GrandTotal", ForgeVectorOperator.GreaterThan, 10000m)
+                .Sum("GrandTotal");
 
-        //    return Results.Ok(new { sum = filtered });
-        //});
+            return Results.Ok(new { sum = filtered });
+        });
 
         group.MapGet("/shards/eu", async (ForgeDbContext db, int tenantId, CancellationToken ct) =>
         {
             var rows = await db.Set<Order>()
                 .UseShard("EU")
-                //.Where(x => x.TenantId == tenantId)
+                .Where(x => x.TenantId == tenantId)
                 .ToListAsync(ct);
 
             return Results.Ok(rows);

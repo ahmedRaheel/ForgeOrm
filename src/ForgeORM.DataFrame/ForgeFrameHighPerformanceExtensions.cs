@@ -174,7 +174,7 @@ public sealed class ForgeVectorizedFrame<T>
     public ForgeVectorizedFrame<T> Where(Expression<Func<T, bool>> predicate)
     {
         var compiled = predicate.Compile();
-        var rows = _frame.Rows.Where(row => compiled(ToObject(row))).Select(row => new Dictionary<string, object?>(row, StringComparer.OrdinalIgnoreCase));
+        var rows = _frame.Rows.Where(row => compiled(ToObject(row.ToDictionary()))).Select(row => new Dictionary<string, object?>(row, StringComparer.OrdinalIgnoreCase));
         return new ForgeVectorizedFrame<T>(new ForgeDataFrame(rows));
     }
 

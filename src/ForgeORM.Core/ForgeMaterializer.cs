@@ -2,7 +2,7 @@ using System.Data.Common;
 
 namespace ForgeORM.Core;
 
-internal static class ForgeMaterializer
+public static class ForgeMaterializer
 {
     public static Func<DbDataReader, T> GetReader<T>(DbDataReader reader)
         => ForgeIlMaterializerCache.GetOrCreate<T>(reader);

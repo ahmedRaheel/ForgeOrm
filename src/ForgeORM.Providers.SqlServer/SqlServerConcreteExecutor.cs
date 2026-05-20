@@ -32,7 +32,7 @@ public sealed class SqlServerConcreteExecutor : IForgeProviderExecutor
         if (transaction is SqlTransaction sqlTransaction) command.Transaction = sqlTransaction;
 
         // Central binder keeps scalar @Id, anonymous objects and generated binders consistent.
-        var generic = ForgeAdo.CreateCommand(sqlConnection, sql, parameters, sqlTransaction, commandType, timeoutSeconds);
+        var generic = ForgeAdo.CreateCommand(sqlConnection, sql, parameters, command.Transaction, commandType, timeoutSeconds);
         return ValueTask.FromResult((DbCommand)generic);
     }
 

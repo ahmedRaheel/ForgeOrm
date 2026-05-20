@@ -2,7 +2,7 @@
 
 	<PropertyGroup>
 		<PackageId>ForgeORM.Workflow</PackageId>
-		     <Version>1.3.7</Version>
+		     <Version>1.3.5</Version>
 
 		<Title>ForgeORM.Workflow</Title>
 

@@ -25,3 +25,5 @@ public static class ForgeBenchmarkGateManifest
     public const double BulkRegressionLimitPercent = 10.0;
     public const double GraphRegressionLimitPercent = 10.0;
 }
+
+// Added by source-generator/native-bulk patch: benchmark records/structs/enums/composite keys/projections/includes/provider bulk.

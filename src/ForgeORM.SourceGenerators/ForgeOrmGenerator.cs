@@ -10,10 +10,17 @@ namespace ForgeORM.SourceGenerators;
 
 /// <summary>
 /// ForgeORM compile-time mapper generator.
-/// Generates source-generated readers, parameter binders, SQL builders, graph metadata and entity maps.
-/// The generated reader binds result columns by name once per reader shape and then uses strongly typed
-/// DbDataReader.GetFieldValue<T> calls per row. Records/constructor DTOs are supported by matching
-/// constructor parameter names to column/property names.
+///
+/// Completeness goals implemented here:
+/// - class, record and struct DTO/entity materialization
+/// - parameterless, positional-record and constructor-bound mapping
+/// - nullable scalar support
+/// - enum string/int materialization without GetFieldValue&lt;TEnum&gt;
+/// - composite key discovery through [ForgeKey]/[Key] and conventions
+/// - init/private-set safe object construction by using constructor/object initializers
+/// - generated binders, generated SQL constants, entity maps and relationship metadata
+/// - projection DTOs are supported by constructor-parameter name matching against columns/properties
+/// - include/split-query support gets generated relationship metadata for convention-first graph loading
 /// </summary>
 [Generator]
 public sealed class ForgeOrmGenerator : IIncrementalGenerator
@@ -22,7 +29,7 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
     {
         var candidates = context.SyntaxProvider
             .CreateSyntaxProvider(
-                static (node, _) => node is ClassDeclarationSyntax or RecordDeclarationSyntax,
+                static (node, _) => node is ClassDeclarationSyntax or RecordDeclarationSyntax or StructDeclarationSyntax,
                 static (ctx, _) => GetTypeSymbol(ctx))
             .Where(static x => x is not null)!;
 
@@ -31,14 +38,13 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
     }
 
     private static INamedTypeSymbol? GetTypeSymbol(GeneratorSyntaxContext context)
-    {
-        return context.Node switch
+        => context.Node switch
         {
             ClassDeclarationSyntax c => context.SemanticModel.GetDeclaredSymbol(c) as INamedTypeSymbol,
             RecordDeclarationSyntax r => context.SemanticModel.GetDeclaredSymbol(r) as INamedTypeSymbol,
+            StructDeclarationSyntax s => context.SemanticModel.GetDeclaredSymbol(s) as INamedTypeSymbol,
             _ => null
         };
-    }
 
     private static void Execute(SourceProductionContext context, IEnumerable<INamedTypeSymbol> allTypes)
     {
@@ -57,6 +63,7 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Data;");
         sb.AppendLine("using System.Data.Common;");
+        sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.Runtime.CompilerServices;");
         sb.AppendLine("using ForgeORM.Core;");
         sb.AppendLine("namespace ForgeORM.Generated;");
@@ -96,6 +103,7 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
             EmitSqlBuilder(sb, type);
             EmitGraphMetadata(sb, type);
             EmitEntityMap(sb, type);
+            EmitProjectionMetadata(sb, type);
         }
 
         sb.AppendLine("}");
@@ -106,11 +114,25 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
     {
         sb.AppendLine("    private static int Ordinal(DbDataReader reader, string name)");
         sb.AppendLine("    {");
+        sb.AppendLine("        var normalized = Normalize(name);");
         sb.AppendLine("        for (var i = 0; i < reader.FieldCount; i++)");
         sb.AppendLine("        {");
-        sb.AppendLine("            if (string.Equals(reader.GetName(i), name, StringComparison.OrdinalIgnoreCase)) return i;");
+        sb.AppendLine("            if (Normalize(reader.GetName(i)) == normalized) return i;");
         sb.AppendLine("        }");
         sb.AppendLine("        return -1;");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine("    private static string Normalize(string value)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        if (string.IsNullOrWhiteSpace(value)) return string.Empty;");
+        sb.AppendLine("        Span<char> buffer = value.Length <= 256 ? stackalloc char[value.Length] : new char[value.Length];");
+        sb.AppendLine("        var index = 0;");
+        sb.AppendLine("        foreach (var c in value)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            if (c == '_' || c == '-' || c == ' ' || c == '[' || c == ']' || c == '\\"') continue;");
+        sb.AppendLine("            buffer[index++] = char.ToUpperInvariant(c);");
+        sb.AppendLine("        }");
+        sb.AppendLine("        return new string(buffer[..index]);");
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine("    private static void Add(DbCommand command, string name, object? value, DbType? dbType = null)");
@@ -122,16 +144,25 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("        command.Parameters.Add(p);");
         sb.AppendLine("    }");
         sb.AppendLine();
+        sb.AppendLine("    private static TEnum ReadEnum<TEnum>(DbDataReader reader, int ordinal) where TEnum : struct, Enum");
+        sb.AppendLine("    {");
+        sb.AppendLine("        var value = reader.GetValue(ordinal);");
+        sb.AppendLine("        if (value is string text) return Enum.TryParse<TEnum>(text, true, out var parsed) ? parsed : default;");
+        sb.AppendLine("        var underlying = Enum.GetUnderlyingType(typeof(TEnum));");
+        sb.AppendLine("        return (TEnum)Enum.ToObject(typeof(TEnum), Convert.ChangeType(value, underlying));");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine("    private static TEnum? ReadNullableEnum<TEnum>(DbDataReader reader, int ordinal) where TEnum : struct, Enum");
+        sb.AppendLine("        => ordinal < 0 || reader.IsDBNull(ordinal) ? null : ReadEnum<TEnum>(reader, ordinal);");
+        sb.AppendLine();
     }
 
     private static bool IsCandidateEntity(INamedTypeSymbol type)
     {
-        if (type.TypeKind is not (TypeKind.Class or TypeKind.Struct))
-            return false;
-        if (type.TypeKind == TypeKind.Class && type.IsAbstract)
-            return false;
-        if (type.DeclaredAccessibility != Accessibility.Public)
-            return false;
+        if (type.TypeKind is not (TypeKind.Class or TypeKind.Struct)) return false;
+        if (type.TypeKind == TypeKind.Class && type.IsAbstract) return false;
+        if (type.DeclaredAccessibility != Accessibility.Public) return false;
+        if (type.ContainingNamespace?.ToDisplayString().StartsWith("System", StringComparison.Ordinal) == true) return false;
         return HasForgeTableAttribute(type) || HasGenerateMapperAttribute(type) || Properties(type).Any();
     }
 
@@ -145,15 +176,14 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         => type.GetMembers().OfType<IPropertySymbol>()
             .Where(p => p.DeclaredAccessibility == Accessibility.Public && !p.IsStatic && p.GetMethod is not null && IsScalar(p.Type));
 
-    private static IEnumerable<IPropertySymbol> WritableProperties(INamedTypeSymbol type)
-        => Properties(type).Where(p => p.SetMethod is not null);
+    private static IEnumerable<IPropertySymbol> SettableProperties(INamedTypeSymbol type)
+        => Properties(type).Where(p => p.SetMethod is { DeclaredAccessibility: Accessibility.Public });
 
     private static bool IsScalar(ITypeSymbol type)
     {
         if (type is INamedTypeSymbol named && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
             type = named.TypeArguments[0];
-        if (type.TypeKind == TypeKind.Enum)
-            return true;
+        if (type.TypeKind == TypeKind.Enum) return true;
         return type.SpecialType is SpecialType.System_String
             or SpecialType.System_Boolean
             or SpecialType.System_Byte
@@ -183,10 +213,15 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("    private static Func<DbDataReader, object> CreateReader_" + safe + "(DbDataReader reader)");
         sb.AppendLine("    {");
         foreach (var p in props)
+        {
             sb.AppendLine("        var ord_" + p.Name + " = Ordinal(reader, \"" + Escape(ColumnName(p)) + "\");");
+            if (!string.Equals(ColumnName(p), p.Name, StringComparison.OrdinalIgnoreCase))
+                sb.AppendLine("        if (ord_" + p.Name + " < 0) ord_" + p.Name + " = Ordinal(reader, \"" + Escape(p.Name) + "\");");
+        }
         sb.AppendLine("        return r =>");
         sb.AppendLine("        {");
 
+        var initProps = SettableProperties(type).ToList();
         if (ctor is not null && ctor.Parameters.Length > 0)
         {
             sb.Append("            var entity = new ").Append(full).Append("(");
@@ -195,33 +230,36 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
                 if (i > 0) sb.Append(", ");
                 var parameter = ctor.Parameters[i];
                 var prop = FindPropertyForParameter(props, parameter);
-                if (prop is null)
-                    sb.Append("default");
+                if (prop is null) sb.Append("default!");
                 else
                 {
                     ctorParamProps.Add(prop.Name);
                     sb.Append(ReadOrDefaultExpression("r", "ord_" + prop.Name, parameter.Type));
                 }
             }
-            sb.AppendLine(");");
+            sb.Append(")");
         }
         else
         {
-            var parameterless = type.InstanceConstructors.Any(c => c.Parameters.Length == 0 && c.DeclaredAccessibility == Accessibility.Public);
-            if (!parameterless)
-            {
-                // Compile-time diagnostic as generated code: clear failure when no constructor can be mapped.
-                sb.AppendLine("            throw new InvalidOperationException(\"ForgeORM source generator could not find a parameterless constructor or a constructor whose parameter names match result columns for " + Escape(type.ToDisplayString()) + ".\");");
-                sb.AppendLine("        };");
-                sb.AppendLine("    }");
-                return;
-            }
-            sb.AppendLine("            var entity = new " + full + "();");
+            sb.Append("            var entity = new ").Append(full).Append("()");
         }
 
-        foreach (var p in WritableProperties(type).Where(p => !ctorParamProps.Contains(p.Name)))
+        var initializerProps = initProps.Where(p => !ctorParamProps.Contains(p.Name)).ToArray();
+        if (initializerProps.Length > 0)
         {
-            sb.AppendLine("            if (ord_" + p.Name + " >= 0 && !r.IsDBNull(ord_" + p.Name + ")) entity." + p.Name + " = " + ReadValueExpression("r", "ord_" + p.Name, p.Type) + ";");
+            sb.AppendLine();
+            sb.AppendLine("            {");
+            for (var i = 0; i < initializerProps.Length; i++)
+            {
+                var p = initializerProps[i];
+                sb.Append("                ").Append(p.Name).Append(" = ").Append(ReadOrDefaultExpression("r", "ord_" + p.Name, p.Type));
+                sb.AppendLine(i == initializerProps.Length - 1 ? string.Empty : ",");
+            }
+            sb.AppendLine("            };");
+        }
+        else
+        {
+            sb.AppendLine(";");
         }
 
         sb.AppendLine("            return entity;");
@@ -231,35 +269,41 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
 
     private static IMethodSymbol? PickConstructor(INamedTypeSymbol type, IPropertySymbol[] props)
     {
-        var propNames = new HashSet<string>(props.Select(p => p.Name), StringComparer.OrdinalIgnoreCase);
+        var propsByName = props.ToDictionary(p => NormalizeKey(p.Name), p => p, StringComparer.OrdinalIgnoreCase);
+        foreach (var p in props) propsByName[NormalizeKey(ColumnName(p))] = p;
         return type.InstanceConstructors
             .Where(c => c.DeclaredAccessibility == Accessibility.Public && c.Parameters.Length > 0)
             .OrderByDescending(c => c.Parameters.Length)
-            .FirstOrDefault(c => c.Parameters.All(p => propNames.Contains(p.Name)));
+            .FirstOrDefault(c => c.Parameters.All(p => propsByName.ContainsKey(NormalizeKey(p.Name))));
     }
 
     private static IPropertySymbol? FindPropertyForParameter(IEnumerable<IPropertySymbol> props, IParameterSymbol parameter)
-        => props.FirstOrDefault(p => string.Equals(p.Name, parameter.Name, StringComparison.OrdinalIgnoreCase));
+    {
+        var normalized = NormalizeKey(parameter.Name);
+        return props.FirstOrDefault(p => NormalizeKey(p.Name) == normalized || NormalizeKey(ColumnName(p)) == normalized);
+    }
 
     private static string ReadOrDefaultExpression(string readerName, string ordinalName, ITypeSymbol type)
         => ordinalName + " >= 0 && !" + readerName + ".IsDBNull(" + ordinalName + ") ? " + ReadValueExpression(readerName, ordinalName, type) + " : default!";
 
     private static string ReadValueExpression(string readerName, string ordinalName, ITypeSymbol type)
     {
-        var nullable = type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nts ? nts.TypeArguments[0] : type;
-        var full = nullable.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        var nullableNamed = type as INamedTypeSymbol;
+        var isNullable = nullableNamed?.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T;
+        var actual = isNullable ? nullableNamed!.TypeArguments[0] : type;
+        var full = actual.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-        if (nullable.TypeKind == TypeKind.Enum)
-        {
-            var underlying = ((INamedTypeSymbol)nullable).EnumUnderlyingType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? "global::System.Int32";
-            return "(" + full + ")" + readerName + ".GetFieldValue<" + underlying + ">(" + ordinalName + ")";
-        }
+        if (actual.TypeKind == TypeKind.Enum)
+            return isNullable
+                ? "ReadNullableEnum<" + full + ">(" + readerName + ", " + ordinalName + ")"
+                : "ReadEnum<" + full + ">(" + readerName + ", " + ordinalName + ")";
 
         return full switch
         {
             "int" or "global::System.Int32" => readerName + ".GetInt32(" + ordinalName + ")",
             "long" or "global::System.Int64" => readerName + ".GetInt64(" + ordinalName + ")",
             "short" or "global::System.Int16" => readerName + ".GetInt16(" + ordinalName + ")",
+            "byte" or "global::System.Byte" => readerName + ".GetByte(" + ordinalName + ")",
             "bool" or "global::System.Boolean" => readerName + ".GetBoolean(" + ordinalName + ")",
             "decimal" or "global::System.Decimal" => readerName + ".GetDecimal(" + ordinalName + ")",
             "double" or "global::System.Double" => readerName + ".GetDouble(" + ordinalName + ")",
@@ -279,7 +323,15 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("    {");
         sb.AppendLine("        var entity = (" + full + ")value;");
         foreach (var p in Properties(type))
-            sb.AppendLine("        Add(command, \"" + Escape(p.Name) + "\", entity." + p.Name + ");");
+        {
+            var dbType = DbTypeFor(p.Type);
+            var valueExpression = p.Type.TypeKind == TypeKind.Enum || (p.Type is INamedTypeSymbol n && n.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T && n.TypeArguments[0].TypeKind == TypeKind.Enum)
+                ? "entity." + p.Name + ".ToString()"
+                : "entity." + p.Name;
+            sb.AppendLine("        Add(command, \"" + Escape(p.Name) + "\", " + valueExpression + (dbType is null ? ");" : ", " + dbType + ");"));
+            if (!string.Equals(ColumnName(p), p.Name, StringComparison.OrdinalIgnoreCase))
+                sb.AppendLine("        Add(command, \"" + Escape(ColumnName(p)) + "\", " + valueExpression + (dbType is null ? ");" : ", " + dbType + ");"));
+        }
         sb.AppendLine("    }");
     }
 
@@ -288,33 +340,66 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         var table = TableName(type);
         var safe = Safe(type);
         var columns = Properties(type).ToArray();
-        var insertable = columns.Where(p => !IsComputed(p) && !IsKeyIdentity(p)).ToArray();
-        var updateable = columns.Where(p => !IsComputed(p) && !IsKey(p)).ToArray();
-        var key = columns.FirstOrDefault(IsKey) ?? columns.FirstOrDefault(p => string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase));
+        var keys = ResolveKeys(type, columns).ToArray();
+        var insertable = columns.Where(p => !IsComputed(p) && !keys.Contains(p, SymbolEqualityComparer.Default)).ToArray();
+        var updateable = columns.Where(p => !IsComputed(p) && !keys.Contains(p, SymbolEqualityComparer.Default)).ToArray();
+        var where = keys.Length == 0 ? "1 = 0" : string.Join(" AND ", keys.Select(k => ColumnName(k) + " = @" + k.Name));
 
         sb.AppendLine();
-        sb.AppendLine("    public static string SelectSql_" + safe + " => \"SELECT " + Escape(string.Join(", ", columns.Select(p => ColumnName(p)))) + " FROM " + Escape(table) + "\";");
+        sb.AppendLine("    public static string SelectSql_" + safe + " => \"SELECT " + Escape(string.Join(", ", columns.Select(ColumnName))) + " FROM " + Escape(table) + "\";");
+        sb.AppendLine("    public static string SelectColumns_" + safe + " => \"" + Escape(string.Join(", ", columns.Select(ColumnName))) + "\";");
+        sb.AppendLine("    public static string TableName_" + safe + " => \"" + Escape(table) + "\";");
+        if (keys.Length > 0)
+            sb.AppendLine("    public static string KeyColumns_" + safe + " => \"" + Escape(string.Join(",", keys.Select(ColumnName))) + "\";");
         sb.AppendLine("    public static string InsertSql_" + safe + " => \"INSERT INTO " + Escape(table) + " (" + Escape(string.Join(", ", insertable.Select(ColumnName))) + ") VALUES (" + Escape(string.Join(", ", insertable.Select(p => "@" + p.Name))) + ")\";");
-        if (key is not null)
-            sb.AppendLine("    public static string UpdateSql_" + safe + " => \"UPDATE " + Escape(table) + " SET " + Escape(string.Join(", ", updateable.Select(p => ColumnName(p) + " = @" + p.Name))) + " WHERE " + Escape(ColumnName(key)) + " = @" + Escape(key.Name) + "\";");
-        if (key is not null)
-            sb.AppendLine("    public static string DeleteSql_" + safe + " => \"DELETE FROM " + Escape(table) + " WHERE " + Escape(ColumnName(key)) + " = @" + Escape(key.Name) + "\";");
+        if (keys.Length > 0)
+        {
+            sb.AppendLine("    public static string UpdateSql_" + safe + " => \"UPDATE " + Escape(table) + " SET " + Escape(string.Join(", ", updateable.Select(p => ColumnName(p) + " = @" + p.Name))) + " WHERE " + Escape(where) + "\";");
+            sb.AppendLine("    public static string DeleteSql_" + safe + " => \"DELETE FROM " + Escape(table) + " WHERE " + Escape(where) + "\";");
+            sb.AppendLine("    public static string GetByIdSql_" + safe + " => \"SELECT TOP (1) " + Escape(string.Join(", ", columns.Select(ColumnName))) + " FROM " + Escape(table) + " WHERE " + Escape(where) + "\";");
+        }
     }
 
     private static void EmitGraphMetadata(StringBuilder sb, INamedTypeSymbol type)
     {
-        sb.AppendLine("    public static string GraphMetadata_" + Safe(type) + " => \"" + Escape(type.ToDisplayString()) + "|" + Escape(TableName(type)) + "\";");
+        var props = type.GetMembers().OfType<IPropertySymbol>()
+            .Where(p => p.DeclaredAccessibility == Accessibility.Public && !p.IsStatic && p.GetMethod is not null && !IsScalar(p.Type))
+            .Select(p => p.Name + ":" + p.Type.ToDisplayString())
+            .ToArray();
+        sb.AppendLine("    public static string GraphMetadata_" + Safe(type) + " => \"" + Escape(type.ToDisplayString()) + "|" + Escape(TableName(type)) + "|" + Escape(string.Join(";", props)) + "\";");
     }
 
     private static void EmitEntityMap(StringBuilder sb, INamedTypeSymbol type)
     {
-        var cols = string.Join("|", Properties(type).Select(p => p.Name + ":" + ColumnName(p)));
-        sb.AppendLine("    public static string EntityMap_" + Safe(type) + " => \"" + Escape(type.ToDisplayString()) + "|" + Escape(TableName(type)) + "|" + Escape(cols) + "\";");
+        var props = Properties(type).ToArray();
+        var keys = string.Join("|", ResolveKeys(type, props).Select(p => p.Name + ":" + ColumnName(p)));
+        var cols = string.Join("|", props.Select(p => p.Name + ":" + ColumnName(p)));
+        sb.AppendLine("    public static string EntityMap_" + Safe(type) + " => \"" + Escape(type.ToDisplayString()) + "|" + Escape(TableName(type)) + "|keys=" + Escape(keys) + "|" + Escape(cols) + "\";");
     }
 
-    private static bool IsKey(IPropertySymbol p) => p.GetAttributes().Any(a => a.AttributeClass?.Name is "ForgeKeyAttribute" or "KeyAttribute") || string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase);
-    private static bool IsKeyIdentity(IPropertySymbol p) => IsKey(p);
-    private static bool IsComputed(IPropertySymbol p) => p.GetAttributes().Any(a => a.AttributeClass?.Name is "ForgeComputedAttribute" or "ComputedAttribute");
+    private static void EmitProjectionMetadata(StringBuilder sb, INamedTypeSymbol type)
+    {
+        var ctor = PickConstructor(type, Properties(type).ToArray());
+        if (ctor is null) return;
+        sb.AppendLine("    public static string ProjectionMap_" + Safe(type) + " => \"" + Escape(type.ToDisplayString()) + "|ctor=" + Escape(string.Join(",", ctor.Parameters.Select(p => p.Name + ":" + p.Type.ToDisplayString()))) + "\";");
+    }
+
+    private static IEnumerable<IPropertySymbol> ResolveKeys(INamedTypeSymbol type, IPropertySymbol[] properties)
+    {
+        var explicitKeys = properties.Where(p => p.GetAttributes().Any(a => a.AttributeClass?.Name is "ForgeKeyAttribute" or "KeyAttribute"))
+            .OrderBy(p => KeyOrder(p)).ToArray();
+        if (explicitKeys.Length > 0) return explicitKeys;
+        var id = properties.FirstOrDefault(p => string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase));
+        if (id is not null) return new[] { id };
+        var entityId = properties.FirstOrDefault(p => string.Equals(p.Name, type.Name + "Id", StringComparison.OrdinalIgnoreCase));
+        return entityId is not null ? new[] { entityId } : Array.Empty<IPropertySymbol>();
+    }
+
+    private static int KeyOrder(IPropertySymbol p)
+        => p.GetAttributes().SelectMany(a => a.NamedArguments).FirstOrDefault(kv => kv.Key == "Order").Value.Value as int? ?? 0;
+
+    private static bool IsComputed(IPropertySymbol p)
+        => p.GetAttributes().Any(a => a.AttributeClass?.Name is "ForgeComputedAttribute" or "ComputedAttribute" or "DatabaseGeneratedAttribute");
 
     private static string ColumnName(IPropertySymbol property)
         => property.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name is "ForgeColumnAttribute" or "ColumnAttribute")?.ConstructorArguments.FirstOrDefault().Value?.ToString() ?? property.Name;
@@ -322,8 +407,36 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
     private static string TableName(INamedTypeSymbol type)
         => type.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name is "ForgeTableAttribute" or "TableAttribute")?.ConstructorArguments.FirstOrDefault().Value?.ToString() ?? type.Name;
 
+    private static string? DbTypeFor(ITypeSymbol type)
+    {
+        if (type is INamedTypeSymbol named && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+            type = named.TypeArguments[0];
+        if (type.TypeKind == TypeKind.Enum) return "DbType.String";
+        return type.SpecialType switch
+        {
+            SpecialType.System_Int32 => "DbType.Int32",
+            SpecialType.System_Int64 => "DbType.Int64",
+            SpecialType.System_Int16 => "DbType.Int16",
+            SpecialType.System_Boolean => "DbType.Boolean",
+            SpecialType.System_String => "DbType.String",
+            SpecialType.System_Decimal => "DbType.Decimal",
+            SpecialType.System_Double => "DbType.Double",
+            SpecialType.System_Single => "DbType.Single",
+            SpecialType.System_DateTime => "DbType.DateTime2",
+            _ => type.ToDisplayString() == "System.Guid" ? "DbType.Guid" : null
+        };
+    }
+
     private static string Safe(INamedTypeSymbol type)
         => type.ToDisplayString().Replace('.', '_').Replace('+', '_').Replace('<', '_').Replace('>', '_').Replace(',', '_').Replace(' ', '_');
 
     private static string Escape(string value) => value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+
+    private static string NormalizeKey(string value)
+    {
+        var builder = new StringBuilder(value.Length);
+        foreach (var c in value)
+            if (c != '_' && c != '-' && c != ' ' && c != '[' && c != ']' && c != '"') builder.Append(char.ToUpperInvariant(c));
+        return builder.ToString();
+    }
 }

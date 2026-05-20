@@ -107,7 +107,7 @@ public sealed class SqlServerForgeProvider : IForgeDatabaseProvider
     /// <param name="rows">The rows value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default) => BulkFallback.InsertAsync(connection, tableName, rows, cancellationToken);
+    public Task BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default) => SqlServerNativeBulk.BulkInsertAsync(connection, tableName, rows, cancellationToken);
     /// <summary>
     /// Executes the T operation.
     /// </summary>

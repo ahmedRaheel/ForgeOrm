@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>ForgeORM.Studio.Api</PackageId>
-         <Version>1.3.5</Version>
+         <Version>1.3.7</Version>
     <Authors>Raheel Ahmed</Authors>
     <Company>Forge Ecosystem</Company>
     <RepositoryUrl>https://github.com/ahmedraheel/ForgeORM</RepositoryUrl>

@@ -12,9 +12,13 @@ public static class QueryBuilderEndpoints
         group.MapGet("/string/products", async (decimal minPrice, IForgeDynamicQueryBuilder qb, ForgeDbContext db, CancellationToken ct) =>
         {
             var CustomerId = 1;
-            var result1 = db.Set<Order>()
-            .Where(x => x.CustomerId == CustomerId)
-            .ToListAsync();
+            var result1 = await db.Set<Order>()
+    .Where(x => x.CustomerId == CustomerId)
+   
+    .Include(x => x.Items)
+   
+    .AsSplitQuery()
+    .ToListAsync(ct);
 
 
 

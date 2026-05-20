@@ -126,7 +126,7 @@ public sealed class ForgeShardQueryable<T> : IForgeQuery<T>
     public IForgeQuery<T> TemporalAsOf(DateTime asOfUtc) { Inner.TemporalAsOf(asOfUtc); return this; }
     public IForgeQuery<T> TemporalBetween(DateTime fromUtc, DateTime toUtc) { Inner.TemporalBetween(fromUtc, toUtc); return this; }
     public IForgeQuery<T> TemporalContainedIn(DateTime fromUtc, DateTime toUtc) { Inner.TemporalContainedIn(fromUtc, toUtc); return this; }
-    public IForgeQuery<T> Include<TProperty>(Expression<Func<T, TProperty>> navigation) { Inner.Include(navigation); return this; }
+    public IForgeIncludableQuery<T, TProperty> Include<TProperty>(Expression<Func<T, TProperty>> navigation) => Inner.Include(navigation);
     public bool Any() => Inner.Any();
     public Task<bool> AnyAsync(CancellationToken cancellationToken = default) => Inner.AnyAsync(cancellationToken);
     public IReadOnlyList<T> ToList() => Inner.ToList();

@@ -1,5 +1,5 @@
-using System.Collections.Concurrent;
 using System.Data;
+using System.Threading;
 using Microsoft.Data.SqlClient;
 using ForgeORM.Abstractions;
 
@@ -13,7 +13,7 @@ namespace ForgeORM.Core.Performance;
 /// </summary>
 internal static class ForgeSqlServerDirectGetByIdExecutor<T>
 {
-    private static readonly ConcurrentDictionary<string, ExecutorPlan> Plans = new(StringComparer.Ordinal);
+    private static ExecutorPlan? CachedPlan;
 
     public static async Task<T?> ExecuteAsync(
         string connectionString,
@@ -21,7 +21,7 @@ internal static class ForgeSqlServerDirectGetByIdExecutor<T>
         object id,
         CancellationToken cancellationToken)
     {
-        var plan = Plans.GetOrAdd(MakeKey(metadata), _ => ExecutorPlan.Create(metadata));
+        var plan = GetPlan(metadata);
 
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
@@ -32,7 +32,7 @@ internal static class ForgeSqlServerDirectGetByIdExecutor<T>
         ForgeSqlServerProviderDirectHotPath.AddTypedParameter(command, plan.ParameterName, id, plan.KeyType);
 
         await using var reader = await command.ExecuteReaderAsync(
-                CommandBehavior.SingleRow | CommandBehavior.SequentialAccess,
+                CommandBehavior.SingleRow | CommandBehavior.SingleResult | CommandBehavior.SequentialAccess,
                 cancellationToken)
             .ConfigureAwait(false);
 
@@ -44,7 +44,7 @@ internal static class ForgeSqlServerDirectGetByIdExecutor<T>
 
     public static T? Execute(string connectionString, ForgeEntityMetadata metadata, object id)
     {
-        var plan = Plans.GetOrAdd(MakeKey(metadata), _ => ExecutorPlan.Create(metadata));
+        var plan = GetPlan(metadata);
 
         using var connection = new SqlConnection(connectionString);
         connection.Open();
@@ -54,38 +54,52 @@ internal static class ForgeSqlServerDirectGetByIdExecutor<T>
         command.CommandType = CommandType.Text;
         ForgeSqlServerProviderDirectHotPath.AddTypedParameter(command, plan.ParameterName, id, plan.KeyType);
 
-        using var reader = command.ExecuteReader(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
+        using var reader = command.ExecuteReader(CommandBehavior.SingleRow | CommandBehavior.SingleResult | CommandBehavior.SequentialAccess);
         if (!reader.Read())
             return default;
 
         return plan.Materialize(reader);
     }
 
-    private static string MakeKey(ForgeEntityMetadata metadata)
-        => string.Concat(metadata.TableName, '|', metadata.KeyColumn, '|', metadata.EntityType.FullName);
+    private static ExecutorPlan GetPlan(ForgeEntityMetadata metadata)
+    {
+        var plan = Volatile.Read(ref CachedPlan);
+        var key = string.Concat(metadata.TableName, '|', metadata.KeyColumn, '|', metadata.EntityType.FullName);
+        if (plan is not null && string.Equals(plan.MetadataKey, key, StringComparison.Ordinal))
+            return plan;
+
+        plan = ExecutorPlan.Create(metadata, key);
+        Volatile.Write(ref CachedPlan, plan);
+        return plan;
+    }
 
     private sealed class ExecutorPlan
     {
         private Func<SqlDataReader, T>? _reader;
 
-        private ExecutorPlan(string sql, string parameterName, Type keyType)
+        private ExecutorPlan(string metadataKey, string sql, string parameterName, Type keyType)
         {
+            MetadataKey = metadataKey;
             Sql = sql;
             ParameterName = parameterName;
             KeyType = keyType;
         }
 
+        public string MetadataKey { get; }
         public string Sql { get; }
         public string ParameterName { get; }
         public Type KeyType { get; }
 
-        public static ExecutorPlan Create(ForgeEntityMetadata metadata)
+        public static ExecutorPlan Create(ForgeEntityMetadata metadata, string metadataKey)
         {
             var key = metadata.Properties.FirstOrDefault(x => x.IsKey || string.Equals(x.ColumnName, metadata.KeyColumn, StringComparison.OrdinalIgnoreCase));
             var keyType = key?.PropertyType ?? typeof(object);
             var parameterName = "@" + metadata.KeyColumn;
-            var sql = $"SELECT * FROM {metadata.TableName} WHERE {metadata.KeyColumn} = {parameterName}";
-            return new ExecutorPlan(sql, parameterName, keyType);
+            var columns = metadata.Properties.Count == 0
+                ? "*"
+                : string.Join(", ", metadata.Properties.Where(x => !x.IsComputed).Select(x => x.ColumnName));
+            var sql = $"SELECT TOP (1) {columns} FROM {metadata.TableName} WHERE {metadata.KeyColumn} = {parameterName}";
+            return new ExecutorPlan(metadataKey, sql, parameterName, keyType);
         }
 
         public T Materialize(SqlDataReader reader)

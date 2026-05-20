@@ -155,9 +155,10 @@ internal static class ForgeSqlServerProviderDirectHotPath
 
     public static SqlCommand CreateTextCommand(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds)
     {
-        var key = new SqlQueryPlanKey(sql, parameters?.GetType());
+        var effectiveSql = ExpandEnumerableParameters(sql, parameters, out var effectiveParameters);
+        var key = new SqlQueryPlanKey(effectiveSql, effectiveParameters?.GetType());
         var plan = QueryPlans.GetOrAdd(key, static k => new SqlQueryPlan(k.Sql, SqlParameterTokenCache.GetOrAdd(k.Sql, ExtractParameterNames)));
-        _ = ForgePreparedCommandPool.GetOrAdd(plan.Sql, plan.ParameterNames, parameters?.GetType(), timeoutSeconds);
+        _ = ForgePreparedCommandPool.GetOrAdd(plan.Sql, plan.ParameterNames, effectiveParameters?.GetType(), timeoutSeconds);
         var command = connection.CreateCommand();
         command.CommandText = plan.Sql;
         command.CommandType = CommandType.Text;
@@ -165,12 +166,119 @@ internal static class ForgeSqlServerProviderDirectHotPath
             command.Transaction = transaction;
         if (timeoutSeconds.HasValue)
             command.CommandTimeout = timeoutSeconds.Value;
-        BindParameters(command, plan.ParameterNames, parameters);
-        if (parameters is not null && IsScalar(parameters.GetType()))
-            EnsureScalarSqlParametersBound(command, parameters, parameters.GetType());
-        EnsureReferencedSqlParametersAreBound(command, plan.ParameterNames, parameters);
+        BindParameters(command, plan.ParameterNames, effectiveParameters);
+        if (effectiveParameters is not null && IsScalar(effectiveParameters.GetType()))
+            EnsureScalarSqlParametersBound(command, effectiveParameters, effectiveParameters.GetType());
+        EnsureReferencedSqlParametersAreBound(command, plan.ParameterNames, effectiveParameters);
         ValidateNoUnboundSqlParameters(command, plan.ParameterNames);
         return command;
+    }
+
+
+    private static string ExpandEnumerableParameters(string sql, object? parameters, out object? effectiveParameters)
+    {
+        effectiveParameters = parameters;
+        if (parameters is null || string.IsNullOrWhiteSpace(sql))
+            return sql;
+
+        var values = SnapshotParameterValues(parameters);
+        if (values.Count == 0)
+            return sql;
+
+        Dictionary<string, object?>? expanded = null;
+        var effectiveSql = sql;
+
+        foreach (var pair in values)
+        {
+            if (!IsExpandableEnumerable(pair.Value))
+                continue;
+
+            var rawName = pair.Key.TrimStart('@', ':');
+            var valuesList = ((IEnumerable)pair.Value!).Cast<object?>().ToArray();
+            expanded ??= new Dictionary<string, object?>(values, StringComparer.OrdinalIgnoreCase);
+            expanded.Remove(rawName);
+            expanded.Remove("@" + rawName);
+
+            if (valuesList.Length == 0)
+            {
+                effectiveSql = ReplaceInPredicate(effectiveSql, rawName, "(NULL)");
+                continue;
+            }
+
+            var parameterNames = new string[valuesList.Length];
+            for (var i = 0; i < valuesList.Length; i++)
+            {
+                var generatedName = rawName + "_" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                parameterNames[i] = "@" + generatedName;
+                expanded[generatedName] = valuesList[i];
+            }
+
+            effectiveSql = ReplaceInPredicate(effectiveSql, rawName, "(" + string.Join(",", parameterNames) + ")");
+        }
+
+        if (expanded is not null)
+            effectiveParameters = expanded;
+
+        return effectiveSql;
+    }
+
+    private static Dictionary<string, object?> SnapshotParameterValues(object parameters)
+    {
+        var result = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        if (parameters is IReadOnlyDictionary<string, object?> generic)
+        {
+            foreach (var pair in generic)
+                result[pair.Key.TrimStart('@', ':' )] = pair.Value;
+            return result;
+        }
+
+        if (parameters is IDictionary dictionary)
+        {
+            foreach (DictionaryEntry entry in dictionary)
+            {
+                if (entry.Key is not null)
+                    result[entry.Key.ToString()!.TrimStart('@', ':')] = entry.Value;
+            }
+            return result;
+        }
+
+        if (IsScalar(parameters.GetType()))
+            return result;
+
+        foreach (var property in parameters.GetType().GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public))
+        {
+            if (property.GetIndexParameters().Length != 0 || !property.CanRead)
+                continue;
+            result[property.Name] = property.GetValue(parameters);
+        }
+
+        return result;
+    }
+
+    private static bool IsExpandableEnumerable(object? value)
+        => value is IEnumerable
+           && value is not string
+           && value is not byte[]
+           && value is not IDictionary
+           && value is not System.Data.DataTable;
+
+    private static string ReplaceInPredicate(string sql, string rawName, string replacement)
+    {
+        var withAt = "@" + rawName;
+        sql = System.Text.RegularExpressions.Regex.Replace(
+            sql,
+            $@"\bIN\s*\(\s*{System.Text.RegularExpressions.Regex.Escape(withAt)}\s*\)",
+            "IN " + replacement,
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+        sql = System.Text.RegularExpressions.Regex.Replace(
+            sql,
+            $@"\bIN\s+{System.Text.RegularExpressions.Regex.Escape(withAt)}\b",
+            "IN " + replacement,
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+        return sql;
     }
 
     private static SqlServerEntityPlan BuildGetByIdPlan(ForgeEntityMetadata metadata)
@@ -256,7 +364,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
         else parameter = command.Parameters.Add(parameterName, SqlDbType.NVarChar);
 
         if (actualType.IsEnum)
-            parameter.Value = value ?? DBNull.Value;
+            parameter.Value = value is null ? DBNull.Value : value.ToString();
         else if (value is DateOnly d)
             parameter.Value = d.ToDateTime(TimeOnly.MinValue);
         else if (value is TimeOnly t)

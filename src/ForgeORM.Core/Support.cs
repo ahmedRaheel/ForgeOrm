@@ -333,9 +333,20 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     /// <returns>The result of the ToList operation.</returns>
     public IReadOnlyList<T> ToList()
     {
-        var rows = _db.Query<T>(BuildSql(), BuildParameters(), ExecutionOptions.TimeoutSeconds).ToList();
+        var sql = BuildSql();
+        var parameters = BuildParameters();
+        var cacheKey = ForgeSecondLevelQueryCache.BuildKey(typeof(T), sql, parameters, _includes, ExecutionOptions);
+        if (ForgeSecondLevelQueryCache.TryGetList<T>(this, cacheKey, out var cachedRows))
+            return cachedRows;
+
+        var rows = _db.Query<T>(sql, parameters, ExecutionOptions.TimeoutSeconds);
         if (_includes.Count > 0 && rows.Count > 0)
-            ForgeEfSplitGraphLoader.LoadIncludedNavigationsAsync(rows, _db, _includes, CancellationToken.None).GetAwaiter().GetResult();
+        {
+            var plan = ForgeCompiledIncludePlanCache.GetOrCreate<T>(_includes, ForgeEfStyleSplitQueryExtensions.GetEfSplitOptions(this));
+            ForgeEfSplitGraphLoader.LoadIncludedNavigationsAsync(rows, _db, plan.Includes, CancellationToken.None).GetAwaiter().GetResult();
+        }
+
+        ForgeSecondLevelQueryCache.SetList(this, cacheKey, rows);
         return rows;
     }
 
@@ -346,9 +357,20 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     /// <returns>The result of the ToListAsync operation.</returns>
     public async Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default)
     {
-        var rows = await _db.QueryAsync<T>(BuildSql(), BuildParameters(), ExecutionOptions.TimeoutSeconds, cancellationToken);
+        var sql = BuildSql();
+        var parameters = BuildParameters();
+        var cacheKey = ForgeSecondLevelQueryCache.BuildKey(typeof(T), sql, parameters, _includes, ExecutionOptions);
+        if (ForgeSecondLevelQueryCache.TryGetList<T>(this, cacheKey, out var cachedRows))
+            return cachedRows;
+
+        var rows = await _db.QueryAsync<T>(sql, parameters, ExecutionOptions.TimeoutSeconds, cancellationToken).ConfigureAwait(false);
         if (_includes.Count > 0 && rows.Count > 0)
-            await ForgeEfSplitGraphLoader.LoadIncludedNavigationsAsync(rows, _db, _includes, cancellationToken);
+        {
+            var plan = ForgeCompiledIncludePlanCache.GetOrCreate<T>(_includes, ForgeEfStyleSplitQueryExtensions.GetEfSplitOptions(this));
+            await ForgeEfSplitGraphLoader.LoadIncludedNavigationsAsync(rows, _db, plan.Includes, cancellationToken).ConfigureAwait(false);
+        }
+
+        ForgeSecondLevelQueryCache.SetList(this, cacheKey, rows);
         return rows;
     }
 
@@ -358,8 +380,22 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     /// <summary>Streams rows through the common DbDataReader + MSIL materialization pipeline.</summary>
     public async IAsyncEnumerable<T> StreamAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var rows = await _db.QueryAsync<T>(BuildSql(), BuildParameters(), ExecutionOptions.TimeoutSeconds, cancellationToken);
-        foreach (var row in rows)
+        if (_includes.Count > 0)
+        {
+            var rows = await ToListAsync(cancellationToken).ConfigureAwait(false);
+            foreach (var row in rows) yield return row;
+            yield break;
+        }
+
+        if (_db is ForgeDb forgeDb)
+        {
+            await foreach (var row in forgeDb.QueryStreamAsync<T>(BuildSql(), BuildParameters(), ExecutionOptions.TimeoutSeconds, cancellationToken).ConfigureAwait(false))
+                yield return row;
+            yield break;
+        }
+
+        var fallbackRows = await _db.QueryAsync<T>(BuildSql(), BuildParameters(), ExecutionOptions.TimeoutSeconds, cancellationToken).ConfigureAwait(false);
+        foreach (var row in fallbackRows)
             yield return row;
     }
 

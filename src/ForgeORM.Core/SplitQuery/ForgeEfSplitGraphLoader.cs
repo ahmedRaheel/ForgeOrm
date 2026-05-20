@@ -88,8 +88,9 @@ internal static class ForgeEfSplitGraphLoader
             var ids = parents.Select(x => ForgeRuntimeAccessorCache.Get(parentKey, x)).Where(x => x is not null).Distinct().ToArray();
             if (ids.Length == 0) return;
 
-            var sql = $"SELECT {childShape.ColumnList} FROM {childShape.TableName} WHERE {childForeignKey.Name} IN @Ids";
-            var children = await QueryObjectsAsync(db, childShape.EntityType, sql, new Dictionary<string, object?> { ["Ids"] = ids }, cancellationToken)
+            var filter = ForgeSplitQueryBatching.BuildIdFilter(childForeignKey.Name, "Ids", ids);
+            var sql = $"SELECT {childShape.ColumnList} FROM {childShape.TableName} WHERE {filter.Predicate}";
+            var children = await QueryObjectsAsync(db, childShape.EntityType, sql, filter.Parameters, cancellationToken)
                 .ConfigureAwait(false);
 
             var lookup = children.ToLookup(x => ForgeRuntimeAccessorCache.Get(childForeignKey, x));
@@ -139,8 +140,9 @@ internal static class ForgeEfSplitGraphLoader
         var ids = parents.Select(x => ForgeRuntimeAccessorCache.Get(parentFk, x)).Where(x => x is not null).Distinct().ToArray();
         if (ids.Length == 0) return;
 
-        var sql = $"SELECT {referenceShape.ColumnList} FROM {referenceShape.TableName} WHERE {referenceKey.Name} IN @Ids";
-        var references = await QueryObjectsAsync(db, referenceShape.EntityType, sql, new Dictionary<string, object?> { ["Ids"] = ids }, cancellationToken)
+        var filter = ForgeSplitQueryBatching.BuildIdFilter(referenceKey.Name, "Ids", ids);
+        var sql = $"SELECT {referenceShape.ColumnList} FROM {referenceShape.TableName} WHERE {filter.Predicate}";
+        var references = await QueryObjectsAsync(db, referenceShape.EntityType, sql, filter.Parameters, cancellationToken)
             .ConfigureAwait(false);
 
         var map = references
@@ -175,8 +177,9 @@ internal static class ForgeEfSplitGraphLoader
         var joinParentColumn = parentKey.Name;
         var joinChildColumn = childKey.Name;
 
-        var joinSql = $"SELECT {joinParentColumn}, {joinChildColumn} FROM {joinTable} WHERE {joinParentColumn} IN @Ids";
-        var joinRows = await QueryDictionaryRowsAsync(db, joinSql, new Dictionary<string, object?> { ["Ids"] = parentIds }, cancellationToken)
+        var joinFilter = ForgeSplitQueryBatching.BuildIdFilter(joinParentColumn, "Ids", parentIds);
+        var joinSql = $"SELECT {joinParentColumn}, {joinChildColumn} FROM {joinTable} WHERE {joinFilter.Predicate}";
+        var joinRows = await QueryDictionaryRowsAsync(db, joinSql, joinFilter.Parameters, cancellationToken)
             .ConfigureAwait(false);
 
         var childIds = joinRows.Select(x => GetDictionaryValue(x, joinChildColumn)).Where(x => x is not null).Distinct().ToArray();
@@ -187,8 +190,9 @@ internal static class ForgeEfSplitGraphLoader
             return;
         }
 
-        var childSql = $"SELECT {childShape.ColumnList} FROM {childShape.TableName} WHERE {childKey.Name} IN @Ids";
-        var children = await QueryObjectsAsync(db, childShape.EntityType, childSql, new Dictionary<string, object?> { ["Ids"] = childIds }, cancellationToken)
+        var childFilter = ForgeSplitQueryBatching.BuildIdFilter(childKey.Name, "Ids", childIds);
+        var childSql = $"SELECT {childShape.ColumnList} FROM {childShape.TableName} WHERE {childFilter.Predicate}";
+        var children = await QueryObjectsAsync(db, childShape.EntityType, childSql, childFilter.Parameters, cancellationToken)
             .ConfigureAwait(false);
 
         var childMap = children

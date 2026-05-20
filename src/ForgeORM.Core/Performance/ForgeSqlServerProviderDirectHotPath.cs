@@ -135,6 +135,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
     {
         var key = new SqlQueryPlanKey(sql, parameters?.GetType());
         var plan = QueryPlans.GetOrAdd(key, static k => new SqlQueryPlan(k.Sql, SqlParameterTokenCache.GetOrAdd(k.Sql, ExtractParameterNames)));
+        _ = ForgePreparedCommandPool.GetOrAdd(plan.Sql, plan.ParameterNames, parameters?.GetType(), timeoutSeconds);
         var command = connection.CreateCommand();
         command.CommandText = plan.Sql;
         command.CommandType = CommandType.Text;
@@ -153,9 +154,10 @@ internal static class ForgeSqlServerProviderDirectHotPath
     private static SqlServerEntityPlan BuildGetByIdPlan(ForgeEntityMetadata metadata)
     {
         var key = metadata.Properties.FirstOrDefault(x => string.Equals(x.ColumnName, metadata.KeyColumn, StringComparison.OrdinalIgnoreCase) || x.IsKey);
+        var parameterName = "@" + metadata.KeyColumn;
         return new SqlServerEntityPlan(
-            $"SELECT * FROM {metadata.TableName} WHERE {metadata.KeyColumn} = @Id",
-            "@Id",
+            $"SELECT * FROM {metadata.TableName} WHERE {metadata.KeyColumn} = {parameterName}",
+            parameterName,
             key?.PropertyType ?? typeof(object));
     }
 

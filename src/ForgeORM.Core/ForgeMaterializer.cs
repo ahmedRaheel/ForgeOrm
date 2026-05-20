@@ -16,7 +16,7 @@ public static class ForgeMaterializer
     public static object? Map(Type type, DbDataReader reader)
         => ForgeIlMaterializerCache.GetOrCreate(type, reader)(reader);
 
-    internal static bool IsScalar(Type type)
+    public static bool IsScalar(Type type)
     {
         var actual = Nullable.GetUnderlyingType(type) ?? type;
         return actual.IsPrimitive

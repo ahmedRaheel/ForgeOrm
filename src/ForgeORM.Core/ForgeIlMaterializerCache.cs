@@ -182,30 +182,43 @@ internal static class ForgeIlMaterializerCache
     private static void EmitReadValue(ILGenerator il, Type finalType, Type valueType, int ordinal)
     {
         var nullableUnderlying = Nullable.GetUnderlyingType(finalType);
-        var readType = valueType.IsEnum ? Enum.GetUnderlyingType(valueType) : valueType;
+
+        // Never call GetFieldValue<TEnum>() directly. SQL may store enums as strings or ints.
+        // Route enum materialization through ForgeEnumReader so records and classes behave the same.
+        if (valueType.IsEnum)
+        {
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldc_I4, ordinal);
+
+            if (nullableUnderlying is not null)
+            {
+                var nullableEnumReader = typeof(ForgeEnumReader)
+                    .GetMethod(nameof(ForgeEnumReader.ReadNullableEnum))!
+                    .MakeGenericMethod(valueType);
+                il.Emit(OpCodes.Call, nullableEnumReader);
+            }
+            else
+            {
+                var enumReader = typeof(ForgeEnumReader)
+                    .GetMethod(nameof(ForgeEnumReader.ReadEnum))!
+                    .MakeGenericMethod(valueType);
+                il.Emit(OpCodes.Call, enumReader);
+            }
+
+            return;
+        }
 
         il.Emit(OpCodes.Ldarg_0);
         il.Emit(OpCodes.Ldc_I4, ordinal);
 
         var getFieldValue = typeof(DbDataReader)
             .GetMethod(nameof(DbDataReader.GetFieldValue))!
-            .MakeGenericMethod(readType);
+            .MakeGenericMethod(valueType);
 
         il.Emit(OpCodes.Callvirt, getFieldValue);
 
-        // Enum values are represented by their underlying numeric type on the evaluation stack.
-        // The setter accepts the enum type but the stack representation is compatible.
         if (nullableUnderlying is not null)
         {
-            var nullableValueType = nullableUnderlying.IsEnum
-                ? Enum.GetUnderlyingType(nullableUnderlying)
-                : nullableUnderlying;
-
-            if (nullableUnderlying.IsEnum && nullableValueType != nullableUnderlying)
-            {
-                // Numeric stack value is valid for enum nullable constructor.
-            }
-
             var ctor = finalType.GetConstructor(new[] { nullableUnderlying })!;
             il.Emit(OpCodes.Newobj, ctor);
         }
@@ -332,8 +345,10 @@ internal static class ForgeIlMaterializerCache
             }
 
             // Record/constructor DTO support: prefer constructors where all parameters are present.
-            // If a constructor has optional parameters, missing values will use default(T) and still work.
-            if (matched == parameters.Length || parameters.Any(p => p.HasDefaultValue))
+            // If some projection columns are missing, ForgeORM still constructs the record using default values.
+            // This supports DTOs like ProductListItem where BrandName/CategoryName may be absent in a specific query.
+            // A constructor must match at least one result column to avoid choosing an unrelated constructor.
+            if (matched > 0 || parameters.All(p => p.HasDefaultValue))
                 return new ForgeConstructorPlan(constructor, parameters, ordinals, names);
         }
 

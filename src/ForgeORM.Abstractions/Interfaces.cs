@@ -796,8 +796,6 @@ public interface IForgeQueryableFactory
     /// <returns>The result of the T operation.</returns>
     IForgeQuery<T> Sql<T>(string sql, object? parameters = null);
 }
-
-
 /// <summary>
 /// Query returned after Include so callers can continue with ThenInclude while retaining the normal Forge query API.
 /// </summary>
@@ -805,7 +803,6 @@ public interface IForgeIncludableQuery<T, TProperty> : IForgeQuery<T>
 {
     IForgeQuery<T> Query { get; }
 }
-
 public interface IForgeQuery<T> : IForgeExecutableQuery
 /// <summary>
 /// Defines the Where operation.
@@ -895,8 +892,8 @@ public interface IForgeQuery<T> : IForgeExecutableQuery
     /// </summary>
     /// <typeparam name="TProperty">The navigation property type.</typeparam>
     /// <param name="navigation">Navigation selector, for example x => x.Items or x => x.Customer.</param>
-    /// <returns>An includable query that supports ThenInclude while still behaving as IForgeQuery.</returns>
-    IForgeIncludableQuery<T, TProperty> Include<TProperty>(Expression<Func<T, TProperty>> navigation);
+    /// <returns>The current query.</returns>
+    IForgeQuery<T> Include<TProperty>(Expression<Func<T, TProperty>> navigation);
 
     /// <summary>
     /// Defines the Any operation.

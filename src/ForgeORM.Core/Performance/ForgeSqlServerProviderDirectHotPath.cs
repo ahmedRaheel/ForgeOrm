@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
+using System.Reflection;
 using ForgeORM.Abstractions;
 using ForgeORM.Core;
 using Microsoft.Data.SqlClient;
@@ -155,10 +156,13 @@ internal static class ForgeSqlServerProviderDirectHotPath
 
     public static SqlCommand CreateTextCommand(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds)
     {
-        var effectiveSql = ExpandEnumerableParameters(sql, parameters, out var effectiveParameters);
-        var key = new SqlQueryPlanKey(effectiveSql, effectiveParameters?.GetType());
+        var expanded = ExpandEnumerableSqlParameters(sql, parameters);
+        sql = expanded.Sql;
+        parameters = expanded.Parameters;
+
+        var key = new SqlQueryPlanKey(sql, parameters?.GetType());
         var plan = QueryPlans.GetOrAdd(key, static k => new SqlQueryPlan(k.Sql, SqlParameterTokenCache.GetOrAdd(k.Sql, ExtractParameterNames)));
-        _ = ForgePreparedCommandPool.GetOrAdd(plan.Sql, plan.ParameterNames, effectiveParameters?.GetType(), timeoutSeconds);
+        _ = ForgePreparedCommandPool.GetOrAdd(plan.Sql, plan.ParameterNames, parameters?.GetType(), timeoutSeconds);
         var command = connection.CreateCommand();
         command.CommandText = plan.Sql;
         command.CommandType = CommandType.Text;
@@ -166,119 +170,12 @@ internal static class ForgeSqlServerProviderDirectHotPath
             command.Transaction = transaction;
         if (timeoutSeconds.HasValue)
             command.CommandTimeout = timeoutSeconds.Value;
-        BindParameters(command, plan.ParameterNames, effectiveParameters);
-        if (effectiveParameters is not null && IsScalar(effectiveParameters.GetType()))
-            EnsureScalarSqlParametersBound(command, effectiveParameters, effectiveParameters.GetType());
-        EnsureReferencedSqlParametersAreBound(command, plan.ParameterNames, effectiveParameters);
+        BindParameters(command, plan.ParameterNames, parameters);
+        if (parameters is not null && IsScalar(parameters.GetType()))
+            EnsureScalarSqlParametersBound(command, parameters, parameters.GetType());
+        EnsureReferencedSqlParametersAreBound(command, plan.ParameterNames, parameters);
         ValidateNoUnboundSqlParameters(command, plan.ParameterNames);
         return command;
-    }
-
-
-    private static string ExpandEnumerableParameters(string sql, object? parameters, out object? effectiveParameters)
-    {
-        effectiveParameters = parameters;
-        if (parameters is null || string.IsNullOrWhiteSpace(sql))
-            return sql;
-
-        var values = SnapshotParameterValues(parameters);
-        if (values.Count == 0)
-            return sql;
-
-        Dictionary<string, object?>? expanded = null;
-        var effectiveSql = sql;
-
-        foreach (var pair in values)
-        {
-            if (!IsExpandableEnumerable(pair.Value))
-                continue;
-
-            var rawName = pair.Key.TrimStart('@', ':');
-            var valuesList = ((IEnumerable)pair.Value!).Cast<object?>().ToArray();
-            expanded ??= new Dictionary<string, object?>(values, StringComparer.OrdinalIgnoreCase);
-            expanded.Remove(rawName);
-            expanded.Remove("@" + rawName);
-
-            if (valuesList.Length == 0)
-            {
-                effectiveSql = ReplaceInPredicate(effectiveSql, rawName, "(NULL)");
-                continue;
-            }
-
-            var parameterNames = new string[valuesList.Length];
-            for (var i = 0; i < valuesList.Length; i++)
-            {
-                var generatedName = rawName + "_" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                parameterNames[i] = "@" + generatedName;
-                expanded[generatedName] = valuesList[i];
-            }
-
-            effectiveSql = ReplaceInPredicate(effectiveSql, rawName, "(" + string.Join(",", parameterNames) + ")");
-        }
-
-        if (expanded is not null)
-            effectiveParameters = expanded;
-
-        return effectiveSql;
-    }
-
-    private static Dictionary<string, object?> SnapshotParameterValues(object parameters)
-    {
-        var result = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-
-        if (parameters is IReadOnlyDictionary<string, object?> generic)
-        {
-            foreach (var pair in generic)
-                result[pair.Key.TrimStart('@', ':' )] = pair.Value;
-            return result;
-        }
-
-        if (parameters is IDictionary dictionary)
-        {
-            foreach (DictionaryEntry entry in dictionary)
-            {
-                if (entry.Key is not null)
-                    result[entry.Key.ToString()!.TrimStart('@', ':')] = entry.Value;
-            }
-            return result;
-        }
-
-        if (IsScalar(parameters.GetType()))
-            return result;
-
-        foreach (var property in parameters.GetType().GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public))
-        {
-            if (property.GetIndexParameters().Length != 0 || !property.CanRead)
-                continue;
-            result[property.Name] = property.GetValue(parameters);
-        }
-
-        return result;
-    }
-
-    private static bool IsExpandableEnumerable(object? value)
-        => value is IEnumerable
-           && value is not string
-           && value is not byte[]
-           && value is not IDictionary
-           && value is not System.Data.DataTable;
-
-    private static string ReplaceInPredicate(string sql, string rawName, string replacement)
-    {
-        var withAt = "@" + rawName;
-        sql = System.Text.RegularExpressions.Regex.Replace(
-            sql,
-            $@"\bIN\s*\(\s*{System.Text.RegularExpressions.Regex.Escape(withAt)}\s*\)",
-            "IN " + replacement,
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
-
-        sql = System.Text.RegularExpressions.Regex.Replace(
-            sql,
-            $@"\bIN\s+{System.Text.RegularExpressions.Regex.Escape(withAt)}\b",
-            "IN " + replacement,
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
-
-        return sql;
     }
 
     private static SqlServerEntityPlan BuildGetByIdPlan(ForgeEntityMetadata metadata)
@@ -289,6 +186,113 @@ internal static class ForgeSqlServerProviderDirectHotPath
             $"SELECT * FROM {metadata.TableName} WHERE {metadata.KeyColumn} = {parameterName}",
             parameterName,
             key?.PropertyType ?? typeof(object));
+    }
+
+
+    private static ExpandedSql ExpandEnumerableSqlParameters(string sql, object? parameters)
+    {
+        if (parameters is null || sql.IndexOf(" IN ", StringComparison.OrdinalIgnoreCase) < 0)
+            return new ExpandedSql(sql, parameters);
+
+        var values = ExtractParameterBag(parameters);
+        if (values.Count == 0)
+            return new ExpandedSql(sql, parameters);
+
+        Dictionary<string, object?>? replacementBag = null;
+        foreach (var item in values.ToArray())
+        {
+            var tokenName = item.Key.TrimStart('@', ':');
+            if (!TryGetEnumerableValues(item.Value, out var collection))
+                continue;
+
+            replacementBag ??= new Dictionary<string, object?>(values, StringComparer.OrdinalIgnoreCase);
+            replacementBag.Remove(tokenName);
+            replacementBag.Remove("@" + tokenName);
+
+            if (collection.Count == 0)
+            {
+                sql = ReplaceInToken(sql, tokenName, "IN (NULL)");
+                continue;
+            }
+
+            var generatedNames = new string[collection.Count];
+            for (var i = 0; i < collection.Count; i++)
+            {
+                var generatedName = $"@{tokenName}_{i}";
+                generatedNames[i] = generatedName;
+                replacementBag[generatedName] = collection[i];
+            }
+
+            sql = ReplaceInToken(sql, tokenName, "IN (" + string.Join(", ", generatedNames) + ")");
+        }
+
+        return replacementBag is null
+            ? new ExpandedSql(sql, parameters)
+            : new ExpandedSql(sql, replacementBag);
+    }
+
+    private static string ReplaceInToken(string sql, string tokenName, string replacement)
+    {
+        sql = System.Text.RegularExpressions.Regex.Replace(
+            sql,
+            $@"IN\s*\(\s*@{System.Text.RegularExpressions.Regex.Escape(tokenName)}\s*\)",
+            replacement,
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+        sql = System.Text.RegularExpressions.Regex.Replace(
+            sql,
+            $@"IN\s+@{System.Text.RegularExpressions.Regex.Escape(tokenName)}\b",
+            replacement,
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+        return sql;
+    }
+
+    private static Dictionary<string, object?> ExtractParameterBag(object parameters)
+    {
+        if (parameters is IReadOnlyDictionary<string, object?> readOnly)
+            return new Dictionary<string, object?>(readOnly, StringComparer.OrdinalIgnoreCase);
+
+        if (parameters is IDictionary dictionary)
+        {
+            var bag = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            foreach (DictionaryEntry entry in dictionary)
+            {
+                if (entry.Key is not null)
+                    bag[entry.Key.ToString() ?? string.Empty] = entry.Value;
+            }
+            return bag;
+        }
+
+        if (IsScalar(parameters.GetType()))
+            return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        var binderProperties = parameters.GetType()
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.GetIndexParameters().Length == 0 && p.CanRead);
+
+        var result = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in binderProperties)
+            result[property.Name] = property.GetValue(parameters);
+
+        return result;
+    }
+
+    private static bool TryGetEnumerableValues(object? value, out IReadOnlyList<object?> values)
+    {
+        values = Array.Empty<object?>();
+        if (value is null or string or byte[])
+            return false;
+
+        if (value is not IEnumerable enumerable)
+            return false;
+
+        var list = new List<object?>();
+        foreach (var item in enumerable)
+            list.Add(item);
+
+        values = list;
+        return true;
     }
 
     private static void BindParameters(SqlCommand command, string[] parameterNames, object? parameters)
@@ -470,6 +474,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
     private static int EstimateCapacity(string sql)
         => sql.Contains("TOP 1", StringComparison.OrdinalIgnoreCase) || sql.Contains("WHERE", StringComparison.OrdinalIgnoreCase) ? 1 : 32;
 
+    private readonly record struct ExpandedSql(string Sql, object? Parameters);
     private sealed record SqlServerEntityPlan(string Sql, string ParameterName, Type KeyType);
     private readonly record struct SqlQueryPlanKey(string Sql, Type? ParameterType);
     private sealed record SqlQueryPlan(string Sql, string[] ParameterNames);

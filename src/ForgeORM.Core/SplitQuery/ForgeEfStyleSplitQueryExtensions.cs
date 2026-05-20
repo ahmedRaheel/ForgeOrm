@@ -48,44 +48,14 @@ public static class ForgeEfStyleSplitQueryExtensions
     /// Compile-friendly ThenInclude hook. Direct includes are fully supported by ForgeORM's graph loader.
     /// Nested includes are recorded for future provider-specific deep graph expansion without changing public syntax.
     /// </summary>
-    public static IForgeIncludableQuery<TRoot, TProperty> ThenInclude<TRoot, TPrevious, TProperty>(
-        this IForgeIncludableQuery<TRoot, IEnumerable<TPrevious>> query,
+    public static IForgeQuery<TRoot> ThenInclude<TRoot, TPrevious, TProperty>(
+        this IForgeQuery<TRoot> query,
         Expression<Func<TPrevious, TProperty>> navigation)
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(navigation);
-        Options.GetOrCreateValue(query.Query).ThenIncludes.Add(navigation);
-        return new ForgeIncludableQuery<TRoot, TProperty>(query.Query);
-    }
-
-    public static IForgeIncludableQuery<TRoot, TProperty> ThenInclude<TRoot, TPrevious, TProperty>(
-        this IForgeIncludableQuery<TRoot, ICollection<TPrevious>> query,
-        Expression<Func<TPrevious, TProperty>> navigation)
-    {
-        ArgumentNullException.ThrowIfNull(query);
-        ArgumentNullException.ThrowIfNull(navigation);
-        Options.GetOrCreateValue(query.Query).ThenIncludes.Add(navigation);
-        return new ForgeIncludableQuery<TRoot, TProperty>(query.Query);
-    }
-
-    public static IForgeIncludableQuery<TRoot, TProperty> ThenInclude<TRoot, TPrevious, TProperty>(
-        this IForgeIncludableQuery<TRoot, List<TPrevious>> query,
-        Expression<Func<TPrevious, TProperty>> navigation)
-    {
-        ArgumentNullException.ThrowIfNull(query);
-        ArgumentNullException.ThrowIfNull(navigation);
-        Options.GetOrCreateValue(query.Query).ThenIncludes.Add(navigation);
-        return new ForgeIncludableQuery<TRoot, TProperty>(query.Query);
-    }
-
-    public static IForgeIncludableQuery<TRoot, TProperty> ThenInclude<TRoot, TPrevious, TProperty>(
-        this IForgeIncludableQuery<TRoot, TPrevious> query,
-        Expression<Func<TPrevious, TProperty>> navigation)
-    {
-        ArgumentNullException.ThrowIfNull(query);
-        ArgumentNullException.ThrowIfNull(navigation);
-        Options.GetOrCreateValue(query.Query).ThenIncludes.Add(navigation);
-        return new ForgeIncludableQuery<TRoot, TProperty>(query.Query);
+        Options.GetOrCreateValue(query).ThenIncludes.Add(navigation);
+        return query;
     }
 
     internal static ForgeEfSplitQueryOptions GetEfSplitOptions<T>(IForgeQuery<T> query)

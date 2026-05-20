@@ -11,6 +11,13 @@ public static class BenchmarkGateManifest
         "GraphInsert",
         "GetById",
         "Page",
-        "Stream"
+        "Stream",
+        "SplitQueryTvpBatching",
+        "ProjectionReader",
+        "ProviderDirectGetById",
+        "IncludeGraphLoader",
+        "RuntimeEmit",
+        "SourceGenerated",
+        "ProviderDirect"
     ];
 }

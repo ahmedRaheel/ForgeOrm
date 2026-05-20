@@ -11,7 +11,14 @@ public static class ForgeBenchmarkGateManifest
         "graph-insert",
         "get-by-id",
         "page",
-        "stream"
+        "stream",
+        "SplitQueryTvpBatching",
+        "ProjectionReader",
+        "ProviderDirectGetById",
+        "IncludeGraphLoader",
+        "RuntimeEmit",
+        "SourceGenerated",
+        "ProviderDirect"
     ];
 
     public const double QueryRegressionLimitPercent = 5.0;

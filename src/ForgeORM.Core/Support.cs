@@ -296,13 +296,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     /// <summary>
     /// Includes a reference or collection navigation. The navigation is loaded with split query only when a terminal entity method executes.
     /// </summary>
-    public IForgeIncludableQuery<T, TProperty> Include<TProperty>(Expression<Func<T, TProperty>> navigation)
-    {
-        AddInclude(navigation);
-        return new ForgeIncludableQuery<T, TProperty>(this);
-    }
-
-    internal void AddInclude<TProperty>(Expression<Func<T, TProperty>> navigation)
+    public IForgeQuery<T> Include<TProperty>(Expression<Func<T, TProperty>> navigation)
     {
         if (navigation.Body is not MemberExpression memberExpression)
             throw new NotSupportedException("Only direct navigation includes are supported. Example: Include(x => x.Items).");
@@ -315,6 +309,8 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
 
         if (_includes.All(x => !x.Name.Equals(property.Name, StringComparison.OrdinalIgnoreCase)))
             _includes.Add(property);
+
+        return this;
     }
 
     /// <summary>

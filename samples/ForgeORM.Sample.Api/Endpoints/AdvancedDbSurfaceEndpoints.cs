@@ -118,7 +118,7 @@ public static class AdvancedDbSurfaceEndpoints
         {
             var rows = await db.Set<Order>()
                 .UseShard("EU")
-                .Where(x => x.TenantId == tenantId)
+                //.Where(x => x.TenantId == tenantId)
                 .ToListAsync(ct);
 
             return Results.Ok(rows);

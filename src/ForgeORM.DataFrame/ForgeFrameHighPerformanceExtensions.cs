@@ -79,21 +79,20 @@ public sealed class ForgeVectorizedFrame
 
     internal ForgeVectorizedFrame(ForgeDataFrame frame) => _frame = frame;
 
-    public ForgeDataFrame Where(string column, ForgeVectorOperator op, object? value)
+    public ForgeVectorizedFrame Where(string column, ForgeVectorOperator op, object? value)
     {
-        return _frame.Where(row => Compare(ForgeDataFrame.Get(row, column), op, value));
+        return new ForgeVectorizedFrame(_frame.Where(row => Compare(ForgeDataFrame.Get(row, column), op, value)));
     }
 
     public object? Aggregate(string column, ForgeAggregate aggregate)
     {
-        var values = _frame.Rows.Select(r => ForgeDataFrame.Get(r, column)).ToArray();
         return aggregate switch
         {
-            ForgeAggregate.Count => values.Count(v => v is not null and not DBNull),
-            ForgeAggregate.Sum => values.Select(ForgeDataFrame.ToDecimal).Where(x => x.HasValue).Sum(x => x!.Value),
-            ForgeAggregate.Average => Average(values),
-            ForgeAggregate.Min => values.Where(x => x is IComparable).Cast<IComparable>().OrderBy(x => x).FirstOrDefault(),
-            ForgeAggregate.Max => values.Where(x => x is IComparable).Cast<IComparable>().OrderByDescending(x => x).FirstOrDefault(),
+            ForgeAggregate.Count => Count(column),
+            ForgeAggregate.Sum => Sum(column),
+            ForgeAggregate.Average => Average(column),
+            ForgeAggregate.Min => Min(column),
+            ForgeAggregate.Max => Max(column),
             _ => null
         };
     }
@@ -110,6 +109,26 @@ public sealed class ForgeVectorizedFrame
     {
         return Average(_frame.Rows.Select(r => ForgeDataFrame.Get(r, column)));
     }
+    public object? Min(string column)
+    {
+        return _frame.Rows
+            .Select(r => ForgeDataFrame.Get(r, column))
+            .Where(x => x is IComparable)
+            .Cast<IComparable>()
+            .OrderBy(x => x)
+            .FirstOrDefault();
+    }
+
+    public object? Max(string column)
+    {
+        return _frame.Rows
+            .Select(r => ForgeDataFrame.Get(r, column))
+            .Where(x => x is IComparable)
+            .Cast<IComparable>()
+            .OrderByDescending(x => x)
+            .FirstOrDefault();
+    }
+
 
     public int Count(string? column = null)
     {
@@ -174,7 +193,7 @@ public sealed class ForgeVectorizedFrame<T>
     public ForgeVectorizedFrame<T> Where(Expression<Func<T, bool>> predicate)
     {
         var compiled = predicate.Compile();
-        var rows = _frame.Rows.Where(row => compiled(ToObject(row.ToDictionary()))).Select(row => new Dictionary<string, object?>(row, StringComparer.OrdinalIgnoreCase));
+        var rows = _frame.Rows.Where(row => compiled(ToObject(row))).Select(row => new Dictionary<string, object?>(row, StringComparer.OrdinalIgnoreCase));
         return new ForgeVectorizedFrame<T>(new ForgeDataFrame(rows));
     }
 
@@ -194,6 +213,24 @@ public sealed class ForgeVectorizedFrame<T>
             .Select(r => ForgeDataFrame.ToDecimal(ForgeDataFrame.Get(r, column)))
             .Where(x => x.HasValue)
             .Sum(x => x!.Value);
+    }
+
+    public decimal? Average(Expression<Func<T, decimal>> selector)
+    {
+        var column = ForgeFrameExpressionSql.GetMemberName(selector.Body);
+        var values = _frame.Rows
+            .Select(r => ForgeDataFrame.ToDecimal(ForgeDataFrame.Get(r, column)))
+            .Where(x => x.HasValue)
+            .Select(x => x!.Value)
+            .ToArray();
+        return values.Length == 0 ? null : values.Average();
+    }
+
+    public int Count(Expression<Func<T, object?>>? selector = null)
+    {
+        if (selector is null) return _frame.Rows.Count;
+        var column = ForgeFrameExpressionSql.GetMemberName(selector.Body);
+        return _frame.Rows.Count(r => ForgeDataFrame.Get(r, column) is not null and not DBNull);
     }
 
     private static T ToObject(IDictionary<string, object?> row)

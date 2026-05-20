@@ -109,7 +109,7 @@ public static class AdvancedDbSurfaceEndpoints
             var frame = await db.Frame<Order>().ToFrameAsync(ct);
             var filtered = frame.Vectorized()
                 .Where("GrandTotal", ForgeVectorOperator.GreaterThan, 10000m)
-                ;
+                .Sum("GrandTotal");
 
             return Results.Ok(new { sum = filtered });
         });
@@ -118,7 +118,7 @@ public static class AdvancedDbSurfaceEndpoints
         {
             var rows = await db.Set<Order>()
                 .UseShard("EU")
-               // .Where(x => x.TenantId == tenantId)
+                .Where(x => x.TenantId == tenantId)
                 .ToListAsync(ct);
 
             return Results.Ok(rows);

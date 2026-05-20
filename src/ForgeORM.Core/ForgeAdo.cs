@@ -48,19 +48,20 @@ public static class ForgeAdo
         CancellationToken cancellationToken = default)
     {
         var providerName = connection.GetType().FullName ?? connection.GetType().Name;
-        var compiledPlan = ForgeCompiledQueryCache.GetOrAdd(providerName, typeof(T), sql, parameters?.GetType(), () => new ForgeCompiledQueryPlan(sql, typeof(T), parameters?.GetType(), providerName, ForgeCompiledQueryCache.Fingerprint(sql)));
+        _ = ForgeCompiledQueryCache.GetOrAdd(providerName, typeof(T), sql, parameters?.GetType(), () => new ForgeCompiledQueryPlan(sql, typeof(T), parameters?.GetType(), providerName, ForgeCompiledQueryCache.Fingerprint(sql)));
         _ = ForgePerformanceCommandPlanCache.GetOrAdd(providerName, sql, commandType, parameters?.GetType());
+
         await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
 
         if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken);
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
 
+        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
         var rows = new List<T>(EstimateCapacity(sql));
-        var materializer = ForgeIlMaterializerCache.GetOrCreate<T>(reader);
 
-        while (await reader.ReadAsync(cancellationToken))
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             rows.Add(materializer(reader));
 
         return rows;
@@ -90,12 +91,12 @@ public static class ForgeAdo
         await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
 
         if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken);
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess, cancellationToken);
-        var materializer = ForgeIlMaterializerCache.GetOrCreate<T>(reader);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
+        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
 
-        return await reader.ReadAsync(cancellationToken)
+        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
             ? materializer(reader)
             : default;
     }
@@ -112,17 +113,17 @@ public static class ForgeAdo
         await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
 
         if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken);
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
 
-        if (!await reader.ReadAsync(cancellationToken))
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             return default;
 
-        var materializer = ForgeIlMaterializerCache.GetOrCreate<T>(reader);
+        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
         var first = materializer(reader);
 
-        if (await reader.ReadAsync(cancellationToken))
+        if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             throw new InvalidOperationException("Sequence contains more than one element.");
 
         return first;

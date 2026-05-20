@@ -113,6 +113,20 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("        return -1;");
         sb.AppendLine("    }");
         sb.AppendLine();
+        sb.AppendLine("    private static TEnum ReadEnum<TEnum>(DbDataReader reader, int ordinal) where TEnum : struct, Enum");
+        sb.AppendLine("    {");
+        sb.AppendLine("        if (reader.IsDBNull(ordinal)) return default;");
+        sb.AppendLine("        var value = reader.GetValue(ordinal);");
+        sb.AppendLine("        if (value is string text) return Enum.Parse<TEnum>(text, ignoreCase: true);");
+        sb.AppendLine("        return (TEnum)Enum.ToObject(typeof(TEnum), value);");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine("    private static TEnum? ReadNullableEnum<TEnum>(DbDataReader reader, int ordinal) where TEnum : struct, Enum");
+        sb.AppendLine("    {");
+        sb.AppendLine("        if (reader.IsDBNull(ordinal)) return null;");
+        sb.AppendLine("        return ReadEnum<TEnum>(reader, ordinal);");
+        sb.AppendLine("    }");
+        sb.AppendLine();
         sb.AppendLine("    private static void Add(DbCommand command, string name, object? value, DbType? dbType = null)");
         sb.AppendLine("    {");
         sb.AppendLine("        var p = command.CreateParameter();");
@@ -251,8 +265,9 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
 
         if (nullable.TypeKind == TypeKind.Enum)
         {
-            var underlying = ((INamedTypeSymbol)nullable).EnumUnderlyingType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? "global::System.Int32";
-            return "(" + full + ")" + readerName + ".GetFieldValue<" + underlying + ">(" + ordinalName + ")";
+            if (!SymbolEqualityComparer.Default.Equals(nullable, type))
+                return "ReadNullableEnum<" + full + ">(" + readerName + ", " + ordinalName + ")!.Value";
+            return "ReadEnum<" + full + ">(" + readerName + ", " + ordinalName + ")";
         }
 
         return full switch

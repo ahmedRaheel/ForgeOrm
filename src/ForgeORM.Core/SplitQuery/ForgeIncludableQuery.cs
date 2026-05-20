@@ -10,7 +10,7 @@ namespace ForgeORM.Core;
 internal sealed class ForgeIncludableQuery<T, TProperty> : IForgeIncludableQuery<T, TProperty>
 {
     public ForgeIncludableQuery(IForgeQuery<T> query) => Query = query ?? throw new ArgumentNullException(nameof(query));
-
+    
     public IForgeQuery<T> Query { get; }
     public ForgeQueryExecutionOptions ExecutionOptions => Query.ExecutionOptions;
     public string ToSql() => Query.ToSql();
@@ -29,7 +29,7 @@ internal sealed class ForgeIncludableQuery<T, TProperty> : IForgeIncludableQuery
     public IForgeQuery<T> TemporalAsOf(DateTime asOfUtc) => Query.TemporalAsOf(asOfUtc);
     public IForgeQuery<T> TemporalBetween(DateTime fromUtc, DateTime toUtc) => Query.TemporalBetween(fromUtc, toUtc);
     public IForgeQuery<T> TemporalContainedIn(DateTime fromUtc, DateTime toUtc) => Query.TemporalContainedIn(fromUtc, toUtc);
-    public IForgeIncludableQuery<T, TNextProperty> Include<TNextProperty>(Expression<Func<T, TNextProperty>> navigation) => Query.Include(navigation);
+    public IForgeQuery<T> Include<TNextProperty>(Expression<Func<T, TNextProperty>> navigation) => Query.Include(navigation);
     public bool Any() => Query.Any();
     public Task<bool> AnyAsync(CancellationToken cancellationToken = default) => Query.AnyAsync(cancellationToken);
     public IReadOnlyList<T> ToList() => Query.ToList();

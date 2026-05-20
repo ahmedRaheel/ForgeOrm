@@ -53,7 +53,7 @@ public static class ForgeRuntimeEntityMetadataCache
 
     private static ForgeRuntimeEntityPlan Build(Type type)
     {
-        var table = type.GetCustomAttribute<ForgeTableAttribute>()?.Name ?? type.Name;
+        var table = ResolveTableName(type);
 
         var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(x => x.CanRead && ForgeMaterializer.IsScalar(x.PropertyType))
@@ -61,7 +61,9 @@ public static class ForgeRuntimeEntityMetadataCache
             .ToArray();
 
         var key = properties.FirstOrDefault(x => x.IsKey)
-                  ?? properties.FirstOrDefault(x => x.PropertyName.Equals("Id", StringComparison.OrdinalIgnoreCase));
+                  ?? properties.FirstOrDefault(x => x.PropertyName.Equals("Id", StringComparison.OrdinalIgnoreCase))
+                  ?? properties.FirstOrDefault(x => x.PropertyName.Equals(type.Name + "Id", StringComparison.OrdinalIgnoreCase))
+                  ?? properties.FirstOrDefault(x => x.PropertyName.EndsWith("Id", StringComparison.OrdinalIgnoreCase));
 
         var insertable = properties.Where(x => !x.IsKey && !x.IsComputed).ToArray();
         var updateable = properties.Where(x => !x.IsKey && !x.IsComputed).ToArray();
@@ -85,9 +87,13 @@ public static class ForgeRuntimeEntityMetadataCache
 
     private static ForgeRuntimePropertyPlan CreatePropertyPlan(PropertyInfo property)
     {
-        var column = property.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? property.Name;
-        var isKey = property.GetCustomAttribute<ForgeKeyAttribute>() is not null || property.Name.Equals("Id", StringComparison.OrdinalIgnoreCase);
-        var isComputed = property.GetCustomAttribute<ForgeComputedAttribute>() is not null;
+        var column = ResolveColumnName(property);
+        var declaringName = property.DeclaringType?.Name ?? string.Empty;
+        var isKey = HasAttributeNamed(property, "ForgeKeyAttribute")
+                    || HasAttributeNamed(property, "KeyAttribute")
+                    || property.Name.Equals("Id", StringComparison.OrdinalIgnoreCase)
+                    || property.Name.Equals(declaringName + "Id", StringComparison.OrdinalIgnoreCase);
+        var isComputed = HasAttributeNamed(property, "ForgeComputedAttribute") || HasAttributeNamed(property, "ComputedAttribute");
 
         return new ForgeRuntimePropertyPlan
         {
@@ -100,6 +106,38 @@ public static class ForgeRuntimeEntityMetadataCache
             Setter = property.CanWrite ? BuildSetter(property) : null
         };
     }
+
+
+    private static string ResolveTableName(Type type)
+    {
+        var attr = type.GetCustomAttributes(false)
+            .FirstOrDefault(x => x.GetType().Name is "ForgeTableAttribute" or "TableAttribute");
+
+        if (attr is null)
+            return type.Name;
+
+        var name = attr.GetType().GetProperty("Name")?.GetValue(attr)?.ToString()
+                   ?? attr.GetType().GetProperty("TableName")?.GetValue(attr)?.ToString();
+
+        return string.IsNullOrWhiteSpace(name) ? type.Name : name!;
+    }
+
+    private static string ResolveColumnName(PropertyInfo property)
+    {
+        var attr = property.GetCustomAttributes(false)
+            .FirstOrDefault(x => x.GetType().Name is "ForgeColumnAttribute" or "ColumnAttribute");
+
+        if (attr is null)
+            return property.Name;
+
+        var name = attr.GetType().GetProperty("Name")?.GetValue(attr)?.ToString()
+                   ?? attr.GetType().GetProperty("ColumnName")?.GetValue(attr)?.ToString();
+
+        return string.IsNullOrWhiteSpace(name) ? property.Name : name!;
+    }
+
+    private static bool HasAttributeNamed(MemberInfo member, string attributeName)
+        => member.GetCustomAttributes(false).Any(x => x.GetType().Name.Equals(attributeName, StringComparison.OrdinalIgnoreCase));
 
     private static Func<object, object?> BuildGetter(PropertyInfo property)
     {

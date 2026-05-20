@@ -37,7 +37,7 @@ internal static class ForgeSqlServerParameterBinderCache
             var clean = name.TrimStart('@');
             if (!properties.TryGetValue(clean, out var prop))
                 continue;
-            var add = typeof(ForgeSqlServerProviderDirectHotPath).GetMethod(nameof(ForgeSqlServerProviderDirectHotPath.AddTypedParameter), BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)!;
+            var add = typeof(ForgeSqlServerProviderDirectHotPath).GetMethod(nameof(ForgeSqlServerProviderDirectHotPath.AddTypedParameterOrEnumerable), BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)!;
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldstr, name);
             il.Emit(OpCodes.Ldloc, typed);

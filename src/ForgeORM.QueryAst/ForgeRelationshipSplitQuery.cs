@@ -242,6 +242,12 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
         string? backingField = null,
         string? childWhereSql = null)
     {
+        if (string.Equals(parentKey, "Id", StringComparison.OrdinalIgnoreCase))
+            parentKey = ResolveKeyPropertyName(typeof(TParent));
+
+        if (string.Equals(childForeignKey, "ParentId", StringComparison.OrdinalIgnoreCase))
+            childForeignKey = ResolveForeignKeyName(typeof(TParent), typeof(TChild));
+
         var parentKeyProperty = FindProperty(typeof(TParent), parentKey);
         var childForeignKeyProperty = FindProperty(typeof(TChild), childForeignKey);
 
@@ -464,8 +470,35 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
 
     private static string ResolveTableName(Type type)
     {
-        var attr = type.GetCustomAttributes(typeof(ForgeTableAttribute), false).Cast<ForgeTableAttribute>().FirstOrDefault();
-        return attr?.Name ?? type.Name;
+        var attr = type.GetCustomAttributes(false)
+            .FirstOrDefault(x => x.GetType().Name is "ForgeTableAttribute" or "TableAttribute");
+
+        if (attr is null)
+            return type.Name;
+
+        var name = attr.GetType().GetProperty("Name")?.GetValue(attr)?.ToString()
+                   ?? attr.GetType().GetProperty("TableName")?.GetValue(attr)?.ToString();
+
+        return string.IsNullOrWhiteSpace(name) ? type.Name : name!;
+    }
+
+    private static string ResolveKeyPropertyName(Type type)
+    {
+        var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        return props.FirstOrDefault(p => p.GetCustomAttributes(false).Any(a => a.GetType().Name is "ForgeKeyAttribute" or "KeyAttribute"))?.Name
+               ?? props.FirstOrDefault(p => p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase))?.Name
+               ?? props.FirstOrDefault(p => p.Name.Equals(type.Name + "Id", StringComparison.OrdinalIgnoreCase))?.Name
+               ?? props.FirstOrDefault(p => p.Name.EndsWith("Id", StringComparison.OrdinalIgnoreCase))?.Name
+               ?? "Id";
+    }
+
+    private static string ResolveForeignKeyName(Type parentType, Type childType)
+    {
+        var props = childType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        return props.FirstOrDefault(p => p.Name.Equals(parentType.Name + "Id", StringComparison.OrdinalIgnoreCase))?.Name
+               ?? props.FirstOrDefault(p => p.Name.Equals("ParentId", StringComparison.OrdinalIgnoreCase))?.Name
+               ?? props.FirstOrDefault(p => p.Name.EndsWith("Id", StringComparison.OrdinalIgnoreCase))?.Name
+               ?? parentType.Name + "Id";
     }
 
     private static TValue GetValue<TValue>(object instance, string propertyName)

@@ -65,8 +65,11 @@ public static class ForgeEntityMetadataCache
     {
         var array = properties.ToArray();
 
+        var declaringName = array.FirstOrDefault()?.DeclaringType?.Name ?? string.Empty;
+
         return array.FirstOrDefault(HasKeyAttribute)
             ?? array.FirstOrDefault(x => string.Equals(x.Name, "Id", StringComparison.OrdinalIgnoreCase))
+            ?? array.FirstOrDefault(x => string.Equals(x.Name, declaringName + "Id", StringComparison.OrdinalIgnoreCase))
             ?? array.FirstOrDefault(x => x.Name.EndsWith("Id", StringComparison.OrdinalIgnoreCase));
     }
 

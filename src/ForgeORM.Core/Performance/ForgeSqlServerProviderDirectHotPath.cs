@@ -146,16 +146,21 @@ internal static class ForgeSqlServerProviderDirectHotPath
         if (parameters is not null && IsScalar(parameters.GetType()))
             EnsureScalarSqlParametersBound(command, parameters, parameters.GetType());
         EnsureReferencedSqlParametersAreBound(command, plan.ParameterNames, parameters);
-        ValidateNoUnboundSqlParameters(command, plan.ParameterNames);
+
+        // Enumerable expansion can rewrite IN @Ids into IN (@Ids0, @Ids1, ...).
+        // Validate against the final command text, not the original plan tokens.
+        var finalParameterNames = SqlParameterTokenCache.GetOrAdd(command.CommandText, ExtractParameterNames);
+        ValidateNoUnboundSqlParameters(command, finalParameterNames);
         return command;
     }
 
     private static SqlServerEntityPlan BuildGetByIdPlan(ForgeEntityMetadata metadata)
     {
         var key = metadata.Properties.FirstOrDefault(x => string.Equals(x.ColumnName, metadata.KeyColumn, StringComparison.OrdinalIgnoreCase) || x.IsKey);
+        var parameterName = "@" + (key?.PropertyName ?? metadata.KeyColumn).TrimStart('@', ':');
         return new SqlServerEntityPlan(
-            $"SELECT * FROM {metadata.TableName} WHERE {metadata.KeyColumn} = @Id",
-            "@Id",
+            $"SELECT * FROM {metadata.TableName} WHERE {metadata.KeyColumn} = {parameterName}",
+            parameterName,
             key?.PropertyType ?? typeof(object));
     }
 
@@ -180,7 +185,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
             {
                 var key = name.TrimStart('@');
                 if (dictionary.TryGetValue(key, out var value) || dictionary.TryGetValue(name, out value))
-                    AddTypedParameter(command, name, value, value?.GetType() ?? typeof(object));
+                    AddTypedParameterOrEnumerable(command, name, value, value?.GetType() ?? typeof(object));
             }
             return;
         }
@@ -198,13 +203,24 @@ internal static class ForgeSqlServerProviderDirectHotPath
                 else
                     continue;
 
-                AddTypedParameter(command, name, value, value?.GetType() ?? typeof(object));
+                AddTypedParameterOrEnumerable(command, name, value, value?.GetType() ?? typeof(object));
             }
             return;
         }
 
         var binder = ForgeSqlServerParameterBinderCache.GetOrAdd(parameters.GetType(), parameterNames);
         binder(command, parameters);
+    }
+
+    public static void AddTypedParameterOrEnumerable(SqlCommand command, string parameterName, object? value, Type declaredType)
+    {
+        if (IsEnumerableParameter(value))
+        {
+            ExpandEnumerableParameter(command, parameterName, (IEnumerable)value!);
+            return;
+        }
+
+        AddTypedParameter(command, parameterName, value, declaredType);
     }
 
     internal static void AddTypedParameter(SqlCommand command, string parameterName, object? value, Type declaredType)
@@ -255,7 +271,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
                     continue;
                 var key = name.TrimStart('@', ':');
                 if (dictionary.TryGetValue(key, out var value) || dictionary.TryGetValue(name, out value))
-                    AddTypedParameter(command, name, value, value?.GetType() ?? typeof(object));
+                    AddTypedParameterOrEnumerable(command, name, value, value?.GetType() ?? typeof(object));
             }
             return;
         }
@@ -272,7 +288,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
                 if (nonGenericDictionary.Contains(key)) { value = nonGenericDictionary[key]; found = true; }
                 else if (nonGenericDictionary.Contains(name)) { value = nonGenericDictionary[name]; found = true; }
                 if (found)
-                    AddTypedParameter(command, name, value, value?.GetType() ?? typeof(object));
+                    AddTypedParameterOrEnumerable(command, name, value, value?.GetType() ?? typeof(object));
             }
             return;
         }
@@ -320,6 +336,42 @@ internal static class ForgeSqlServerProviderDirectHotPath
         }
 
         return false;
+    }
+
+
+    private static bool IsEnumerableParameter(object? value)
+    {
+        if (value is null || value is string || value is byte[])
+            return false;
+
+        return value is IEnumerable;
+    }
+
+    private static void ExpandEnumerableParameter(SqlCommand command, string parameterName, IEnumerable values)
+    {
+        var cleanName = parameterName.TrimStart('@', ':');
+        var parameterNames = new List<string>();
+        var index = 0;
+
+        foreach (var value in values)
+        {
+            var expandedName = "@" + cleanName + index++;
+            parameterNames.Add(expandedName);
+            AddTypedParameter(command, expandedName, value, value?.GetType() ?? typeof(object));
+        }
+
+        var replacement = parameterNames.Count == 0
+            ? "(NULL)"
+            : "(" + string.Join(", ", parameterNames) + ")";
+
+        command.CommandText = ReplaceParameterToken(command.CommandText, cleanName, replacement);
+    }
+
+    private static string ReplaceParameterToken(string sql, string parameterName, string replacement)
+    {
+        sql = sql.Replace("@" + parameterName, replacement, StringComparison.OrdinalIgnoreCase);
+        sql = sql.Replace(":" + parameterName, replacement, StringComparison.OrdinalIgnoreCase);
+        return sql;
     }
 
     private static bool IsScalar(Type type)

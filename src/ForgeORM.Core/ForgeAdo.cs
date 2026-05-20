@@ -551,10 +551,15 @@ public static class ForgeAdo
 
     private static object? NormalizeParameterValue(object? value)
     {
+        // Default ForgeORM enum parameter behavior is string-name storage because the sample
+        // schema and most human-readable enterprise schemas store enum columns as nvarchar
+        // values such as 'Paid'. Binding the enum as its underlying int causes SQL Server to
+        // attempt nvarchar -> int conversion in predicates and fail before materialization.
+        // Numeric enum storage is still supported through property-level ForgeEnumStorage(Number)
+        // in generated/entity binders where the declaring property is known.
         if (value is Enum enumValue)
         {
-            var underlying = Enum.GetUnderlyingType(enumValue.GetType());
-            return Convert.ChangeType(enumValue, underlying);
+            return enumValue.ToString();
         }
 
         if (value is DateTime dateTime)

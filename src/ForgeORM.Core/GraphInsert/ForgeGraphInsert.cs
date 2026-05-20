@@ -672,7 +672,7 @@ internal static class ForgeEnumConversion
         var enumType = Nullable.GetUnderlyingType(type) ?? type;
         if (!enumType.IsEnum) return value;
 
-        var storage = property?.GetCustomAttribute<ForgeEnumStorageAttribute>()?.Storage ?? ForgeEnumStorage.Number;
+        var storage = property?.GetCustomAttribute<ForgeEnumStorageAttribute>()?.Storage ?? ForgeEnumStorage.String;
         return storage == ForgeEnumStorage.Number
             ? Convert.ChangeType(value, Enum.GetUnderlyingType(enumType))
             : value.ToString();

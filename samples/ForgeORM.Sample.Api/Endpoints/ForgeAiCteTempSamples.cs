@@ -1,7 +1,7 @@
 using ForgeORM.Core;
 using ForgeORM.Core.Search;
 
-namespace ForgeORM.Sample.Api;
+namespace ForgeORM.Sample.Api.Endpoints;
 
 public static class ForgeAiCteTempSamples
 {

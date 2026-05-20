@@ -148,7 +148,8 @@ internal sealed class ForgeSplitIncludeOne<TParent, TChild, TKey> : IForgeSplitI
 
         var ids = parents.Select(_parentKey).Distinct().ToArray();
         var children = await db.QueryAsync<TChild>(
-            ForgeSplitSqlInList.ExpandIds(_childSqlFactory(ids), ids),
+            _childSqlFactory(ids),
+            new { Ids = ids },
             cancellationToken: cancellationToken);
 
         var map = children
@@ -197,7 +198,8 @@ internal sealed class ForgeSplitIncludeMany<TParent, TChild, TKey> : IForgeSplit
 
         var ids = parents.Select(_parentKey).Distinct().ToArray();
         var children = (await db.QueryAsync<TChild>(
-            ForgeSplitSqlInList.ExpandIds(_childSqlFactory(ids), ids),
+            _childSqlFactory(ids),
+            new { Ids = ids },
             cancellationToken: cancellationToken)).ToList();
 
         var lookup = children.ToLookup(_childForeignKey);
@@ -254,7 +256,8 @@ internal sealed class ForgeSplitIncludeManyToMany<TParent, TJoin, TChild, TParen
 
         var parentIds = parents.Select(_parentKey).Distinct().ToArray();
         var joins = (await db.QueryAsync<TJoin>(
-            ForgeSplitSqlInList.ExpandIds(_joinSqlFactory(parentIds), parentIds),
+            _joinSqlFactory(parentIds),
+            new { Ids = parentIds },
             cancellationToken: cancellationToken)).ToList();
 
         var childIds = joins.Select(_joinChildKey).Distinct().ToArray();
@@ -266,7 +269,8 @@ internal sealed class ForgeSplitIncludeManyToMany<TParent, TJoin, TChild, TParen
         }
 
         var children = (await db.QueryAsync<TChild>(
-            ForgeSplitSqlInList.ExpandIds(_childSqlFactory(childIds), childIds),
+            _childSqlFactory(childIds),
+            new { Ids = childIds },
             cancellationToken: cancellationToken)).ToList();
 
         var childById = children.ToDictionary(_childKey);

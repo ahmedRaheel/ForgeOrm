@@ -88,75 +88,27 @@ public sealed class ReflectionForgeEntityMetadataResolver : IForgeEntityMetadata
 
     private static ForgeEntityMetadata BuildMetadata(Type type)
     {
-        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanRead && p.GetIndexParameters().Length == 0 && ForgeMaterializer.IsScalar(p.PropertyType))
-            .ToArray();
-
-        var keyProperty = ResolveKeyProperty(type, properties);
-
-        var props = properties
+        var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanRead && ForgeMaterializer.IsScalar(p.PropertyType))
             .Select(p => new ForgePropertyMetadata
             {
                 PropertyName = p.Name,
-                ColumnName = ResolveColumnName(p),
+                ColumnName = p.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? p.Name,
                 PropertyType = p.PropertyType,
-                IsKey = keyProperty is not null && string.Equals(p.Name, keyProperty.Name, StringComparison.OrdinalIgnoreCase),
-                IsCode = HasAttributeNamed(p, "ForgeCodeAttribute") || p.Name.Equals("Code", StringComparison.OrdinalIgnoreCase),
-                IsComputed = HasAttributeNamed(p, "ForgeComputedAttribute") || HasAttributeNamed(p, "ComputedAttribute")
+                IsKey = p.GetCustomAttribute<ForgeKeyAttribute>() is not null || p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase),
+                IsCode = p.GetCustomAttribute<ForgeCodeAttribute>() is not null || p.Name.Equals("Code", StringComparison.OrdinalIgnoreCase),
+                IsComputed = p.GetCustomAttribute<ForgeComputedAttribute>() is not null
             }).ToList();
-
-        var key = keyProperty is null
-            ? props.FirstOrDefault()
-            : props.FirstOrDefault(x => string.Equals(x.PropertyName, keyProperty.Name, StringComparison.OrdinalIgnoreCase));
 
         return new ForgeEntityMetadata
         {
             EntityType = type,
-            TableName = ResolveTableName(type),
-            KeyColumn = key?.ColumnName ?? props.FirstOrDefault()?.ColumnName ?? "Id",
+            TableName = type.GetCustomAttribute<ForgeTableAttribute>()?.Name ?? type.Name,
+            KeyColumn = props.FirstOrDefault(x => x.IsKey)?.ColumnName ?? "Id",
             CodeColumn = props.FirstOrDefault(x => x.IsCode)?.ColumnName ?? "Code",
             Properties = props
         };
     }
-
-    private static string ResolveTableName(Type type)
-    {
-        var attr = type.GetCustomAttributes(false)
-            .FirstOrDefault(x => x.GetType().Name is "ForgeTableAttribute" or "TableAttribute");
-
-        if (attr is null)
-            return type.Name;
-
-        var name = attr.GetType().GetProperty("Name")?.GetValue(attr)?.ToString()
-                   ?? attr.GetType().GetProperty("TableName")?.GetValue(attr)?.ToString();
-
-        return string.IsNullOrWhiteSpace(name) ? type.Name : name!;
-    }
-
-    private static string ResolveColumnName(PropertyInfo property)
-    {
-        var attr = property.GetCustomAttributes(false)
-            .FirstOrDefault(x => x.GetType().Name is "ForgeColumnAttribute" or "ColumnAttribute");
-
-        if (attr is null)
-            return property.Name;
-
-        var name = attr.GetType().GetProperty("Name")?.GetValue(attr)?.ToString()
-                   ?? attr.GetType().GetProperty("ColumnName")?.GetValue(attr)?.ToString();
-
-        return string.IsNullOrWhiteSpace(name) ? property.Name : name!;
-    }
-
-    private static PropertyInfo? ResolveKeyProperty(Type type, IReadOnlyList<PropertyInfo> properties)
-    {
-        return properties.FirstOrDefault(p => HasAttributeNamed(p, "ForgeKeyAttribute") || HasAttributeNamed(p, "KeyAttribute"))
-               ?? properties.FirstOrDefault(p => p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase))
-               ?? properties.FirstOrDefault(p => p.Name.Equals(type.Name + "Id", StringComparison.OrdinalIgnoreCase))
-               ?? properties.FirstOrDefault(p => p.Name.EndsWith("Id", StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static bool HasAttributeNamed(MemberInfo member, string attributeName)
-        => member.GetCustomAttributes(false).Any(x => x.GetType().Name.Equals(attributeName, StringComparison.OrdinalIgnoreCase));
 }
 
 internal sealed class ForgeQuery<T> : IForgeQuery<T>
@@ -383,7 +335,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     {
         var rows = _db.Query<T>(BuildSql(), BuildParameters(), ExecutionOptions.TimeoutSeconds).ToList();
         if (_includes.Count > 0 && rows.Count > 0)
-            ForgeNavigationSupport.LoadIncludedNavigationsAsync(rows, _db, _meta.KeyColumn, _includes, CancellationToken.None).GetAwaiter().GetResult();
+            ForgeEfSplitGraphLoader.LoadIncludedNavigationsAsync(rows, _db, _includes, CancellationToken.None).GetAwaiter().GetResult();
         return rows;
     }
 
@@ -396,7 +348,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     {
         var rows = await _db.QueryAsync<T>(BuildSql(), BuildParameters(), ExecutionOptions.TimeoutSeconds, cancellationToken);
         if (_includes.Count > 0 && rows.Count > 0)
-            await ForgeNavigationSupport.LoadIncludedNavigationsAsync(rows, _db, _meta.KeyColumn, _includes, cancellationToken);
+            await ForgeEfSplitGraphLoader.LoadIncludedNavigationsAsync(rows, _db, _includes, cancellationToken);
         return rows;
     }
 
@@ -438,7 +390,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     {
         var row = _db.QueryFirstOrDefault<T>(BuildFirstSql(), BuildParameters(), ExecutionOptions.TimeoutSeconds);
         if (_includes.Count > 0 && row is not null)
-            ForgeNavigationSupport.LoadIncludedNavigationsAsync(new[] { row }, _db, _meta.KeyColumn, _includes, CancellationToken.None).GetAwaiter().GetResult();
+            ForgeEfSplitGraphLoader.LoadIncludedNavigationsAsync(new[] { row }, _db, _includes, CancellationToken.None).GetAwaiter().GetResult();
         return row;
     }
 
@@ -451,7 +403,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     {
         var row = await _db.QueryFirstOrDefaultAsync<T>(BuildFirstSql(), BuildParameters(), ExecutionOptions.TimeoutSeconds, cancellationToken);
         if (_includes.Count > 0 && row is not null)
-            await ForgeNavigationSupport.LoadIncludedNavigationsAsync(new[] { row }, _db, _meta.KeyColumn, _includes, cancellationToken);
+            await ForgeEfSplitGraphLoader.LoadIncludedNavigationsAsync(new[] { row }, _db, _includes, cancellationToken);
         return row;
     }
 

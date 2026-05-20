@@ -7,8 +7,8 @@ namespace ForgeORM.Benchmarks;
 [MemoryDiagnoser]
 public class OrmComparisonBenchmarks
 {
-    private readonly List<BenchProduct> _rows = Enumerable.Range(1, 10_000)
-        .Select(i => new BenchProduct { Id = i, Name = "Product " + i, Price = i })
+    private readonly List<BenchProductAccess> _rows = Enumerable.Range(1, 10_000)
+        .Select(i => new BenchProductAccess { Id = i, Name = "Product " + i, Price = i })
         .ToList();
 
     [Benchmark(Baseline = true)]
@@ -17,7 +17,7 @@ public class OrmComparisonBenchmarks
         var total = 0;
         foreach (var row in _rows)
         {
-            total += (int)(row.GetType().GetProperty(nameof(BenchProduct.Id))!.GetValue(row) ?? 0);
+            total += (int)(row.GetType().GetProperty(nameof(BenchProductAccess.Id))!.GetValue(row) ?? 0);
         }
         return total;
     }
@@ -25,8 +25,8 @@ public class OrmComparisonBenchmarks
     [Benchmark]
     public int ForgeCompiledAccessor()
     {
-        var plan = ForgeCompiledPlanCache.For<BenchProduct>();
-        var id = plan.Properties.First(x => x.Name == nameof(BenchProduct.Id));
+        var plan = ForgeCompiledPlanCache.For<BenchProductAccess>();
+        var id = plan.Properties.First(x => x.Name == nameof(BenchProductAccess.Id));
         var total = 0;
 
         foreach (var row in _rows)
@@ -40,11 +40,11 @@ public class OrmComparisonBenchmarks
     [Benchmark]
     public string ForgeCompiledSqlPlan()
     {
-        return ForgeCompiledPlanCache.For<BenchProduct>().InsertSql;
+        return ForgeCompiledPlanCache.For<BenchProductAccess>().InsertSql;
     }
 }
 
-public sealed class BenchProduct
+public sealed class BenchProductAccess
 {
     public int Id { get; set; }
     public string Name { get; set; } = "";

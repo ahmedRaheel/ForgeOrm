@@ -1,6 +1,7 @@
 using System.Data;
 using System.Data.Common;
 using ForgeORM.Abstractions;
+using ForgeORM.Core.Performance;
 
 namespace ForgeORM.Core;
 
@@ -48,6 +49,9 @@ public partial class ForgeDb : IForgeDb
     /// <returns>The result of the T operation.</returns>
     public IReadOnlyList<T> Query<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return ForgeSqlServerProviderDirectHotPath.Query<T>(_connectionString, sql, parameters, timeoutSeconds);
+
         using var c = CreateConnection();
         c.Open();
         return ForgeAdo.Query<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds);
@@ -64,6 +68,9 @@ public partial class ForgeDb : IForgeDb
     /// <returns>The result of the T operation.</returns>
     public async Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return await ForgeSqlServerProviderDirectHotPath.QueryAsync<T>(_connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
         return await ForgeAdo.QueryAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
@@ -112,6 +119,9 @@ public partial class ForgeDb : IForgeDb
     /// <returns>The result of the T operation.</returns>
     public T? QueryFirstOrDefault<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return ForgeSqlServerProviderDirectHotPath.QueryFirstOrDefault<T>(_connectionString, sql, parameters, timeoutSeconds);
+
         using var c = CreateConnection();
         c.Open();
         return ForgeAdo.QueryFirstOrDefaultAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds)
@@ -130,6 +140,9 @@ public partial class ForgeDb : IForgeDb
     /// <returns>The result of the T operation.</returns>
     public async Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return await ForgeSqlServerProviderDirectHotPath.QueryFirstOrDefaultAsync<T>(_connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
         return await ForgeAdo.QueryFirstOrDefaultAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);

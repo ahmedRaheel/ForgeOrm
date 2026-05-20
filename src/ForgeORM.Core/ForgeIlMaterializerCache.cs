@@ -84,16 +84,29 @@ internal static class ForgeIlMaterializerCache
             return (Func<DbDataReader, T>)method.CreateDelegate(typeof(Func<DbDataReader, T>));
         }
 
-        var ctor = actualType.GetConstructor(Type.EmptyTypes)
-            ?? throw new InvalidOperationException($"{actualType.FullName} must have a parameterless constructor for MSIL materialization.");
-
+        var constructorPlan = CreateConstructorPlan(actualType, reader);
         var entity = il.DeclareLocal(actualType);
-        il.Emit(OpCodes.Newobj, ctor);
-        il.Emit(OpCodes.Stloc, entity);
 
+        if (constructorPlan.Constructor is not null && constructorPlan.Parameters.Length > 0)
+        {
+            EmitConstructorArguments(il, constructorPlan, reader);
+            il.Emit(OpCodes.Newobj, constructorPlan.Constructor);
+            il.Emit(OpCodes.Stloc, entity);
+        }
+        else
+        {
+            var ctor = actualType.GetConstructor(Type.EmptyTypes)
+                ?? throw new InvalidOperationException($"{actualType.FullName} must have either a parameterless constructor or a constructor whose parameter names match result columns for MSIL/record materialization.");
+
+            il.Emit(OpCodes.Newobj, ctor);
+            il.Emit(OpCodes.Stloc, entity);
+        }
+
+        var constructorParameterNames = constructorPlan.ParameterNames;
         var properties = actualType
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.CanWrite && Support.IsScalarColumn(p))
+            .Where(p => !constructorParameterNames.Contains(p.Name))
             .ToDictionary(
                 p => p.GetCustomAttribute<ForgeORM.Abstractions.ForgeColumnAttribute>()?.Name ?? p.Name,
                 p => p,
@@ -219,16 +232,29 @@ internal static class ForgeIlMaterializerCache
             return (Func<DbDataReader, object>)method.CreateDelegate(typeof(Func<DbDataReader, object>));
         }
 
-        var ctor = runtimeType.GetConstructor(Type.EmptyTypes)
-            ?? throw new InvalidOperationException($"{runtimeType.FullName} must have a parameterless constructor for MSIL materialization.");
-
+        var constructorPlan = CreateConstructorPlan(runtimeType, reader);
         var entity = il.DeclareLocal(runtimeType);
-        il.Emit(OpCodes.Newobj, ctor);
-        il.Emit(OpCodes.Stloc, entity);
 
+        if (constructorPlan.Constructor is not null && constructorPlan.Parameters.Length > 0)
+        {
+            EmitConstructorArguments(il, constructorPlan, reader);
+            il.Emit(OpCodes.Newobj, constructorPlan.Constructor);
+            il.Emit(OpCodes.Stloc, entity);
+        }
+        else
+        {
+            var ctor = runtimeType.GetConstructor(Type.EmptyTypes)
+                ?? throw new InvalidOperationException($"{runtimeType.FullName} must have either a parameterless constructor or a constructor whose parameter names match result columns for MSIL/record materialization.");
+
+            il.Emit(OpCodes.Newobj, ctor);
+            il.Emit(OpCodes.Stloc, entity);
+        }
+
+        var constructorParameterNames = constructorPlan.ParameterNames;
         var properties = runtimeType
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.CanWrite && Support.IsScalarColumn(p))
+            .Where(p => !constructorParameterNames.Contains(p.Name))
             .ToDictionary(
                 p => p.GetCustomAttribute<ForgeORM.Abstractions.ForgeColumnAttribute>()?.Name ?? p.Name,
                 p => p,
@@ -263,6 +289,107 @@ internal static class ForgeIlMaterializerCache
             il.Emit(OpCodes.Box, runtimeType);
         il.Emit(OpCodes.Ret);
         return (Func<DbDataReader, object>)method.CreateDelegate(typeof(Func<DbDataReader, object>));
+    }
+
+
+    private sealed record ForgeConstructorPlan(
+        ConstructorInfo? Constructor,
+        ParameterInfo[] Parameters,
+        int[] Ordinals,
+        HashSet<string> ParameterNames);
+
+    private static ForgeConstructorPlan CreateConstructorPlan(Type type, DbDataReader reader)
+    {
+        var columns = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < reader.FieldCount; i++)
+            columns[reader.GetName(i)] = i;
+
+        var constructors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+            .Where(c => c.GetParameters().Length > 0)
+            .OrderByDescending(c => c.GetParameters().Length)
+            .ToArray();
+
+        foreach (var constructor in constructors)
+        {
+            var parameters = constructor.GetParameters();
+            var ordinals = new int[parameters.Length];
+            var matched = 0;
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                var parameterName = parameters[i].Name ?? string.Empty;
+                names.Add(parameterName);
+                if (columns.TryGetValue(parameterName, out var ordinal))
+                {
+                    ordinals[i] = ordinal;
+                    matched++;
+                }
+                else
+                {
+                    ordinals[i] = -1;
+                }
+            }
+
+            // Record/constructor DTO support: prefer constructors where all parameters are present.
+            // If a constructor has optional parameters, missing values will use default(T) and still work.
+            if (matched == parameters.Length || parameters.Any(p => p.HasDefaultValue))
+                return new ForgeConstructorPlan(constructor, parameters, ordinals, names);
+        }
+
+        return new ForgeConstructorPlan(null, Array.Empty<ParameterInfo>(), Array.Empty<int>(), new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static void EmitConstructorArguments(ILGenerator il, ForgeConstructorPlan plan, DbDataReader reader)
+    {
+        var isDbNull = typeof(DbDataReader).GetMethod(nameof(DbDataReader.IsDBNull), new[] { typeof(int) })!;
+
+        for (var i = 0; i < plan.Parameters.Length; i++)
+        {
+            var parameter = plan.Parameters[i];
+            var parameterType = parameter.ParameterType;
+            var ordinal = plan.Ordinals[i];
+            var endLabel = il.DefineLabel();
+            var nullLabel = il.DefineLabel();
+            var local = il.DeclareLocal(parameterType);
+
+            if (ordinal < 0)
+            {
+                EmitDefaultValue(il, parameterType);
+                continue;
+            }
+
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldc_I4, ordinal);
+            il.Emit(OpCodes.Callvirt, isDbNull);
+            il.Emit(OpCodes.Brtrue_S, nullLabel);
+
+            EmitReadValueForProperty(il, parameterType, ordinal);
+            il.Emit(OpCodes.Stloc, local);
+            il.Emit(OpCodes.Br_S, endLabel);
+
+            il.MarkLabel(nullLabel);
+            il.Emit(OpCodes.Ldloca_S, local);
+            il.Emit(OpCodes.Initobj, parameterType);
+
+            il.MarkLabel(endLabel);
+            il.Emit(OpCodes.Ldloc, local);
+        }
+    }
+
+    private static void EmitDefaultValue(ILGenerator il, Type type)
+    {
+        if (type.IsValueType)
+        {
+            var local = il.DeclareLocal(type);
+            il.Emit(OpCodes.Ldloca_S, local);
+            il.Emit(OpCodes.Initobj, type);
+            il.Emit(OpCodes.Ldloc, local);
+        }
+        else
+        {
+            il.Emit(OpCodes.Ldnull);
+        }
     }
 
     private static string SanitizeName(string value)

@@ -42,6 +42,8 @@ public static class ForgeFrameHighPerformanceExtensions
 
     public static ForgeVectorizedFrame Vectorized(this ForgeDataFrame frame) => new(frame);
 
+    public static ForgeVectorizedFrame<T> Vectorized<T>(this ForgeDataFrame frame) => new(frame);
+
     public static ForgeDataFrame SortByDescending(this ForgeDataFrame frame, string column) => frame.SortBy(column, descending: true);
 
     public static ForgeDataFrame Take(this ForgeDataFrame frame, int count) => frame.Head(count);
@@ -96,6 +98,27 @@ public sealed class ForgeVectorizedFrame
         };
     }
 
+    public decimal Sum(string column)
+    {
+        return _frame.Rows
+            .Select(r => ForgeDataFrame.ToDecimal(ForgeDataFrame.Get(r, column)))
+            .Where(x => x.HasValue)
+            .Sum(x => x!.Value);
+    }
+
+    public decimal? Average(string column)
+    {
+        return Average(_frame.Rows.Select(r => ForgeDataFrame.Get(r, column)));
+    }
+
+    public int Count(string? column = null)
+    {
+        if (string.IsNullOrWhiteSpace(column))
+            return _frame.Rows.Count;
+
+        return _frame.Rows.Count(r => ForgeDataFrame.Get(r, column!) is not null and not DBNull);
+    }
+
     private static decimal? Average(IEnumerable<object?> values)
     {
         var list = values.Select(ForgeDataFrame.ToDecimal).Where(x => x.HasValue).Select(x => x!.Value).ToArray();
@@ -141,33 +164,42 @@ public sealed class ForgeVectorizedFrame
     }
 }
 
-public static class ForgeVectorizedFrameAggregateExtensions
+
+public sealed class ForgeVectorizedFrame<T>
 {
-    public static decimal Sum(this ForgeDataFrame frame, string column)
+    private readonly ForgeDataFrame _frame;
+
+    internal ForgeVectorizedFrame(ForgeDataFrame frame) => _frame = frame;
+
+    public ForgeVectorizedFrame<T> Where(Expression<Func<T, bool>> predicate)
     {
-        if (frame is null) throw new ArgumentNullException(nameof(frame));
-        return frame.Rows
-            .Select(row => ForgeDataFrame.Get(row, column))
-            .Select(ForgeDataFrame.ToDecimal)
-            .Where(value => value.HasValue)
-            .Sum(value => value!.Value);
+        var compiled = predicate.Compile();
+        var rows = _frame.Rows.Where(row => compiled(ToObject(row.ToDictionary()))).Select(row => new Dictionary<string, object?>(row, StringComparer.OrdinalIgnoreCase));
+        return new ForgeVectorizedFrame<T>(new ForgeDataFrame(rows));
     }
 
-    public static decimal Average(this ForgeDataFrame frame, string column)
+    public decimal Sum(Expression<Func<T, decimal>> selector)
     {
-        if (frame is null) throw new ArgumentNullException(nameof(frame));
-        var values = frame.Rows
-            .Select(row => ForgeDataFrame.Get(row, column))
-            .Select(ForgeDataFrame.ToDecimal)
-            .Where(value => value.HasValue)
-            .Select(value => value!.Value)
-            .ToArray();
-        return values.Length == 0 ? 0m : values.Average();
+        var column = ForgeFrameExpressionSql.GetMemberName(selector.Body);
+        return _frame.Rows
+            .Select(r => ForgeDataFrame.ToDecimal(ForgeDataFrame.Get(r, column)))
+            .Where(x => x.HasValue)
+            .Sum(x => x!.Value);
     }
 
-    public static int Count(this ForgeDataFrame frame, string column)
+    public decimal Sum(Expression<Func<T, decimal?>> selector)
     {
-        if (frame is null) throw new ArgumentNullException(nameof(frame));
-        return frame.Rows.Count(row => ForgeDataFrame.Get(row, column) is not null and not DBNull);
+        var column = ForgeFrameExpressionSql.GetMemberName(selector.Body);
+        return _frame.Rows
+            .Select(r => ForgeDataFrame.ToDecimal(ForgeDataFrame.Get(r, column)))
+            .Where(x => x.HasValue)
+            .Sum(x => x!.Value);
+    }
+
+    private static T ToObject(IDictionary<string, object?> row)
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(row);
+        return System.Text.Json.JsonSerializer.Deserialize<T>(json)
+            ?? throw new InvalidOperationException($"Unable to create {typeof(T).Name} from ForgeDataFrame row.");
     }
 }

@@ -12,8 +12,8 @@ public static class ForgeAiCteTempEndpointExtensions
             CancellationToken ct) =>
         {
             var answer = await db.AI.QueryAsync(
-                "Top 10 customers by revenue last month"
-               );
+                "Top 10 customers by revenue last month",
+                cancellationToken: ct);
 
             return Results.Ok(answer);
         });

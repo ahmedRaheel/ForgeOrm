@@ -17,6 +17,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
 {
     private static readonly ConcurrentDictionary<Type, SqlServerEntityPlan> GetByIdPlans = new();
     private static readonly ConcurrentDictionary<SqlQueryPlanKey, SqlQueryPlan> QueryPlans = new();
+    private static readonly ConcurrentDictionary<string, string[]> SqlParameterTokenCache = new(StringComparer.Ordinal);
 
     public static bool CanUse(IForgeDatabaseProvider provider)
         => string.Equals(provider.ProviderName, "SqlServer", StringComparison.OrdinalIgnoreCase);
@@ -87,6 +88,23 @@ internal static class ForgeSqlServerProviderDirectHotPath
         return rows;
     }
 
+    public static async Task<IReadOnlyList<Dictionary<string, object?>>> QueryDictionaryAsync(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
+        var rows = new List<Dictionary<string, object?>>(EstimateCapacity(sql));
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var row = new Dictionary<string, object?>(reader.FieldCount, StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < reader.FieldCount; i++)
+                row[reader.GetName(i)] = await reader.IsDBNullAsync(i, cancellationToken).ConfigureAwait(false) ? null : reader.GetValue(i);
+            rows.Add(row);
+        }
+        return rows;
+    }
+
     public static async IAsyncEnumerable<T> StreamAsync<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
         await using var connection = new SqlConnection(connectionString);
@@ -109,13 +127,14 @@ internal static class ForgeSqlServerProviderDirectHotPath
         if (timeoutSeconds.HasValue)
             command.CommandTimeout = timeoutSeconds.Value;
         AddTypedParameter(command, plan.ParameterName, id, plan.KeyType);
+        EnsureScalarSqlParametersBound(command, id, plan.KeyType);
         return command;
     }
 
     public static SqlCommand CreateTextCommand(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds)
     {
         var key = new SqlQueryPlanKey(sql, parameters?.GetType());
-        var plan = QueryPlans.GetOrAdd(key, static k => new SqlQueryPlan(k.Sql, ExtractParameterNames(k.Sql)));
+        var plan = QueryPlans.GetOrAdd(key, static k => new SqlQueryPlan(k.Sql, SqlParameterTokenCache.GetOrAdd(k.Sql, ExtractParameterNames)));
         var command = connection.CreateCommand();
         command.CommandText = plan.Sql;
         command.CommandType = CommandType.Text;
@@ -124,6 +143,10 @@ internal static class ForgeSqlServerProviderDirectHotPath
         if (timeoutSeconds.HasValue)
             command.CommandTimeout = timeoutSeconds.Value;
         BindParameters(command, plan.ParameterNames, parameters);
+        if (parameters is not null && IsScalar(parameters.GetType()))
+            EnsureScalarSqlParametersBound(command, parameters, parameters.GetType());
+        EnsureReferencedSqlParametersAreBound(command, plan.ParameterNames, parameters);
+        ValidateNoUnboundSqlParameters(command, plan.ParameterNames);
         return command;
     }
 
@@ -186,7 +209,9 @@ internal static class ForgeSqlServerProviderDirectHotPath
 
     internal static void AddTypedParameter(SqlCommand command, string parameterName, object? value, Type declaredType)
     {
-        var actualType = Nullable.GetUnderlyingType(declaredType) ?? declaredType;
+        var runtimeType = value?.GetType() ?? declaredType;
+        var actualType = Nullable.GetUnderlyingType(runtimeType) ?? runtimeType;
+        if (actualType == typeof(object)) actualType = typeof(string);
         if (!parameterName.StartsWith('@')) parameterName = "@" + parameterName;
 
         SqlParameter parameter;
@@ -214,6 +239,87 @@ internal static class ForgeSqlServerProviderDirectHotPath
             parameter.Value = t.ToTimeSpan();
         else
             parameter.Value = value ?? DBNull.Value;
+    }
+
+
+    private static void EnsureReferencedSqlParametersAreBound(SqlCommand command, string[] parameterNames, object? parameters)
+    {
+        if (parameters is null || parameterNames.Length == 0)
+            return;
+
+        if (parameters is IReadOnlyDictionary<string, object?> dictionary)
+        {
+            foreach (var name in parameterNames)
+            {
+                if (HasParameter(command, name))
+                    continue;
+                var key = name.TrimStart('@', ':');
+                if (dictionary.TryGetValue(key, out var value) || dictionary.TryGetValue(name, out value))
+                    AddTypedParameter(command, name, value, value?.GetType() ?? typeof(object));
+            }
+            return;
+        }
+
+        if (parameters is IDictionary nonGenericDictionary)
+        {
+            foreach (var name in parameterNames)
+            {
+                if (HasParameter(command, name))
+                    continue;
+                var key = name.TrimStart('@', ':');
+                object? value = null;
+                var found = false;
+                if (nonGenericDictionary.Contains(key)) { value = nonGenericDictionary[key]; found = true; }
+                else if (nonGenericDictionary.Contains(name)) { value = nonGenericDictionary[name]; found = true; }
+                if (found)
+                    AddTypedParameter(command, name, value, value?.GetType() ?? typeof(object));
+            }
+            return;
+        }
+
+        if (IsScalar(parameters.GetType()))
+        {
+            EnsureScalarSqlParametersBound(command, parameters, parameters.GetType());
+        }
+    }
+
+    private static void ValidateNoUnboundSqlParameters(SqlCommand command, string[] parameterNames)
+    {
+        foreach (var name in parameterNames)
+        {
+            if (!HasParameter(command, name))
+            {
+                throw new InvalidOperationException(
+                    $"ForgeORM SQL Server direct command is missing SQL parameter '{name}'. " +
+                    "Pass a scalar value for single-token SQL, or pass an anonymous object/dictionary with a matching property/key.");
+            }
+        }
+    }
+
+    private static void EnsureScalarSqlParametersBound(SqlCommand command, object? value, Type declaredType)
+    {
+        if (string.IsNullOrWhiteSpace(command.CommandText))
+            return;
+
+        foreach (var name in SqlParameterTokenCache.GetOrAdd(command.CommandText, ExtractParameterNames))
+        {
+            if (!HasParameter(command, name))
+                AddTypedParameter(command, name, value, declaredType);
+        }
+    }
+
+    private static bool HasParameter(SqlCommand command, string name)
+    {
+        if (!name.StartsWith("@", StringComparison.Ordinal))
+            name = "@" + name;
+
+        foreach (SqlParameter parameter in command.Parameters)
+        {
+            if (string.Equals(parameter.ParameterName, name, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     private static bool IsScalar(Type type)

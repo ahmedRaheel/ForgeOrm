@@ -27,7 +27,7 @@ public static class ForgeReportUserFriendlyMaterializers
                 "This report builder does not expose a ForgeDb instance. Use the builder returned by db.Report<T>(...) or add a Db property to the report builder.");
         }
 
-        return await db.QueryDictionaryAsync(sql, parameters, cancellationToken);
+        return await db.QueryDictionaryAsync(sql, parameters, cancellationToken: cancellationToken);
     }
 
     /// <summary>

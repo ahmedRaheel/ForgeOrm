@@ -69,7 +69,7 @@ public sealed class ForgeRawSqlQuery
         return _db.QueryDictionaryAsync(
             _sql,
             _parameters,
-            cancellationToken);
+            cancellationToken: cancellationToken);
     }
 
     public Task<ForgeJsonProjection> ToJsonAsync(

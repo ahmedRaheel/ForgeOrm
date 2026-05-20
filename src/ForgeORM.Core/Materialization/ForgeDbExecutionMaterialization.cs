@@ -10,28 +10,6 @@ namespace ForgeORM.Core;
 public partial class ForgeDb
 {
     /// <summary>
-    /// Executes SQL and returns dictionary rows. Use this for pivots, reports, DataFrames and dynamic analytics projections.
-    /// </summary>
-    public async Task<IReadOnlyList<Dictionary<string, object?>>> QueryDictionaryAsync(
-        string sql,
-        object? parameters = null,
-        CancellationToken cancellationToken = default)
-    {
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(cancellationToken);
-
-        await using var command = ForgeAdo.CreateCommand(
-            connection,
-            sql,
-            parameters,
-            transaction: null);
-
-        return await ForgeDynamicRowReader.ReadDictionaryAsync(
-            command,
-            cancellationToken);
-    }
-
-    /// <summary>
     /// Executes SQL and returns a JSON-friendly projection.
     /// </summary>
     public async Task<ForgeJsonProjection> QueryJsonProjectionAsync(
@@ -43,7 +21,7 @@ public partial class ForgeDb
         var rows = await QueryDictionaryAsync(
             sql,
             parameters,
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
         return new ForgeJsonProjection
         {
@@ -82,7 +60,7 @@ public partial class ForgeDb
         var rows = await QueryDictionaryAsync(
             sql,
             parameters,
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
         return new ForgeTabularResult
         {
@@ -106,7 +84,7 @@ public partial class ForgeDb
         var rows = await QueryDictionaryAsync(
             sql,
             parameters,
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
         return ForgeMaterializationSerializer.ToCsv(rows);
     }

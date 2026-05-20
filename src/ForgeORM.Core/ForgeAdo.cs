@@ -233,6 +233,7 @@ public static class ForgeAdo
         var command = ForgePerformanceCommandPlanCache.CreateCommand(connection, plan, transaction, timeoutSeconds);
 
         BindParameters(command, parameters);
+        ValidateNoUnboundSqlParameters(command);
 
         return command;
     }
@@ -352,10 +353,17 @@ public static class ForgeAdo
             if (HasParameter(command, name))
                 continue;
 
-            var prop = props.FirstOrDefault(x =>
-                string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+            ParameterProperty? prop = null;
+            for (var i = 0; i < props.Length; i++)
+            {
+                if (string.Equals(props[i].Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    prop = props[i];
+                    break;
+                }
+            }
 
-            if (prop is null || prop.Property is null)
+            if (prop is null)
                 continue;
 
             var value = prop.Getter(parameters);
@@ -363,6 +371,26 @@ public static class ForgeAdo
         }
     }
 
+
+    private static void ValidateNoUnboundSqlParameters(DbCommand command)
+    {
+        if (command.CommandType != CommandType.Text || string.IsNullOrWhiteSpace(command.CommandText))
+            return;
+
+        var names = SqlParameterTokenCache.GetOrAdd(command.CommandText, ExtractSqlParameterNames);
+        if (names.Length == 0)
+            return;
+
+        foreach (var name in names)
+        {
+            if (!HasParameter(command, name))
+            {
+                throw new InvalidOperationException(
+                    $"ForgeORM command is missing SQL parameter '@{name.TrimStart('@', ':')}'. " +
+                    "Pass a scalar value for single-token SQL, or pass an anonymous object/dictionary with a matching property/key.");
+            }
+        }
+    }
 
     private static string[] ExtractSqlParameterNames(string sql)
     {

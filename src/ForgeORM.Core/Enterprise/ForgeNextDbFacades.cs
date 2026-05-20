@@ -248,7 +248,7 @@ public sealed class ForgeCubeBuilder<T>
         var measures = _measures.Count == 0 ? ["COUNT(1) AS Count"] : _measures.Select(m => m.Sql).ToArray();
         var groupBy = _dimensions.Count == 0 ? string.Empty : " GROUP BY " + string.Join(", ", _dimensions);
         var sql = $"SELECT {string.Join(", ", dimensions.Concat(measures))} FROM {typeof(T).Name}{groupBy}";
-        return await _db.QueryDictionaryAsync(sql, parameters: null, cancellationToken).ConfigureAwait(false);
+        return await _db.QueryDictionaryAsync(sql, parameters: null, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 }
 

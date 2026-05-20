@@ -387,7 +387,7 @@ public sealed class ForgeSearch<T>
         return await _db.QueryDictionaryAsync(
             query.Sql,
             query.Parameters,
-            cancellationToken);
+            cancellationToken: cancellationToken);
     }
 
     public async Task<ForgePagedResult<T>> ToPagedAsync(

@@ -1,5 +1,6 @@
 using System.Data;
 using System.Data.Common;
+using ForgeORM.Core.Performance;
 
 namespace ForgeORM.Core;
 
@@ -16,8 +17,18 @@ public partial class ForgeDb
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+        {
+            return await ForgeSqlServerProviderDirectHotPath.QueryDictionaryAsync(
+                _connectionString,
+                sql,
+                parameters,
+                timeoutSeconds,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         await using var connection = CreateConnection();
-        await connection.OpenAsync(cancellationToken);
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await using var command = ForgeAdo.CreateCommand(
             connection,
@@ -27,17 +38,17 @@ public partial class ForgeDb
             commandType: CommandType.Text,
             timeoutSeconds: timeoutSeconds);
 
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
 
-        var rows = new List<Dictionary<string, object?>>();
+        var rows = new List<Dictionary<string, object?>>(16);
 
-        while (await reader.ReadAsync(cancellationToken))
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
             for (var i = 0; i < reader.FieldCount; i++)
             {
-                row[reader.GetName(i)] = await reader.IsDBNullAsync(i, cancellationToken)
+                row[reader.GetName(i)] = await reader.IsDBNullAsync(i, cancellationToken).ConfigureAwait(false)
                     ? null
                     : reader.GetValue(i);
             }

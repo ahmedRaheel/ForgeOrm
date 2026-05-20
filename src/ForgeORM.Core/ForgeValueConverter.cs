@@ -237,9 +237,10 @@ internal static class ForgeValueConverter
     {
         var attr = enumType.GetCustomAttribute<ForgeEnumStorageAttribute>();
 
-        // ForgeORM stores enums as their numeric underlying type by default.
-        // This is faster and avoids string parsing during MSIL/DataReader materialization.
-        return attr?.Storage ?? ForgeEnumStorage.Number;
+        // ForgeORM defaults enum storage to string names because the public samples and
+        // SQL Server schemas commonly store statuses as nvarchar values like 'Paid'.
+        // Use [ForgeEnumStorage(ForgeEnumStorage.Number)] when the database column is numeric.
+        return attr?.Storage ?? ForgeEnumStorage.String;
     }
 
     private static object? GetDefault(Type type)

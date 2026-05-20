@@ -1,5 +1,6 @@
 using System.Data.Common;
 using ForgeORM.Abstractions;
+using ForgeORM.Core.Performance;
 
 namespace ForgeORM.Core;
 
@@ -11,7 +12,17 @@ public partial class ForgeDb
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="c">The c value.</param>
     /// <returns>The result of the T operation.</returns>
-    public T? GetById<T>(object id) { var c = Provider.BuildGetById(_metadata.Resolve<T>(), id); return QuerySingleOrDefault<T>(c.CommandText, c.Parameters); }
+    public T? GetById<T>(object id)
+    {
+        var metadata = _metadata.Resolve<T>();
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return ForgeSqlServerProviderDirectHotPath.GetById<T>(_connectionString, metadata, id);
+
+        var c = Provider.BuildGetById(metadata, id);
+        using var connection = CreateConnection();
+        connection.Open();
+        return ForgeAdo.QueryFirstOrDefaultAsync<T>(connection, c.CommandText, c.Parameters).GetAwaiter().GetResult();
+    }
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -19,7 +30,44 @@ public partial class ForgeDb
     /// <param name="id">The id value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task<T?> GetByIdAsync<T>(object id, CancellationToken cancellationToken = default) { var c = Provider.BuildGetById(_metadata.Resolve<T>(), id); return QuerySingleOrDefaultAsync<T>(c.CommandText, c.Parameters, cancellationToken: cancellationToken); }
+    public async Task<T?> GetByIdAsync<T>(object id, CancellationToken cancellationToken = default)
+    {
+        var metadata = _metadata.Resolve<T>();
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return await ForgeSqlServerProviderDirectHotPath.GetByIdAsync<T>(_connectionString, metadata, id, cancellationToken).ConfigureAwait(false);
+
+        var c = Provider.BuildGetById(metadata, id);
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        return await ForgeAdo.QueryFirstOrDefaultAsync<T>(connection, c.CommandText, c.Parameters, timeoutSeconds: null, cancellationToken: cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Gets one row by the configured key without boxing the key value at the public API.</summary>
+    public T? GetById<T, TKey>(TKey id)
+    {
+        var metadata = _metadata.Resolve<T>();
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return ForgeSqlServerProviderDirectHotPath.GetById<T>(_connectionString, metadata, id!);
+
+        var c = Provider.BuildGetById(metadata, id!);
+        using var connection = CreateConnection();
+        connection.Open();
+        return ForgeAdo.QueryFirstOrDefaultAsync<T>(connection, c.CommandText, c.Parameters).GetAwaiter().GetResult();
+    }
+
+    /// <summary>Gets one row by the configured key without boxing the key value at the public API.</summary>
+    public async Task<T?> GetByIdAsync<T, TKey>(TKey id, CancellationToken cancellationToken = default)
+    {
+        var metadata = _metadata.Resolve<T>();
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return await ForgeSqlServerProviderDirectHotPath.GetByIdAsync<T>(_connectionString, metadata, id!, cancellationToken).ConfigureAwait(false);
+
+        var c = Provider.BuildGetById(metadata, id!);
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        return await ForgeAdo.QueryFirstOrDefaultAsync<T>(connection, c.CommandText, c.Parameters, timeoutSeconds: null, cancellationToken: cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Executes the T operation.
     /// </summary>

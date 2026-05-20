@@ -2,7 +2,7 @@ using System.Data.Common;
 
 namespace ForgeORM.Core;
 
-internal static class ForgeMaterializer
+public static class ForgeMaterializer
 {
     public static Func<DbDataReader, T> GetReader<T>(DbDataReader reader)
         => ForgeIlMaterializerCache.GetOrCreate<T>(reader);
@@ -16,7 +16,7 @@ internal static class ForgeMaterializer
     public static object? Map(Type type, DbDataReader reader)
         => ForgeIlMaterializerCache.GetOrCreate(type, reader)(reader);
 
-    internal static bool IsScalar(Type type)
+    public static bool IsScalar(Type type)
     {
         var actual = Nullable.GetUnderlyingType(type) ?? type;
         return actual.IsPrimitive

@@ -796,7 +796,13 @@ public interface IForgeQueryableFactory
     /// <returns>The result of the T operation.</returns>
     IForgeQuery<T> Sql<T>(string sql, object? parameters = null);
 }
-
+/// <summary>
+/// Query returned after Include so callers can continue with ThenInclude while retaining the normal Forge query API.
+/// </summary>
+public interface IForgeIncludableQuery<T, TProperty> : IForgeQuery<T>
+{
+    IForgeQuery<T> Query { get; }
+}
 public interface IForgeQuery<T> : IForgeExecutableQuery
 /// <summary>
 /// Defines the Where operation.

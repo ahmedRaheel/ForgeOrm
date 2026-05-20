@@ -94,7 +94,8 @@ public enum OrderStatus
     Paid = 2,
     Shipped = 3,
     Completed = 4,
-    Cancelled = 5
+    Cancelled = 5,
+    Processing = 6,
 }
 
 public sealed class ProductCreateRequest

@@ -45,6 +45,7 @@ public sealed class ForgeSearch<T>
     private string? _orderBy;
     private int? _page;
     private int? _pageSize;
+    private bool _fuzzy;
 
     public ForgeSearch(ForgeDb db)
     {
@@ -272,6 +273,41 @@ public sealed class ForgeSearch<T>
             to);
     }
 
+    /// <summary>Applies provider-friendly full-text style search over common text columns.</summary>
+    public ForgeSearch<T> FullText(string searchText, params string[] columns)
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+            return this;
+
+        var searchableColumns = columns is { Length: > 0 }
+            ? columns
+            : typeof(T).GetProperties()
+                .Where(p => p.PropertyType == typeof(string))
+                .Select(p => p.Name)
+                .DefaultIfEmpty("Name")
+                .ToArray();
+
+        var name = NextParameterName("Search");
+        _parameters[name] = _fuzzy ? $"%{searchText}%" : $"%{searchText}%";
+        _where.Add("(" + string.Join(" OR ", searchableColumns.Select(c => $"{c} LIKE @{name}")) + ")");
+        return this;
+    }
+
+    /// <summary>Enables fuzzy search mode for the next/current full-text expression.</summary>
+    public ForgeSearch<T> Fuzzy()
+    {
+        _fuzzy = true;
+        return this;
+    }
+
+    /// <summary>Limits the result set to the first N rows.</summary>
+    public ForgeSearch<T> Top(int count)
+    {
+        _page = 1;
+        _pageSize = Math.Max(count, 1);
+        return this;
+    }
+
     public ForgeSearch<T> OrderBy(string orderBy)
     {
         _orderBy = orderBy;
@@ -351,7 +387,7 @@ public sealed class ForgeSearch<T>
         return await _db.QueryDictionaryAsync(
             query.Sql,
             query.Parameters,
-            cancellationToken);
+            cancellationToken: cancellationToken);
     }
 
     public async Task<ForgePagedResult<T>> ToPagedAsync(
@@ -454,6 +490,7 @@ public sealed class ForgeProcedureSearch<T>
     private readonly Dictionary<string, object?> _parameters = new(StringComparer.OrdinalIgnoreCase);
     private int? _page;
     private int? _pageSize;
+    private bool _fuzzy;
 
     public ForgeProcedureSearch(
         ForgeDb db,

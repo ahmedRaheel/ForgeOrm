@@ -1,7 +1,7 @@
 using System.Collections;
-using System.Reflection;
-using System.Linq.Expressions;
 using System.Globalization;
+using System.Linq.Expressions;
+using System.Reflection;
 using ForgeORM.Core;
 
 namespace ForgeORM.DataFrame;
@@ -114,18 +114,8 @@ public sealed class ForgeFrameQuery<T>
     private string? _table;
     private readonly List<string> _where = [];
     private string? _orderBy;
-    internal bool ParallelExecutionEnabled { get; private set; }
-    internal int MaxParallelism { get; private set; } = Math.Max(1, Environment.ProcessorCount);
 
     internal ForgeFrameQuery(ForgeDb db) => _db = db;
-
-    internal void EnableParallelExecution() => ParallelExecutionEnabled = true;
-
-    internal void SetMaxDegreeOfParallelism(int degree)
-    {
-        if (degree <= 0) throw new ArgumentOutOfRangeException(nameof(degree), "Degree of parallelism must be greater than zero.");
-        MaxParallelism = degree;
-    }
 
     /// <summary>
     /// Executes the From operation.
@@ -147,13 +137,110 @@ public sealed class ForgeFrameQuery<T>
     /// <returns>The result of the WhereSql operation.</returns>
     public ForgeFrameQuery<T> WhereSql(string condition) { _where.Add(condition); return this; }
 
-    /// <summary>Applies an expression-based filter to the frame query.</summary>
+    /// <summary>
+    /// Adds a SQL WHERE predicate generated from a simple expression such as x => x.CreatedAt >= from.
+    /// </summary>
+    /// <param name="predicate">The expression predicate.</param>
+    /// <returns>The current query.</returns>
     public ForgeFrameQuery<T> Where(Expression<Func<T, bool>> predicate)
     {
-        ArgumentNullException.ThrowIfNull(predicate);
-        _where.Add(ForgeFrameExpressionSql.Translate(predicate));
+        _where.Add(ForgeFrameExpressionSql.ToSql(predicate.Body));
         return this;
     }
+
+    internal bool ParallelExecutionEnabled { get; private set; }
+
+    internal int MaxParallelism { get; private set; } = Environment.ProcessorCount;
+
+    internal void EnableParallelExecution()
+    {
+        ParallelExecutionEnabled = true;
+    }
+
+    internal void SetMaxDegreeOfParallelism(int degree)
+    {
+        if (degree <= 0)
+            throw new ArgumentOutOfRangeException(nameof(degree), "Max degree of parallelism must be greater than zero.");
+
+        MaxParallelism = degree;
+    }
+
+    /// <summary>
+    /// Sums a numeric column selected by expression. Honors Parallel()/MaxDegreeOfParallelism().
+    /// </summary>
+    public async Task<decimal> SumAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
+    {
+        var frame = await ToFrameAsync(cancellationToken).ConfigureAwait(false);
+        var column = ForgeFrameExpressionSql.GetMemberName(selector.Body);
+        var values = frame.Rows.Select(row => ForgeDataFrame.ToDecimal(ForgeDataFrame.Get(row, column))).Where(x => x.HasValue).Select(x => x!.Value);
+
+        if (!ParallelExecutionEnabled)
+            return values.Sum();
+
+        var chunks = values.Chunk(2048);
+        decimal total = 0;
+        object gate = new();
+
+        await System.Threading.Tasks.Parallel.ForEachAsync(
+            chunks,
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = MaxParallelism,
+                CancellationToken = cancellationToken
+            },
+            (chunk, token) =>
+            {
+                decimal local = 0;
+                foreach (var value in chunk)
+                    local += value;
+
+                lock (gate)
+                    total += local;
+
+                return ValueTask.CompletedTask;
+            }).ConfigureAwait(false);
+
+        return total;
+    }
+
+    /// <summary>
+    /// Sums a nullable numeric column selected by expression. Honors Parallel()/MaxDegreeOfParallelism().
+    /// </summary>
+    public async Task<decimal> SumAsync(Expression<Func<T, decimal?>> selector, CancellationToken cancellationToken = default)
+    {
+        var frame = await ToFrameAsync(cancellationToken).ConfigureAwait(false);
+        var column = ForgeFrameExpressionSql.GetMemberName(selector.Body);
+        var values = frame.Rows.Select(row => ForgeDataFrame.ToDecimal(ForgeDataFrame.Get(row, column))).Where(x => x.HasValue).Select(x => x!.Value);
+
+        if (!ParallelExecutionEnabled)
+            return values.Sum();
+
+        var chunks = values.Chunk(2048);
+        decimal total = 0;
+        object gate = new();
+
+        await System.Threading.Tasks.Parallel.ForEachAsync(
+            chunks,
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = MaxParallelism,
+                CancellationToken = cancellationToken
+            },
+            (chunk, token) =>
+            {
+                decimal local = 0;
+                foreach (var value in chunk)
+                    local += value;
+
+                lock (gate)
+                    total += local;
+
+                return ValueTask.CompletedTask;
+            }).ConfigureAwait(false);
+
+        return total;
+    }
+
     /// <summary>
     /// Executes the OrderBy operation.
     /// </summary>
@@ -183,48 +270,6 @@ public sealed class ForgeFrameQuery<T>
         return new ForgeDataFrame(rows);
     }
 
-    /// <summary>Executes SUM for a decimal selector. Parallel mode is honoured for in-memory frames.</summary>
-    public async Task<decimal> SumAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(selector);
-        var column = ForgeFrameExpressionSql.MemberName(selector);
-        if (!ParallelExecutionEnabled)
-        {
-            var sql = $"SELECT SUM({column}) AS Value FROM ({BuildSql()}) q";
-            return await _db.ExecuteScalarAsync<decimal>(sql, parameters: _parameters, cancellationToken: cancellationToken).ConfigureAwait(false);
-        }
-
-        var frame = await ToFrameAsync(cancellationToken).ConfigureAwait(false);
-        return frame.Vectorized<T>().MaxDegreeOfParallelism(MaxParallelism).Sum(selector);
-    }
-
-    /// <summary>Executes AVG for a decimal selector.</summary>
-    public async Task<decimal> AverageAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(selector);
-        var column = ForgeFrameExpressionSql.MemberName(selector);
-        var sql = $"SELECT AVG({column}) AS Value FROM ({BuildSql()}) q";
-        return await _db.ExecuteScalarAsync<decimal>(sql, parameters: _parameters, cancellationToken: cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>Executes MIN for a decimal selector.</summary>
-    public async Task<decimal> MinAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(selector);
-        var column = ForgeFrameExpressionSql.MemberName(selector);
-        var sql = $"SELECT MIN({column}) AS Value FROM ({BuildSql()}) q";
-        return await _db.ExecuteScalarAsync<decimal>(sql, parameters: _parameters, cancellationToken: cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>Executes MAX for a decimal selector.</summary>
-    public async Task<decimal> MaxAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(selector);
-        var column = ForgeFrameExpressionSql.MemberName(selector);
-        var sql = $"SELECT MAX({column}) AS Value FROM ({BuildSql()}) q";
-        return await _db.ExecuteScalarAsync<decimal>(sql, parameters: _parameters, cancellationToken: cancellationToken).ConfigureAwait(false);
-    }
-
     private string BuildSql()
     {
         var sql = !string.IsNullOrWhiteSpace(_sql) ? _sql! : $"SELECT * FROM {_table ?? typeof(T).Name}";
@@ -237,62 +282,73 @@ public sealed class ForgeFrameQuery<T>
 
 internal static class ForgeFrameExpressionSql
 {
-    public static string Translate<T>(Expression<Func<T, bool>> expression) => TranslateNode(expression.Body);
-
-    public static string MemberName<T>(Expression<Func<T, decimal>> selector)
+    public static string ToSql(Expression expression)
     {
-        Expression body = selector.Body;
-        if (body is UnaryExpression unary) body = unary.Operand;
-        if (body is MemberExpression member) return member.Member.Name;
-        throw new NotSupportedException("Only simple member selectors are supported, for example x => x.GrandTotal.");
+        return expression switch
+        {
+            BinaryExpression binary => $"{ToSql(binary.Left)} {ToOperator(binary.NodeType)} {ToSql(binary.Right)}",
+            MemberExpression member when member.Expression is not null && member.Expression.NodeType == ExpressionType.Parameter => member.Member.Name,
+            MemberExpression member => FormatValue(Evaluate(member)),
+            ConstantExpression constant => FormatValue(constant.Value),
+            UnaryExpression unary when unary.NodeType == ExpressionType.Convert || unary.NodeType == ExpressionType.ConvertChecked => ToSql(unary.Operand),
+            MethodCallExpression call when call.Method.Name == nameof(string.Contains) && call.Object is not null =>
+                $"{ToSql(call.Object)} LIKE '%' + {ToSql(call.Arguments[0])} + '%'",
+            MethodCallExpression call when call.Method.Name == nameof(string.StartsWith) && call.Object is not null =>
+                $"{ToSql(call.Object)} LIKE {ToSql(call.Arguments[0])} + '%'",
+            MethodCallExpression call when call.Method.Name == nameof(string.EndsWith) && call.Object is not null =>
+                $"{ToSql(call.Object)} LIKE '%' + {ToSql(call.Arguments[0])}",
+            _ => throw new NotSupportedException($"ForgeFrame expression is not supported: {expression}")
+        };
     }
 
-    private static string TranslateNode(Expression expression)
+    public static string GetMemberName(Expression expression)
     {
-        if (expression is BinaryExpression binary)
-        {
-            var left = TranslateNode(binary.Left);
-            var right = TranslateNode(binary.Right);
-            var op = binary.NodeType switch
-            {
-                ExpressionType.Equal => "=",
-                ExpressionType.NotEqual => "<>",
-                ExpressionType.GreaterThan => ">",
-                ExpressionType.GreaterThanOrEqual => ">=",
-                ExpressionType.LessThan => "<",
-                ExpressionType.LessThanOrEqual => "<=",
-                ExpressionType.AndAlso => "AND",
-                ExpressionType.OrElse => "OR",
-                _ => throw new NotSupportedException($"Expression operator '{binary.NodeType}' is not supported for frame SQL.")
-            };
-            return binary.NodeType is ExpressionType.AndAlso or ExpressionType.OrElse
-                ? $"({left} {op} {right})"
-                : $"{left} {op} {right}";
-        }
-
+        expression = StripConvert(expression);
         if (expression is MemberExpression member)
-        {
-            if (member.Expression?.NodeType == ExpressionType.Parameter) return member.Member.Name;
-            return FormatConstant(Evaluate(expression));
-        }
+            return member.Member.Name;
 
-        if (expression is ConstantExpression constant) return FormatConstant(constant.Value);
-        if (expression is UnaryExpression unary) return TranslateNode(unary.Operand);
-
-        throw new NotSupportedException($"Expression node '{expression.NodeType}' is not supported for frame SQL.");
+        throw new NotSupportedException($"Only direct member selectors are supported by ForgeFrame aggregate expressions: {expression}");
     }
+
+    private static Expression StripConvert(Expression expression)
+    {
+        while (expression is UnaryExpression unary && (unary.NodeType == ExpressionType.Convert || unary.NodeType == ExpressionType.ConvertChecked))
+            expression = unary.Operand;
+        return expression;
+    }
+
+    private static string ToOperator(ExpressionType type) => type switch
+    {
+        ExpressionType.Equal => "=",
+        ExpressionType.NotEqual => "<>",
+        ExpressionType.GreaterThan => ">",
+        ExpressionType.GreaterThanOrEqual => ">=",
+        ExpressionType.LessThan => "<",
+        ExpressionType.LessThanOrEqual => "<=",
+        ExpressionType.AndAlso => "AND",
+        ExpressionType.OrElse => "OR",
+        _ => throw new NotSupportedException($"ForgeFrame operator is not supported: {type}")
+    };
 
     private static object? Evaluate(Expression expression)
-        => Expression.Lambda<Func<object?>>(Expression.Convert(expression, typeof(object))).Compile().Invoke();
-
-    private static string FormatConstant(object? value)
     {
-        if (value is null) return "NULL";
-        if (value is string s) return "'" + s.Replace("'", "''") + "'";
-        if (value is DateTime dt) return "'" + dt.ToString("O", CultureInfo.InvariantCulture) + "'";
-        if (value is DateTimeOffset dto) return "'" + dto.ToString("O", CultureInfo.InvariantCulture) + "'";
-        if (value is bool b) return b ? "1" : "0";
-        if (value is Enum e) return Convert.ToInt64(e, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
-        return Convert.ToString(value, CultureInfo.InvariantCulture) ?? "NULL";
+        var lambda = Expression.Lambda<Func<object?>>(Expression.Convert(expression, typeof(object)));
+        return lambda.Compile().Invoke();
+    }
+
+    private static string FormatValue(object? value)
+    {
+        return value switch
+        {
+            null => "NULL",
+            string s => "'" + s.Replace("'", "''") + "'",
+            Guid g => "'" + g + "'",
+            DateTime dt => "'" + dt.ToString("O", CultureInfo.InvariantCulture) + "'",
+            DateTimeOffset dto => "'" + dto.ToString("O", CultureInfo.InvariantCulture) + "'",
+            bool b => b ? "1" : "0",
+            Enum e => Convert.ToInt64(e, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture),
+            IFormattable f => f.ToString(null, CultureInfo.InvariantCulture),
+            _ => "'" + Convert.ToString(value, CultureInfo.InvariantCulture)?.Replace("'", "''") + "'"
+        };
     }
 }

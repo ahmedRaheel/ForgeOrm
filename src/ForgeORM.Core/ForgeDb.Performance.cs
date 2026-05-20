@@ -23,6 +23,13 @@ public partial class ForgeDb
         int? timeoutSeconds = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+        {
+            await foreach (var row in ForgeSqlServerProviderDirectHotPath.StreamAsync<T>(_connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false))
+                yield return row;
+            yield break;
+        }
+
         await using var connection = CreateConnection();
         await foreach (var row in ForgePerformancePipeline.StreamAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
             .ConfigureAwait(false))
@@ -40,6 +47,9 @@ public partial class ForgeDb
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return await ForgeSqlServerProviderDirectHotPath.QueryAsync<T>(_connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         return await ForgePerformancePipeline.QueryAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
@@ -56,6 +66,9 @@ public partial class ForgeDb
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
+        if (commandType == CommandType.Text && ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return await ForgeSqlServerProviderDirectHotPath.ExecuteAsync(_connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         return await ForgePerformancePipeline.ExecuteAsync(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)

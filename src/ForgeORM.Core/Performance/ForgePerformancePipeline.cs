@@ -42,7 +42,7 @@ public static class ForgePerformancePipeline
         await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess | CommandBehavior.CloseConnection, cancellationToken)
             .ConfigureAwait(false);
 
-        var materializer = ForgeIlMaterializerCache.GetOrCreate<T>(reader);
+        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             yield return materializer(reader);
     }

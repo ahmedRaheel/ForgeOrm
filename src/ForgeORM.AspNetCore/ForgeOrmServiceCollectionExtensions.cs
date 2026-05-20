@@ -20,12 +20,28 @@ public sealed class ForgeOrmOptions
 {
     internal string? ConnectionString { get; private set; }
     internal IForgeDatabaseProvider? Provider { get; private set; }
+    internal ForgeOrmCompilationMode CompilationMode { get; private set; } = ForgeOrmCompilationMode.Auto;
 
     /// <summary>
     /// Executes the UseSqlServer operation.
     /// </summary>
     /// <param name="ConnectionString">The ConnectionString value.</param>
     public void UseSqlServer(string connectionString) { ConnectionString = connectionString; Provider = new SqlServerForgeProvider(); }
+
+    /// <summary>Configures whether ForgeORM uses source-generated accessors, RuntimeEmit MSIL, or Auto mode.</summary>
+    public void UseCompilationMode(ForgeOrmCompilationMode mode)
+    {
+        CompilationMode = mode;
+        ForgeSourceGeneratedRegistry.CompilationMode = mode;
+    }
+    /// <summary>Forces SourceGenerated-only mode for NativeAOT deployments. RuntimeEmit fallback is disabled by policy.</summary>
+    public void UseNativeAotMode()
+    {
+        CompilationMode = ForgeOrmCompilationMode.SourceGenerated;
+        ForgeSourceGeneratedRegistry.CompilationMode = ForgeOrmCompilationMode.SourceGenerated;
+        ForgeORM.Core.Performance.ForgeUltimatePerformancePrimitives.NativeAotMode = true;
+    }
+
     /// <summary>
     /// Executes the UsePostgreSql operation.
     /// </summary>
@@ -63,6 +79,7 @@ public static class ForgeOrmServiceCollectionExtensions
 
         if (string.IsNullOrWhiteSpace(options.ConnectionString)) throw new InvalidOperationException("ForgeORM connection string is required.");
         if (options.Provider is null) throw new InvalidOperationException("ForgeORM provider is required.");
+        ForgeSourceGeneratedRegistry.CompilationMode = options.CompilationMode;
 
         services.AddSingleton(options.Provider);
         services.AddSingleton<IForgeEntityMetadataResolver, ReflectionForgeEntityMetadataResolver>();

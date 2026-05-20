@@ -11,10 +11,19 @@ public static class ForgeBenchmarkGateManifest
         "graph-insert",
         "get-by-id",
         "page",
-        "stream"
+        "stream",
+        "SplitQueryTvpBatching",
+        "ProjectionReader",
+        "ProviderDirectGetById",
+        "IncludeGraphLoader",
+        "RuntimeEmit",
+        "SourceGenerated",
+        "ProviderDirect"
     ];
 
     public const double QueryRegressionLimitPercent = 5.0;
     public const double BulkRegressionLimitPercent = 10.0;
     public const double GraphRegressionLimitPercent = 10.0;
 }
+
+// Added by source-generator/native-bulk patch: benchmark records/structs/enums/composite keys/projections/includes/provider bulk.

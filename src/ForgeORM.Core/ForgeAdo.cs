@@ -48,19 +48,20 @@ public static class ForgeAdo
         CancellationToken cancellationToken = default)
     {
         var providerName = connection.GetType().FullName ?? connection.GetType().Name;
-        var compiledPlan = ForgeCompiledQueryCache.GetOrAdd(providerName, typeof(T), sql, parameters?.GetType(), () => new ForgeCompiledQueryPlan(sql, typeof(T), parameters?.GetType(), providerName, ForgeCompiledQueryCache.Fingerprint(sql)));
+        _ = ForgeCompiledQueryCache.GetOrAdd(providerName, typeof(T), sql, parameters?.GetType(), () => new ForgeCompiledQueryPlan(sql, typeof(T), parameters?.GetType(), providerName, ForgeCompiledQueryCache.Fingerprint(sql)));
         _ = ForgePerformanceCommandPlanCache.GetOrAdd(providerName, sql, commandType, parameters?.GetType());
+
         await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
 
         if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken);
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
 
+        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
         var rows = new List<T>(EstimateCapacity(sql));
-        var materializer = ForgeIlMaterializerCache.GetOrCreate<T>(reader);
 
-        while (await reader.ReadAsync(cancellationToken))
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             rows.Add(materializer(reader));
 
         return rows;
@@ -90,12 +91,12 @@ public static class ForgeAdo
         await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
 
         if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken);
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess, cancellationToken);
-        var materializer = ForgeIlMaterializerCache.GetOrCreate<T>(reader);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
+        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
 
-        return await reader.ReadAsync(cancellationToken)
+        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
             ? materializer(reader)
             : default;
     }
@@ -112,17 +113,17 @@ public static class ForgeAdo
         await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
 
         if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken);
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
 
-        if (!await reader.ReadAsync(cancellationToken))
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             return default;
 
-        var materializer = ForgeIlMaterializerCache.GetOrCreate<T>(reader);
+        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
         var first = materializer(reader);
 
-        if (await reader.ReadAsync(cancellationToken))
+        if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             throw new InvalidOperationException("Sequence contains more than one element.");
 
         return first;
@@ -232,6 +233,7 @@ public static class ForgeAdo
         var command = ForgePerformanceCommandPlanCache.CreateCommand(connection, plan, transaction, timeoutSeconds);
 
         BindParameters(command, parameters);
+        ValidateNoUnboundSqlParameters(command);
 
         return command;
     }
@@ -351,10 +353,17 @@ public static class ForgeAdo
             if (HasParameter(command, name))
                 continue;
 
-            var prop = props.FirstOrDefault(x =>
-                string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+            ParameterProperty? prop = null;
+            for (var i = 0; i < props.Length; i++)
+            {
+                if (string.Equals(props[i].Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    prop = props[i];
+                    break;
+                }
+            }
 
-            if (prop is null || prop.Property is null)
+            if (prop is null)
                 continue;
 
             var value = prop.Getter(parameters);
@@ -362,6 +371,26 @@ public static class ForgeAdo
         }
     }
 
+
+    private static void ValidateNoUnboundSqlParameters(DbCommand command)
+    {
+        if (command.CommandType != CommandType.Text || string.IsNullOrWhiteSpace(command.CommandText))
+            return;
+
+        var names = SqlParameterTokenCache.GetOrAdd(command.CommandText, ExtractSqlParameterNames);
+        if (names.Length == 0)
+            return;
+
+        foreach (var name in names)
+        {
+            if (!HasParameter(command, name))
+            {
+                throw new InvalidOperationException(
+                    $"ForgeORM command is missing SQL parameter '@{name.TrimStart('@', ':')}'. " +
+                    "Pass a scalar value for single-token SQL, or pass an anonymous object/dictionary with a matching property/key.");
+            }
+        }
+    }
 
     private static string[] ExtractSqlParameterNames(string sql)
     {
@@ -551,10 +580,15 @@ public static class ForgeAdo
 
     private static object? NormalizeParameterValue(object? value)
     {
+        // Default ForgeORM enum parameter behavior is string-name storage because the sample
+        // schema and most human-readable enterprise schemas store enum columns as nvarchar
+        // values such as 'Paid'. Binding the enum as its underlying int causes SQL Server to
+        // attempt nvarchar -> int conversion in predicates and fail before materialization.
+        // Numeric enum storage is still supported through property-level ForgeEnumStorage(Number)
+        // in generated/entity binders where the declaring property is known.
         if (value is Enum enumValue)
         {
-            var underlying = Enum.GetUnderlyingType(enumValue.GetType());
-            return Convert.ChangeType(enumValue, underlying);
+            return enumValue.ToString();
         }
 
         if (value is DateTime dateTime)

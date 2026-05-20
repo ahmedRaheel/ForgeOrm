@@ -84,16 +84,29 @@ internal static class ForgeIlMaterializerCache
             return (Func<DbDataReader, T>)method.CreateDelegate(typeof(Func<DbDataReader, T>));
         }
 
-        var ctor = actualType.GetConstructor(Type.EmptyTypes)
-            ?? throw new InvalidOperationException($"{actualType.FullName} must have a parameterless constructor for MSIL materialization.");
-
+        var constructorPlan = CreateConstructorPlan(actualType, reader);
         var entity = il.DeclareLocal(actualType);
-        il.Emit(OpCodes.Newobj, ctor);
-        il.Emit(OpCodes.Stloc, entity);
 
+        if (constructorPlan.Constructor is not null && constructorPlan.Parameters.Length > 0)
+        {
+            EmitConstructorArguments(il, constructorPlan, reader);
+            il.Emit(OpCodes.Newobj, constructorPlan.Constructor);
+            il.Emit(OpCodes.Stloc, entity);
+        }
+        else
+        {
+            var ctor = actualType.GetConstructor(Type.EmptyTypes)
+                ?? throw new InvalidOperationException($"{actualType.FullName} must have either a parameterless constructor or a constructor whose parameter names match result columns for MSIL/record materialization.");
+
+            il.Emit(OpCodes.Newobj, ctor);
+            il.Emit(OpCodes.Stloc, entity);
+        }
+
+        var constructorParameterNames = constructorPlan.ParameterNames;
         var properties = actualType
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.CanWrite && Support.IsScalarColumn(p))
+            .Where(p => !constructorParameterNames.Contains(p.Name))
             .ToDictionary(
                 p => p.GetCustomAttribute<ForgeORM.Abstractions.ForgeColumnAttribute>()?.Name ?? p.Name,
                 p => p,
@@ -169,30 +182,43 @@ internal static class ForgeIlMaterializerCache
     private static void EmitReadValue(ILGenerator il, Type finalType, Type valueType, int ordinal)
     {
         var nullableUnderlying = Nullable.GetUnderlyingType(finalType);
-        var readType = valueType.IsEnum ? Enum.GetUnderlyingType(valueType) : valueType;
+
+        // Never call GetFieldValue<TEnum>() directly. SQL may store enums as strings or ints.
+        // Route enum materialization through ForgeEnumReader so records and classes behave the same.
+        if (valueType.IsEnum)
+        {
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldc_I4, ordinal);
+
+            if (nullableUnderlying is not null)
+            {
+                var nullableEnumReader = typeof(ForgeEnumReader)
+                    .GetMethod(nameof(ForgeEnumReader.ReadNullableEnum))!
+                    .MakeGenericMethod(valueType);
+                il.Emit(OpCodes.Call, nullableEnumReader);
+            }
+            else
+            {
+                var enumReader = typeof(ForgeEnumReader)
+                    .GetMethod(nameof(ForgeEnumReader.ReadEnum))!
+                    .MakeGenericMethod(valueType);
+                il.Emit(OpCodes.Call, enumReader);
+            }
+
+            return;
+        }
 
         il.Emit(OpCodes.Ldarg_0);
         il.Emit(OpCodes.Ldc_I4, ordinal);
 
         var getFieldValue = typeof(DbDataReader)
             .GetMethod(nameof(DbDataReader.GetFieldValue))!
-            .MakeGenericMethod(readType);
+            .MakeGenericMethod(valueType);
 
         il.Emit(OpCodes.Callvirt, getFieldValue);
 
-        // Enum values are represented by their underlying numeric type on the evaluation stack.
-        // The setter accepts the enum type but the stack representation is compatible.
         if (nullableUnderlying is not null)
         {
-            var nullableValueType = nullableUnderlying.IsEnum
-                ? Enum.GetUnderlyingType(nullableUnderlying)
-                : nullableUnderlying;
-
-            if (nullableUnderlying.IsEnum && nullableValueType != nullableUnderlying)
-            {
-                // Numeric stack value is valid for enum nullable constructor.
-            }
-
             var ctor = finalType.GetConstructor(new[] { nullableUnderlying })!;
             il.Emit(OpCodes.Newobj, ctor);
         }
@@ -219,16 +245,29 @@ internal static class ForgeIlMaterializerCache
             return (Func<DbDataReader, object>)method.CreateDelegate(typeof(Func<DbDataReader, object>));
         }
 
-        var ctor = runtimeType.GetConstructor(Type.EmptyTypes)
-            ?? throw new InvalidOperationException($"{runtimeType.FullName} must have a parameterless constructor for MSIL materialization.");
-
+        var constructorPlan = CreateConstructorPlan(runtimeType, reader);
         var entity = il.DeclareLocal(runtimeType);
-        il.Emit(OpCodes.Newobj, ctor);
-        il.Emit(OpCodes.Stloc, entity);
 
+        if (constructorPlan.Constructor is not null && constructorPlan.Parameters.Length > 0)
+        {
+            EmitConstructorArguments(il, constructorPlan, reader);
+            il.Emit(OpCodes.Newobj, constructorPlan.Constructor);
+            il.Emit(OpCodes.Stloc, entity);
+        }
+        else
+        {
+            var ctor = runtimeType.GetConstructor(Type.EmptyTypes)
+                ?? throw new InvalidOperationException($"{runtimeType.FullName} must have either a parameterless constructor or a constructor whose parameter names match result columns for MSIL/record materialization.");
+
+            il.Emit(OpCodes.Newobj, ctor);
+            il.Emit(OpCodes.Stloc, entity);
+        }
+
+        var constructorParameterNames = constructorPlan.ParameterNames;
         var properties = runtimeType
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.CanWrite && Support.IsScalarColumn(p))
+            .Where(p => !constructorParameterNames.Contains(p.Name))
             .ToDictionary(
                 p => p.GetCustomAttribute<ForgeORM.Abstractions.ForgeColumnAttribute>()?.Name ?? p.Name,
                 p => p,
@@ -265,6 +304,109 @@ internal static class ForgeIlMaterializerCache
         return (Func<DbDataReader, object>)method.CreateDelegate(typeof(Func<DbDataReader, object>));
     }
 
+
+    private sealed record ForgeConstructorPlan(
+        ConstructorInfo? Constructor,
+        ParameterInfo[] Parameters,
+        int[] Ordinals,
+        HashSet<string> ParameterNames);
+
+    private static ForgeConstructorPlan CreateConstructorPlan(Type type, DbDataReader reader)
+    {
+        var columns = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < reader.FieldCount; i++)
+            columns[reader.GetName(i)] = i;
+
+        var constructors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+            .Where(c => c.GetParameters().Length > 0)
+            .OrderByDescending(c => c.GetParameters().Length)
+            .ToArray();
+
+        foreach (var constructor in constructors)
+        {
+            var parameters = constructor.GetParameters();
+            var ordinals = new int[parameters.Length];
+            var matched = 0;
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                var parameterName = parameters[i].Name ?? string.Empty;
+                names.Add(parameterName);
+                if (columns.TryGetValue(parameterName, out var ordinal))
+                {
+                    ordinals[i] = ordinal;
+                    matched++;
+                }
+                else
+                {
+                    ordinals[i] = -1;
+                }
+            }
+
+            // Record/constructor DTO support: prefer constructors where all parameters are present.
+            // If some projection columns are missing, ForgeORM still constructs the record using default values.
+            // This supports DTOs like ProductListItem where BrandName/CategoryName may be absent in a specific query.
+            // A constructor must match at least one result column to avoid choosing an unrelated constructor.
+            if (matched > 0 || parameters.All(p => p.HasDefaultValue))
+                return new ForgeConstructorPlan(constructor, parameters, ordinals, names);
+        }
+
+        return new ForgeConstructorPlan(null, Array.Empty<ParameterInfo>(), Array.Empty<int>(), new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static void EmitConstructorArguments(ILGenerator il, ForgeConstructorPlan plan, DbDataReader reader)
+    {
+        var isDbNull = typeof(DbDataReader).GetMethod(nameof(DbDataReader.IsDBNull), new[] { typeof(int) })!;
+
+        for (var i = 0; i < plan.Parameters.Length; i++)
+        {
+            var parameter = plan.Parameters[i];
+            var parameterType = parameter.ParameterType;
+            var ordinal = plan.Ordinals[i];
+            var endLabel = il.DefineLabel();
+            var nullLabel = il.DefineLabel();
+            var local = il.DeclareLocal(parameterType);
+
+            if (ordinal < 0)
+            {
+                EmitDefaultValue(il, parameterType);
+                continue;
+            }
+
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldc_I4, ordinal);
+            il.Emit(OpCodes.Callvirt, isDbNull);
+            il.Emit(OpCodes.Brtrue_S, nullLabel);
+
+            EmitReadValueForProperty(il, parameterType, ordinal);
+            il.Emit(OpCodes.Stloc, local);
+            il.Emit(OpCodes.Br_S, endLabel);
+
+            il.MarkLabel(nullLabel);
+            il.Emit(OpCodes.Ldloca_S, local);
+            il.Emit(OpCodes.Initobj, parameterType);
+
+            il.MarkLabel(endLabel);
+            il.Emit(OpCodes.Ldloc, local);
+        }
+    }
+
+    private static void EmitDefaultValue(ILGenerator il, Type type)
+    {
+        if (type.IsValueType)
+        {
+            var local = il.DeclareLocal(type);
+            il.Emit(OpCodes.Ldloca_S, local);
+            il.Emit(OpCodes.Initobj, type);
+            il.Emit(OpCodes.Ldloc, local);
+        }
+        else
+        {
+            il.Emit(OpCodes.Ldnull);
+        }
+    }
+
     private static string SanitizeName(string value)
     {
         var chars = value.ToCharArray();
@@ -276,159 +418,160 @@ internal static class ForgeIlMaterializerCache
 
         return new string(chars);
     }
-    internal static class Support
+    
+}
+internal static class Support
+{
+    public static bool IsScalarColumn(PropertyInfo property)
     {
-        public static bool IsScalarColumn(PropertyInfo property)
+        return IsScalarColumnType(property.PropertyType);
+    }
+
+    public static bool IsScalarColumnType(Type type)
+    {
+        type = Nullable.GetUnderlyingType(type) ?? type;
+
+        return type.IsPrimitive
+            || type.IsEnum
+            || type == typeof(string)
+            || type == typeof(Guid)
+            || type == typeof(decimal)
+            || type == typeof(DateTime)
+            || type == typeof(DateTimeOffset)
+            || type == typeof(DateOnly)
+            || type == typeof(TimeOnly)
+            || type == typeof(TimeSpan)
+            || type == typeof(byte[]);
+    }
+
+    public static bool IsCollectionNavigation(PropertyInfo property)
+    {
+        if (property.PropertyType == typeof(string))
+            return false;
+
+        return property.PropertyType.IsGenericType
+            && property.PropertyType.GetGenericTypeDefinition() == typeof(List<>);
+    }
+
+    public static bool IsReferenceNavigation(PropertyInfo property)
+    {
+        if (property.PropertyType == typeof(string))
+            return false;
+
+        if (IsCollectionNavigation(property))
+            return false;
+
+        var type = Nullable.GetUnderlyingType(property.PropertyType)
+                   ?? property.PropertyType;
+
+        return type.IsClass && !IsScalarColumnType(type);
+    }
+
+    public static string ResolveTableName(Type type)
+    {
+        return type.GetCustomAttribute<ForgeTableAttribute>()?.Name
+            ?? type.Name;
+    }
+
+    public static string ResolveScalarColumns(Type type)
+    {
+        var columns = type
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(IsScalarColumn)
+            .Select(x => x.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? x.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return columns.Length == 0
+            ? "*"
+            : string.Join(", ", columns);
+    }
+
+    public static PropertyInfo[] GetScalarProperties(
+        Type type,
+        bool includeIdentity = false)
+    {
+        return type
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(x => x.CanRead)
+            .Where(IsScalarColumn)
+            .Where(x => includeIdentity || !IsIdentityColumn(x))
+            .ToArray();
+    }
+
+    public static bool IsIdentityColumn(PropertyInfo property)
+    {
+        return property.Name.Equals(
+                   "Id",
+                   StringComparison.OrdinalIgnoreCase)
+               || property.GetCustomAttributes()
+                   .Any(x => x.GetType().Name.Contains(
+                       "Key",
+                       StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static object? NormalizeParameterValue(object? value)
+    {
+        if (value is null)
+            return null;
+
+        if (value is Enum enumValue)
         {
-            return IsScalarColumnType(property.PropertyType);
+            return Convert.ChangeType(
+                enumValue,
+                Enum.GetUnderlyingType(enumValue.GetType()));
         }
 
-        public static bool IsScalarColumnType(Type type)
+        if (value is DateTime dateTime)
         {
-            type = Nullable.GetUnderlyingType(type) ?? type;
-
-            return type.IsPrimitive
-                || type.IsEnum
-                || type == typeof(string)
-                || type == typeof(Guid)
-                || type == typeof(decimal)
-                || type == typeof(DateTime)
-                || type == typeof(DateTimeOffset)
-                || type == typeof(DateOnly)
-                || type == typeof(TimeOnly)
-                || type == typeof(TimeSpan)
-                || type == typeof(byte[]);
-        }
-
-        public static bool IsCollectionNavigation(PropertyInfo property)
-        {
-            if (property.PropertyType == typeof(string))
-                return false;
-
-            return property.PropertyType.IsGenericType
-                && property.PropertyType.GetGenericTypeDefinition() == typeof(List<>);
-        }
-
-        public static bool IsReferenceNavigation(PropertyInfo property)
-        {
-            if (property.PropertyType == typeof(string))
-                return false;
-
-            if (IsCollectionNavigation(property))
-                return false;
-
-            var type = Nullable.GetUnderlyingType(property.PropertyType)
-                       ?? property.PropertyType;
-
-            return type.IsClass && !IsScalarColumnType(type);
-        }
-
-        public static string ResolveTableName(Type type)
-        {
-            return type.GetCustomAttribute<ForgeTableAttribute>()?.Name
-                ?? type.Name;
-        }
-
-        public static string ResolveScalarColumns(Type type)
-        {
-            var columns = type
-                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(IsScalarColumn)
-                .Select(x => x.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? x.Name)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-
-            return columns.Length == 0
-                ? "*"
-                : string.Join(", ", columns);
-        }
-
-        public static PropertyInfo[] GetScalarProperties(
-            Type type,
-            bool includeIdentity = false)
-        {
-            return type
-                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(x => x.CanRead)
-                .Where(IsScalarColumn)
-                .Where(x => includeIdentity || !IsIdentityColumn(x))
-                .ToArray();
-        }
-
-        public static bool IsIdentityColumn(PropertyInfo property)
-        {
-            return property.Name.Equals(
-                       "Id",
-                       StringComparison.OrdinalIgnoreCase)
-                   || property.GetCustomAttributes()
-                       .Any(x => x.GetType().Name.Contains(
-                           "Key",
-                           StringComparison.OrdinalIgnoreCase));
-        }
-
-        public static object? NormalizeParameterValue(object? value)
-        {
-            if (value is null)
-                return null;
-
-            if (value is Enum enumValue)
+            if (dateTime == default ||
+                dateTime < new DateTime(1753, 1, 1))
             {
-                return Convert.ChangeType(
-                    enumValue,
-                    Enum.GetUnderlyingType(enumValue.GetType()));
+                return DateTime.UtcNow;
             }
 
-            if (value is DateTime dateTime)
-            {
-                if (dateTime == default ||
-                    dateTime < new DateTime(1753, 1, 1))
-                {
-                    return DateTime.UtcNow;
-                }
-
-                return dateTime;
-            }
-
-            if (value is DateTimeOffset dateTimeOffset)
-            {
-                if (dateTimeOffset == default)
-                    return DateTimeOffset.UtcNow;
-
-                return dateTimeOffset;
-            }
-
-            return value;
+            return dateTime;
         }
 
-        public static (int Skip, int Take) NormalizePaging(
-            int skip,
-            int take)
+        if (value is DateTimeOffset dateTimeOffset)
         {
-            if (skip < 0)
-                skip = 0;
+            if (dateTimeOffset == default)
+                return DateTimeOffset.UtcNow;
 
-            if (take <= 0)
-                take = 1;
-
-            if (skip == take)
-                take++;
-
-            return (skip, take);
+            return dateTimeOffset;
         }
 
-        public static void ResetIdentityValue(
-            object entity,
-            PropertyInfo? identityProperty)
-        {
-            if (identityProperty is null)
-                return;
+        return value;
+    }
 
-            var type = Nullable.GetUnderlyingType(identityProperty.PropertyType)
-                       ?? identityProperty.PropertyType;
+    public static (int Skip, int Take) NormalizePaging(
+        int skip,
+        int take)
+    {
+        if (skip < 0)
+            skip = 0;
 
-            object? value = ForgeRuntimeAccessorCache.DefaultValue(type);
+        if (take <= 0)
+            take = 1;
 
-            ForgeRuntimeAccessorCache.Set(identityProperty, entity, value);
-        }
+        if (skip == take)
+            take++;
+
+        return (skip, take);
+    }
+
+    public static void ResetIdentityValue(
+        object entity,
+        PropertyInfo? identityProperty)
+    {
+        if (identityProperty is null)
+            return;
+
+        var type = Nullable.GetUnderlyingType(identityProperty.PropertyType)
+                   ?? identityProperty.PropertyType;
+
+        object? value = ForgeRuntimeAccessorCache.DefaultValue(type);
+
+        ForgeRuntimeAccessorCache.Set(identityProperty, entity, value);
     }
 }

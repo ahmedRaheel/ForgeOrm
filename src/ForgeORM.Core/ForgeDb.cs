@@ -1,6 +1,7 @@
 using System.Data;
 using System.Data.Common;
 using ForgeORM.Abstractions;
+using ForgeORM.Core.Performance;
 
 namespace ForgeORM.Core;
 
@@ -48,6 +49,9 @@ public partial class ForgeDb : IForgeDb
     /// <returns>The result of the T operation.</returns>
     public IReadOnlyList<T> Query<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return ForgeSqlServerProviderDirectHotPath.Query<T>(_connectionString, sql, parameters, timeoutSeconds);
+
         using var c = CreateConnection();
         c.Open();
         return ForgeAdo.Query<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds);
@@ -64,10 +68,17 @@ public partial class ForgeDb : IForgeDb
     /// <returns>The result of the T operation.</returns>
     public async Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return await ForgeSqlServerProviderDirectHotPath.QueryAsync<T>(_connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
         return await ForgeAdo.QueryAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     }
+
+    /// <summary>Executes a SQL query when no parameters are needed and only a cancellation token is supplied.</summary>
+    public Task<IReadOnlyList<T>> QueryAsync<T>(string sql, CancellationToken cancellationToken)
+        => QueryAsync<T>(sql, parameters: null, timeoutSeconds: null, cancellationToken: cancellationToken);
 
     /// <summary>
     /// Executes the T operation.
@@ -108,6 +119,9 @@ public partial class ForgeDb : IForgeDb
     /// <returns>The result of the T operation.</returns>
     public T? QueryFirstOrDefault<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return ForgeSqlServerProviderDirectHotPath.QueryFirstOrDefault<T>(_connectionString, sql, parameters, timeoutSeconds);
+
         using var c = CreateConnection();
         c.Open();
         return ForgeAdo.QueryFirstOrDefaultAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds)
@@ -126,6 +140,9 @@ public partial class ForgeDb : IForgeDb
     /// <returns>The result of the T operation.</returns>
     public async Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return await ForgeSqlServerProviderDirectHotPath.QueryFirstOrDefaultAsync<T>(_connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
         return await ForgeAdo.QueryFirstOrDefaultAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
@@ -170,6 +187,9 @@ public partial class ForgeDb : IForgeDb
     /// <returns>The result of the T operation.</returns>
     public T? QuerySingleOrDefault<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return ForgeSqlServerProviderDirectHotPath.QueryFirstOrDefault<T>(_connectionString, sql, parameters, timeoutSeconds);
+
         using var c = CreateConnection();
         c.Open();
         return ForgeAdo.QuerySingleOrDefaultAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds)
@@ -188,6 +208,9 @@ public partial class ForgeDb : IForgeDb
     /// <returns>The result of the T operation.</returns>
     public async Task<T?> QuerySingleOrDefaultAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return await ForgeSqlServerProviderDirectHotPath.QueryFirstOrDefaultAsync<T>(_connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
         return await ForgeAdo.QuerySingleOrDefaultAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
@@ -202,6 +225,9 @@ public partial class ForgeDb : IForgeDb
     /// <returns>The result of the Execute operation.</returns>
     public int Execute(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return ForgeSqlServerProviderDirectHotPath.Execute(_connectionString, sql, parameters, timeoutSeconds);
+
         using var c = CreateConnection();
         c.Open();
         return ForgeAdo.Execute(c, sql, parameters, timeoutSeconds: timeoutSeconds);
@@ -217,6 +243,9 @@ public partial class ForgeDb : IForgeDb
     /// <returns>The result of the ExecuteAsync operation.</returns>
     public async Task<int> ExecuteAsync(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return await ForgeSqlServerProviderDirectHotPath.ExecuteAsync(_connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
         return await ForgeAdo.ExecuteAsync(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
@@ -232,6 +261,9 @@ public partial class ForgeDb : IForgeDb
     /// <returns>The result of the T operation.</returns>
     public T? ExecuteScalar<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return ForgeSqlServerProviderDirectHotPath.ExecuteScalar<T>(_connectionString, sql, parameters, timeoutSeconds);
+
         using var c = CreateConnection();
         c.Open();
         return ForgeAdo.ExecuteScalar<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds);
@@ -248,6 +280,9 @@ public partial class ForgeDb : IForgeDb
     /// <returns>The result of the T operation.</returns>
     public async Task<T?> ExecuteScalarAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return await ForgeSqlServerProviderDirectHotPath.ExecuteScalarAsync<T>(_connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
         return await ForgeAdo.ExecuteScalarAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);

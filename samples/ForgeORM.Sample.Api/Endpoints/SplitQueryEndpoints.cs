@@ -72,6 +72,39 @@ public static class SplitQueryEndpoints
             return Results.Ok(new { page = safePage, pageSize = safeSize, rows });
         });
 
+
+        group.MapGet("/ef-style/customers-with-orders", async (ForgeDbContext db, CancellationToken ct) =>
+        {
+            var rows = await db.Set<Customer>()
+                .Include(x => x.Orders)
+                .AsSplitQuery()
+                .UseIdentityResolution()
+                .ToListAsync(ct);
+
+            return Results.Ok(rows);
+        });
+
+        group.MapGet("/ef-style/orders-with-items", async (ForgeDbContext db, CancellationToken ct) =>
+        {
+            var rows = await db.Set<Order>()
+                .Include(x => x.Items)
+                .AsSplitQuery()
+                .ToListAsync(ct);
+
+            return Results.Ok(rows);
+        });
+
+        group.MapGet("/ef-style/products-with-categories", async (ForgeDbContext db, CancellationToken ct) =>
+        {
+            var rows = await db.Set<Product>()
+                .Include(x => x.Categories)
+                .AsSplitQuery()
+                .UseIdentityResolution()
+                .ToListAsync(ct);
+
+            return Results.Ok(rows);
+        });
+
         return app;
     }
 }

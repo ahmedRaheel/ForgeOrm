@@ -1,4 +1,5 @@
 using ForgeORM.Core;
+using ForgeORM.Core.Search;
 
 namespace ForgeORM.Sample.Api;
 
@@ -16,6 +17,58 @@ public static class ForgeAiCteTempSamples
             return Results.Ok(answer);
         })
         .WithTags("ForgeORM AI");
+
+
+        app.MapGet("/samples/ai/optimize", async (ForgeDbContext db, CancellationToken ct) =>
+        {
+            var suggestions = await db.AI.OptimizeAsync(
+                "SELECT * FROM Orders WHERE CustomerId = @CustomerId ORDER BY CreatedAt DESC",
+                ct);
+
+            return Results.Ok(suggestions);
+        })
+        .WithTags("ForgeORM AI");
+
+        app.MapGet("/samples/search/fulltext", async (ForgeDbContext db, CancellationToken ct) =>
+        {
+            var products = await db.Search<Product>()
+                .FullText("wireless keyboard")
+                .Fuzzy()
+                .Top(20)
+                .ToListAsync(ct);
+
+            return Results.Ok(products);
+        })
+        .WithTags("ForgeORM Search");
+
+        app.MapGet("/samples/query/cte-orders", async (ForgeDbContext db, CancellationToken ct) =>
+        {
+            var result = await db.Cte<Order>()
+                .With("RecentOrders", q => q
+                    .From<Order>()
+                    .Where(x => x.CreatedAt >= DateTime.UtcNow.AddDays(-30)))
+                .From("RecentOrders")
+                .ToListAsync(ct);
+
+            return Results.Ok(result);
+        })
+        .WithTags("ForgeORM CTE");
+
+        app.MapGet("/samples/query/temp-products", async (ForgeDbContext db, CancellationToken ct) =>
+        {
+            await db.TempTable<Product>("TempProducts")
+                .FromQuery(q => q
+                    .From<Product>()
+                    .Where(x => x.Price > 100))
+                .CreateAsync(ct);
+
+            var result = await db.QueryAsync<Product>(
+                "SELECT * FROM #TempProducts",
+                ct);
+
+            return Results.Ok(result);
+        })
+        .WithTags("ForgeORM Temp Tables");
 
         app.MapGet("/samples/query/cte-expression", (ForgeDbContext db) =>
         {

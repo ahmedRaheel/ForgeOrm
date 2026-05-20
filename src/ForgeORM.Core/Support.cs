@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.ComponentModel.DataAnnotations;
 using System.Data;
 using System.Data.Common;
 using System.Linq.Expressions;
@@ -88,14 +89,19 @@ public sealed class ReflectionForgeEntityMetadataResolver : IForgeEntityMetadata
 
     private static ForgeEntityMetadata BuildMetadata(Type type)
     {
-        var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.CanRead && ForgeMaterializer.IsScalar(p.PropertyType))
+            .ToArray();
+
+        var keyProperty = ResolveKeyProperty(type, properties);
+
+        var props = properties
             .Select(p => new ForgePropertyMetadata
             {
                 PropertyName = p.Name,
                 ColumnName = p.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? p.Name,
                 PropertyType = p.PropertyType,
-                IsKey = p.GetCustomAttribute<ForgeKeyAttribute>() is not null || p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase),
+                IsKey = ReferenceEquals(p, keyProperty),
                 IsCode = p.GetCustomAttribute<ForgeCodeAttribute>() is not null || p.Name.Equals("Code", StringComparison.OrdinalIgnoreCase),
                 IsComputed = p.GetCustomAttribute<ForgeComputedAttribute>() is not null
             }).ToList();
@@ -108,6 +114,28 @@ public sealed class ReflectionForgeEntityMetadataResolver : IForgeEntityMetadata
             CodeColumn = props.FirstOrDefault(x => x.IsCode)?.ColumnName ?? "Code",
             Properties = props
         };
+    }
+
+    private static PropertyInfo? ResolveKeyProperty(Type type, PropertyInfo[] properties)
+    {
+        // Attribute-first when users opt in. Dapper-like convention still works without attributes.
+        var explicitKey = properties.FirstOrDefault(p =>
+            p.GetCustomAttribute<ForgeKeyAttribute>() is not null ||
+            p.GetCustomAttribute<KeyAttribute>() is not null);
+        if (explicitKey is not null)
+            return explicitKey;
+
+        var id = properties.FirstOrDefault(p => p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase));
+        if (id is not null)
+            return id;
+
+        var entityId = properties.FirstOrDefault(p => p.Name.Equals(type.Name + "Id", StringComparison.OrdinalIgnoreCase));
+        if (entityId is not null)
+            return entityId;
+
+        // Common record/DTO convention: OrderSummaryRecord(OrderId, ...).
+        var suffixId = properties.FirstOrDefault(p => p.Name.EndsWith("Id", StringComparison.OrdinalIgnoreCase));
+        return suffixId;
     }
 }
 
@@ -333,9 +361,20 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     /// <returns>The result of the ToList operation.</returns>
     public IReadOnlyList<T> ToList()
     {
-        var rows = _db.Query<T>(BuildSql(), BuildParameters(), ExecutionOptions.TimeoutSeconds).ToList();
+        var sql = BuildSql();
+        var parameters = BuildParameters();
+        var cacheKey = ForgeSecondLevelQueryCache.BuildKey(typeof(T), sql, parameters, _includes, ExecutionOptions);
+        if (ForgeSecondLevelQueryCache.TryGetList<T>(this, cacheKey, out var cachedRows))
+            return cachedRows;
+
+        var rows = _db.Query<T>(sql, parameters, ExecutionOptions.TimeoutSeconds);
         if (_includes.Count > 0 && rows.Count > 0)
-            ForgeNavigationSupport.LoadIncludedNavigationsAsync(rows, _db, _meta.KeyColumn, _includes, CancellationToken.None).GetAwaiter().GetResult();
+        {
+            var plan = ForgeCompiledIncludePlanCache.GetOrCreate<T>(_includes, ForgeEfStyleSplitQueryExtensions.GetEfSplitOptions(this));
+            ForgeEfSplitGraphLoader.LoadIncludedNavigationsAsync(rows, _db, plan.Includes, CancellationToken.None).GetAwaiter().GetResult();
+        }
+
+        ForgeSecondLevelQueryCache.SetList(this, cacheKey, rows);
         return rows;
     }
 
@@ -346,9 +385,20 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     /// <returns>The result of the ToListAsync operation.</returns>
     public async Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default)
     {
-        var rows = await _db.QueryAsync<T>(BuildSql(), BuildParameters(), ExecutionOptions.TimeoutSeconds, cancellationToken);
+        var sql = BuildSql();
+        var parameters = BuildParameters();
+        var cacheKey = ForgeSecondLevelQueryCache.BuildKey(typeof(T), sql, parameters, _includes, ExecutionOptions);
+        if (ForgeSecondLevelQueryCache.TryGetList<T>(this, cacheKey, out var cachedRows))
+            return cachedRows;
+
+        var rows = await _db.QueryAsync<T>(sql, parameters, ExecutionOptions.TimeoutSeconds, cancellationToken).ConfigureAwait(false);
         if (_includes.Count > 0 && rows.Count > 0)
-            await ForgeNavigationSupport.LoadIncludedNavigationsAsync(rows, _db, _meta.KeyColumn, _includes, cancellationToken);
+        {
+            var plan = ForgeCompiledIncludePlanCache.GetOrCreate<T>(_includes, ForgeEfStyleSplitQueryExtensions.GetEfSplitOptions(this));
+            await ForgeEfSplitGraphLoader.LoadIncludedNavigationsAsync(rows, _db, plan.Includes, cancellationToken).ConfigureAwait(false);
+        }
+
+        ForgeSecondLevelQueryCache.SetList(this, cacheKey, rows);
         return rows;
     }
 
@@ -358,8 +408,22 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     /// <summary>Streams rows through the common DbDataReader + MSIL materialization pipeline.</summary>
     public async IAsyncEnumerable<T> StreamAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var rows = await _db.QueryAsync<T>(BuildSql(), BuildParameters(), ExecutionOptions.TimeoutSeconds, cancellationToken);
-        foreach (var row in rows)
+        if (_includes.Count > 0)
+        {
+            var rows = await ToListAsync(cancellationToken).ConfigureAwait(false);
+            foreach (var row in rows) yield return row;
+            yield break;
+        }
+
+        if (_db is ForgeDb forgeDb)
+        {
+            await foreach (var row in forgeDb.QueryStreamAsync<T>(BuildSql(), BuildParameters(), ExecutionOptions.TimeoutSeconds, cancellationToken).ConfigureAwait(false))
+                yield return row;
+            yield break;
+        }
+
+        var fallbackRows = await _db.QueryAsync<T>(BuildSql(), BuildParameters(), ExecutionOptions.TimeoutSeconds, cancellationToken).ConfigureAwait(false);
+        foreach (var row in fallbackRows)
             yield return row;
     }
 
@@ -390,7 +454,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     {
         var row = _db.QueryFirstOrDefault<T>(BuildFirstSql(), BuildParameters(), ExecutionOptions.TimeoutSeconds);
         if (_includes.Count > 0 && row is not null)
-            ForgeNavigationSupport.LoadIncludedNavigationsAsync(new[] { row }, _db, _meta.KeyColumn, _includes, CancellationToken.None).GetAwaiter().GetResult();
+            ForgeEfSplitGraphLoader.LoadIncludedNavigationsAsync(new[] { row }, _db, _includes, CancellationToken.None).GetAwaiter().GetResult();
         return row;
     }
 
@@ -403,7 +467,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     {
         var row = await _db.QueryFirstOrDefaultAsync<T>(BuildFirstSql(), BuildParameters(), ExecutionOptions.TimeoutSeconds, cancellationToken);
         if (_includes.Count > 0 && row is not null)
-            await ForgeNavigationSupport.LoadIncludedNavigationsAsync(new[] { row }, _db, _meta.KeyColumn, _includes, cancellationToken);
+            await ForgeEfSplitGraphLoader.LoadIncludedNavigationsAsync(new[] { row }, _db, _includes, cancellationToken);
         return row;
     }
 

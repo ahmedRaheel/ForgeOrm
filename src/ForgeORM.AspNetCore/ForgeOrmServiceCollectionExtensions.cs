@@ -34,6 +34,14 @@ public sealed class ForgeOrmOptions
         CompilationMode = mode;
         ForgeSourceGeneratedRegistry.CompilationMode = mode;
     }
+    /// <summary>Forces SourceGenerated-only mode for NativeAOT deployments. RuntimeEmit fallback is disabled by policy.</summary>
+    public void UseNativeAotMode()
+    {
+        CompilationMode = ForgeOrmCompilationMode.SourceGenerated;
+        ForgeSourceGeneratedRegistry.CompilationMode = ForgeOrmCompilationMode.SourceGenerated;
+        ForgeORM.Core.Performance.ForgeUltimatePerformancePrimitives.NativeAotMode = true;
+    }
+
     /// <summary>
     /// Executes the UsePostgreSql operation.
     /// </summary>

@@ -182,8 +182,14 @@ internal static class ForgeSqlServerProviderDirectHotPath
     {
         var key = metadata.Properties.FirstOrDefault(x => string.Equals(x.ColumnName, metadata.KeyColumn, StringComparison.OrdinalIgnoreCase) || x.IsKey);
         var parameterName = "@" + metadata.KeyColumn;
+        var columns = metadata.Properties.Count == 0
+            ? "*"
+            : string.Join(", ", metadata.Properties.Where(p => !p.IsComputed && !string.IsNullOrWhiteSpace(p.ColumnName)).Select(p => p.ColumnName));
+        if (string.IsNullOrWhiteSpace(columns))
+            columns = "*";
+
         return new SqlServerEntityPlan(
-            $"SELECT * FROM {metadata.TableName} WHERE {metadata.KeyColumn} = {parameterName}",
+            $"SELECT TOP (1) {columns} FROM {metadata.TableName} WHERE {metadata.KeyColumn} = {parameterName}",
             parameterName,
             key?.PropertyType ?? typeof(object));
     }
@@ -466,9 +472,31 @@ internal static class ForgeSqlServerProviderDirectHotPath
 
     private static string[] ExtractParameterNames(string sql)
     {
-        var matches = System.Text.RegularExpressions.Regex.Matches(sql, @"(?<!@)@[A-Za-z_][A-Za-z0-9_]*");
-        if (matches.Count == 0) return Array.Empty<string>();
-        return matches.Select(x => x.Value).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        // Hot-path scanner: avoids Regex allocations for every new SQL shape.
+        if (string.IsNullOrEmpty(sql) || sql.IndexOf('@') < 0)
+            return Array.Empty<string>();
+
+        var names = new List<string>(4);
+        ReadOnlySpan<char> span = sql.AsSpan();
+        for (var i = 0; i < span.Length; i++)
+        {
+            if (span[i] != '@')
+                continue;
+            if (i + 1 < span.Length && span[i + 1] == '@')
+                continue;
+            var start = i;
+            i++;
+            if (i >= span.Length || !(char.IsLetter(span[i]) || span[i] == '_'))
+                continue;
+            while (i < span.Length && (char.IsLetterOrDigit(span[i]) || span[i] == '_'))
+                i++;
+            var name = sql.Substring(start, i - start);
+            if (!names.Any(x => string.Equals(x, name, StringComparison.OrdinalIgnoreCase)))
+                names.Add(name);
+            i--;
+        }
+
+        return names.Count == 0 ? Array.Empty<string>() : names.ToArray();
     }
 
     private static int EstimateCapacity(string sql)

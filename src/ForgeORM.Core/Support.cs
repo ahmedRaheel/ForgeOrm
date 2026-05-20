@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.ComponentModel.DataAnnotations;
 using System.Data;
 using System.Data.Common;
 using System.Linq.Expressions;
@@ -88,14 +89,19 @@ public sealed class ReflectionForgeEntityMetadataResolver : IForgeEntityMetadata
 
     private static ForgeEntityMetadata BuildMetadata(Type type)
     {
-        var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.CanRead && ForgeMaterializer.IsScalar(p.PropertyType))
+            .ToArray();
+
+        var keyProperty = ResolveKeyProperty(type, properties);
+
+        var props = properties
             .Select(p => new ForgePropertyMetadata
             {
                 PropertyName = p.Name,
                 ColumnName = p.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? p.Name,
                 PropertyType = p.PropertyType,
-                IsKey = p.GetCustomAttribute<ForgeKeyAttribute>() is not null || p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase),
+                IsKey = ReferenceEquals(p, keyProperty),
                 IsCode = p.GetCustomAttribute<ForgeCodeAttribute>() is not null || p.Name.Equals("Code", StringComparison.OrdinalIgnoreCase),
                 IsComputed = p.GetCustomAttribute<ForgeComputedAttribute>() is not null
             }).ToList();
@@ -108,6 +114,28 @@ public sealed class ReflectionForgeEntityMetadataResolver : IForgeEntityMetadata
             CodeColumn = props.FirstOrDefault(x => x.IsCode)?.ColumnName ?? "Code",
             Properties = props
         };
+    }
+
+    private static PropertyInfo? ResolveKeyProperty(Type type, PropertyInfo[] properties)
+    {
+        // Attribute-first when users opt in. Dapper-like convention still works without attributes.
+        var explicitKey = properties.FirstOrDefault(p =>
+            p.GetCustomAttribute<ForgeKeyAttribute>() is not null ||
+            p.GetCustomAttribute<KeyAttribute>() is not null);
+        if (explicitKey is not null)
+            return explicitKey;
+
+        var id = properties.FirstOrDefault(p => p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase));
+        if (id is not null)
+            return id;
+
+        var entityId = properties.FirstOrDefault(p => p.Name.Equals(type.Name + "Id", StringComparison.OrdinalIgnoreCase));
+        if (entityId is not null)
+            return entityId;
+
+        // Common record/DTO convention: OrderSummaryRecord(OrderId, ...).
+        var suffixId = properties.FirstOrDefault(p => p.Name.EndsWith("Id", StringComparison.OrdinalIgnoreCase));
+        return suffixId;
     }
 }
 

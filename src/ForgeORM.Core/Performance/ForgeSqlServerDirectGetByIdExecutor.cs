@@ -62,8 +62,10 @@ internal static class ForgeSqlServerDirectGetByIdExecutor<T>
 
     private static ExecutorPlan GetOrCreatePlan(ForgeEntityMetadata metadata)
     {
+        // One static executor plan per closed T. Metadata is resolved before the hot path.
+        // Avoid rebuilding SQL or comparing strings on every GetById call.
         var plan = Volatile.Read(ref CachedPlan);
-        if (plan is not null && plan.Matches(metadata))
+        if (plan is not null)
             return plan;
 
         plan = ExecutorPlan.Create(metadata);
@@ -85,10 +87,6 @@ internal static class ForgeSqlServerDirectGetByIdExecutor<T>
         public string Sql { get; }
         public string ParameterName { get; }
         public Type KeyType { get; }
-
-        public bool Matches(ForgeEntityMetadata metadata)
-            => string.Equals(Sql, BuildSql(metadata), StringComparison.Ordinal)
-               && string.Equals(ParameterName, "@" + metadata.KeyColumn, StringComparison.OrdinalIgnoreCase);
 
         public static ExecutorPlan Create(ForgeEntityMetadata metadata)
         {

@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using ForgeORM.Abstractions;
+using ForgeORM.Core;
 using Microsoft.Data.SqlClient;
 
 namespace ForgeORM.Core.Performance;
@@ -23,24 +24,10 @@ internal static class ForgeSqlServerProviderDirectHotPath
         => string.Equals(provider.ProviderName, "SqlServer", StringComparison.OrdinalIgnoreCase);
 
     public static T? GetById<T>(string connectionString, ForgeEntityMetadata metadata, object id)
-    {
-        using var connection = new SqlConnection(connectionString);
-        connection.Open();
-        using var command = CreateGetByIdCommand(connection, metadata, id, null, null);
-        using var reader = command.ExecuteReader(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
-        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
-        return reader.Read() ? materializer(reader) : default;
-    }
+        => ForgeSqlServerDirectGetByIdExecutor<T>.Execute(connectionString, metadata, id);
 
-    public static async Task<T?> GetByIdAsync<T>(string connectionString, ForgeEntityMetadata metadata, object id, CancellationToken cancellationToken)
-    {
-        await using var connection = new SqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        await using var command = CreateGetByIdCommand(connection, metadata, id, null, null);
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
-        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
-        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false) ? materializer(reader) : default;
-    }
+    public static Task<T?> GetByIdAsync<T>(string connectionString, ForgeEntityMetadata metadata, object id, CancellationToken cancellationToken)
+        => ForgeSqlServerDirectGetByIdExecutor<T>.ExecuteAsync(connectionString, metadata, id, cancellationToken);
 
     public static async Task<T?> QueryFirstOrDefaultAsync<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
     {
@@ -48,7 +35,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
         await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
-        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
+        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
         return await reader.ReadAsync(cancellationToken).ConfigureAwait(false) ? materializer(reader) : default;
     }
 
@@ -58,7 +45,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
         connection.Open();
         using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
         using var reader = command.ExecuteReader(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
-        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
+        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
         return reader.Read() ? materializer(reader) : default;
     }
 
@@ -68,7 +55,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
         await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
-        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
+        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
         var rows = new List<T>(EstimateCapacity(sql));
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             rows.Add(materializer(reader));
@@ -81,11 +68,46 @@ internal static class ForgeSqlServerProviderDirectHotPath
         connection.Open();
         using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
         using var reader = command.ExecuteReader(CommandBehavior.SequentialAccess);
-        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
+        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
         var rows = new List<T>(EstimateCapacity(sql));
         while (reader.Read())
             rows.Add(materializer(reader));
         return rows;
+    }
+
+
+    public static int Execute(string connectionString, string sql, object? parameters, int? timeoutSeconds)
+    {
+        using var connection = new SqlConnection(connectionString);
+        connection.Open();
+        using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
+        return command.ExecuteNonQuery();
+    }
+
+    public static async Task<int> ExecuteAsync(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public static T? ExecuteScalar<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds)
+    {
+        using var connection = new SqlConnection(connectionString);
+        connection.Open();
+        using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
+        var value = command.ExecuteScalar();
+        return ForgeScalarConverter.To<T>(value);
+    }
+
+    public static async Task<T?> ExecuteScalarAsync<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
+        var value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        return ForgeScalarConverter.To<T>(value);
     }
 
     public static async Task<IReadOnlyList<Dictionary<string, object?>>> QueryDictionaryAsync(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
@@ -111,7 +133,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
         await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess | CommandBehavior.CloseConnection, cancellationToken).ConfigureAwait(false);
-        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
+        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             yield return materializer(reader);
     }

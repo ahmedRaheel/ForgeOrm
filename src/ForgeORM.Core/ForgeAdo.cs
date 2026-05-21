@@ -5,6 +5,7 @@ using System.Data;
 using System.Data.Common;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
 
 namespace ForgeORM.Core;
 
@@ -238,6 +239,7 @@ public static class ForgeAdo
         return command;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void BindParameters(DbCommand command, object? parameters)
     {
         if (parameters is null)
@@ -295,6 +297,7 @@ public static class ForgeAdo
     }
 
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void BindScalarParameter(DbCommand command, object value)
     {
         var names = command.CommandType == CommandType.Text && !string.IsNullOrWhiteSpace(command.CommandText)
@@ -316,6 +319,7 @@ public static class ForgeAdo
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsScalarParameterType(Type type)
     {
         type = Nullable.GetUnderlyingType(type) ?? type;
@@ -394,20 +398,48 @@ public static class ForgeAdo
 
     private static string[] ExtractSqlParameterNames(string sql)
     {
-        var matches = Regex.Matches(
-            sql,
-            @"(?<!@)@([A-Za-z_][A-Za-z0-9_]*)",
-            RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-        if (matches.Count == 0)
+        if (string.IsNullOrWhiteSpace(sql))
             return Array.Empty<string>();
 
-        var result = new string[matches.Count];
-        for (var i = 0; i < matches.Count; i++)
-            result[i] = matches[i].Groups[1].Value;
-        return result.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var names = new List<string>(4);
+
+        for (var i = 0; i < sql.Length - 1; i++)
+        {
+            if (sql[i] != '@')
+                continue;
+
+            if (i > 0 && sql[i - 1] == '@')
+                continue;
+
+            var start = i + 1;
+            if (start >= sql.Length || !(char.IsLetter(sql[start]) || sql[start] == '_'))
+                continue;
+
+            var end = start + 1;
+            while (end < sql.Length && (char.IsLetterOrDigit(sql[end]) || sql[end] == '_'))
+                end++;
+
+            var name = sql[start..end];
+            var exists = false;
+            for (var n = 0; n < names.Count; n++)
+            {
+                if (string.Equals(names[n], name, StringComparison.OrdinalIgnoreCase))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+
+            if (!exists)
+                names.Add(name);
+
+            i = end - 1;
+        }
+
+        return names.Count == 0 ? Array.Empty<string>() : names.ToArray();
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool HasParameter(DbCommand command, string name)
     {
         var expected = "@" + name.TrimStart('@', ':');
@@ -469,6 +501,7 @@ public static class ForgeAdo
         return sql;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void AddParameter(DbCommand command, string name, object? value)
     {
         name = name.TrimStart('@', ':');
@@ -488,8 +521,10 @@ public static class ForgeAdo
     private static Action<DbCommand, object> BuildParameterWriter(Type type)
     {
         if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
-            && ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider))
-            return provider.GetBinder(type);
+            && ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider)
+            && provider.TryGetBinder(type, out var generatedBinder)
+            && generatedBinder is not null)
+            return generatedBinder;
 
         if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGenerated)
             throw new InvalidOperationException($"No ForgeORM source-generated parameter binder was registered for {type.FullName}.");

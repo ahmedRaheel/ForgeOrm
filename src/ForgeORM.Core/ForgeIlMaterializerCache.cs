@@ -21,10 +21,11 @@ internal static class ForgeIlMaterializerCache
     {
         var type = typeof(T);
         if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
-            && ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider))
+            && ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider)
+            && provider.TryCreateReader<T>(reader, out var sourceReader)
+            && sourceReader is not null)
         {
-            var sourceReader = provider.GetReader(type, reader);
-            return r => (T)sourceReader(r);
+            return sourceReader;
         }
 
         if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGenerated)

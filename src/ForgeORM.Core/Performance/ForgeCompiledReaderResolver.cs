@@ -13,10 +13,11 @@ internal static class ForgeCompiledReaderResolver
         var type = typeof(T);
 
         if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
-            && ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider))
+            && ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider)
+            && provider.TryCreateReader<T>(reader, out var generated)
+            && generated is not null)
         {
-            var generated = provider.GetReader(type, reader);
-            return staticRead => (T)generated(staticRead);
+            return generated;
         }
 
         if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGenerated)

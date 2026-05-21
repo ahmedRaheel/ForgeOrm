@@ -94,6 +94,31 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("        _ => throw new InvalidOperationException($\"No ForgeORM generated binder for {type.FullName}.\")");
         sb.AppendLine("    };");
         sb.AppendLine();
+        sb.AppendLine("    public bool TryCreateReader<T>(DbDataReader reader, out Func<DbDataReader, T>? readerFunc)");
+        sb.AppendLine("    {");
+        foreach (var type in entityTypes)
+        {
+            sb.AppendLine("        if (typeof(T).FullName == \"" + Escape(type.ToDisplayString()) + "\")");
+            sb.AppendLine("        {");
+            sb.AppendLine("            readerFunc = (Func<DbDataReader, T>)(object)CreateReader_" + Safe(type) + "(reader);");
+            sb.AppendLine("            return true;");
+            sb.AppendLine("        }");
+        }
+        sb.AppendLine("        readerFunc = null;");
+        sb.AppendLine("        return false;");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine("    public bool TryGetBinder(Type type, out Action<DbCommand, object>? binder)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        if (!CanHandle(type))");
+        sb.AppendLine("        {");
+        sb.AppendLine("            binder = null;");
+        sb.AppendLine("            return false;");
+        sb.AppendLine("        }");
+        sb.AppendLine("        binder = GetBinder(type);");
+        sb.AppendLine("        return true;");
+        sb.AppendLine("    }");
+        sb.AppendLine();
         EmitHelpers(sb);
 
         foreach (var type in entityTypes)

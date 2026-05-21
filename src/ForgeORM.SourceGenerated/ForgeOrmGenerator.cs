@@ -1,10 +1,11 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Linq;
+using System.Text;
 
 namespace ForgeORM.SourceGenerated;
 
@@ -350,9 +351,9 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
             var valueExpression = p.Type.TypeKind == TypeKind.Enum || (p.Type is INamedTypeSymbol n && n.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T && n.TypeArguments[0].TypeKind == TypeKind.Enum)
                 ? "entity." + p.Name + ".ToString()"
                 : "entity." + p.Name;
-            sb.AppendLine("            Add(command, \"" + Escape(p.Name) + "\", " + valueExpression + (dbType is null ? ");" : ", " + dbType + ");"));
+            sb.AppendLine("            Add(command, \"" + Escape(p.Name) + "\", " + valueExpression + (dbType == null ? ");" : ", " + dbType + ");"));
             if (!string.Equals(ColumnName(p), p.Name, StringComparison.OrdinalIgnoreCase))
-                sb.AppendLine("            Add(command, \"" + Escape(ColumnName(p)) + "\", " + valueExpression + (dbType is null ? ");" : ", " + dbType + ");"));
+                sb.AppendLine("            Add(command, \"" + Escape(ColumnName(p)) + "\", " + valueExpression + (dbType == null ? ");" : ", " + dbType + ");"));
         }
         sb.AppendLine("        }");
         sb.AppendLine("    }");
@@ -364,7 +365,66 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
             sb.AppendLine("        Add(command, \"" + Escape(p.Name) + "\", entity." + p.Name + ");");
         sb.AppendLine("    }");
     }
+    public static DbType DbTypeFor(ITypeSymbol type)
+    {
+        if (type is null)
+            return DbType.Object;
 
+        if (type.NullableAnnotation == NullableAnnotation.Annotated
+            && type is INamedTypeSymbol named
+            && named.IsGenericType
+            && named.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
+        {
+            type = named.TypeArguments[0];
+        }
+
+        if (type.SpecialType == SpecialType.System_String)
+            return DbType.String;
+
+        if (type.SpecialType == SpecialType.System_Int32)
+            return DbType.Int32;
+
+        if (type.SpecialType == SpecialType.System_Int64)
+            return DbType.Int64;
+
+        if (type.SpecialType == SpecialType.System_Int16)
+            return DbType.Int16;
+
+        if (type.SpecialType == SpecialType.System_Byte)
+            return DbType.Byte;
+
+        if (type.SpecialType == SpecialType.System_Boolean)
+            return DbType.Boolean;
+
+        if (type.SpecialType == SpecialType.System_Double)
+            return DbType.Double;
+
+        if (type.SpecialType == SpecialType.System_Single)
+            return DbType.Single;
+
+        if (type.SpecialType == SpecialType.System_Decimal)
+            return DbType.Decimal;
+
+        if (type.SpecialType == SpecialType.System_Char)
+            return DbType.StringFixedLength;
+
+        if (type.SpecialType == SpecialType.System_DateTime)
+            return DbType.DateTime;
+
+        if (type.TypeKind == TypeKind.Enum)
+            return DbType.Int32;
+
+        var display = type.ToDisplayString();
+
+        return display switch
+        {
+            "System.Guid" => DbType.Guid,
+            "System.DateTimeOffset" => DbType.DateTimeOffset,
+            "System.TimeSpan" => DbType.Time,
+            "byte[]" => DbType.Binary,
+            _ => DbType.Object
+        };
+    }
     private static void EmitSqlBuilder(StringBuilder sb, INamedTypeSymbol type)
     {
         var table = TableName(type);

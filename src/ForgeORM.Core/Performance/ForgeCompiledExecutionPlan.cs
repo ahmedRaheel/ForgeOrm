@@ -201,7 +201,20 @@ internal static class ForgeParameterBinderCompiler
             parameter.ParameterName = parameterName;
             command.Parameters.Add(parameter);
         }
-        parameter.Value = value ?? DBNull.Value;
+        parameter.Value = NormalizeParameterValue(value, valueType);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static object NormalizeParameterValue(object? value, Type? declaredType)
+    {
+        if (value is null)
+            return DBNull.Value;
+
+        var type = Nullable.GetUnderlyingType(declaredType ?? value.GetType()) ?? (declaredType ?? value.GetType());
+        if (type.IsEnum)
+            return Convert.ChangeType(value, Enum.GetUnderlyingType(type), System.Globalization.CultureInfo.InvariantCulture) ?? DBNull.Value;
+
+        return value;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

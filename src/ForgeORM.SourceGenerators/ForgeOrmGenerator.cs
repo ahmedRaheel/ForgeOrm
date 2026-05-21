@@ -375,9 +375,7 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         foreach (var p in Properties(type))
         {
             var dbType = DbTypeFor(p.Type);
-            var valueExpression = p.Type.TypeKind == TypeKind.Enum || (p.Type is INamedTypeSymbol n && n.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T && n.TypeArguments[0].TypeKind == TypeKind.Enum)
-                ? "entity." + p.Name + ".ToString()"
-                : "entity." + p.Name;
+            var valueExpression = ParameterValueExpression(p);
             sb.AppendLine("            Add(command, \"" + Escape(p.Name) + "\", " + valueExpression + (dbType is null ? ");" : ", " + dbType + ");"));
             if (!string.Equals(ColumnName(p), p.Name, StringComparison.OrdinalIgnoreCase))
                 sb.AppendLine("            Add(command, \"" + Escape(ColumnName(p)) + "\", " + valueExpression + (dbType is null ? ");" : ", " + dbType + ");"));
@@ -391,9 +389,7 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         foreach (var p in Properties(type))
         {
             var dbType = DbTypeFor(p.Type);
-            var valueExpression = p.Type.TypeKind == TypeKind.Enum || (p.Type is INamedTypeSymbol n && n.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T && n.TypeArguments[0].TypeKind == TypeKind.Enum)
-                ? "entity." + p.Name + ".ToString()"
-                : "entity." + p.Name;
+            var valueExpression = ParameterValueExpression(p);
             sb.AppendLine("        Add(command, \"" + Escape(p.Name) + "\", " + valueExpression + (dbType is null ? ");" : ", " + dbType + ");"));
             if (!string.Equals(ColumnName(p), p.Name, StringComparison.OrdinalIgnoreCase))
                 sb.AppendLine("        Add(command, \"" + Escape(ColumnName(p)) + "\", " + valueExpression + (dbType is null ? ");" : ", " + dbType + ");"));
@@ -473,11 +469,71 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
     private static string TableName(INamedTypeSymbol type)
         => type.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name is "ForgeTableAttribute" or "TableAttribute")?.ConstructorArguments.FirstOrDefault().Value?.ToString() ?? type.Name;
 
+    private static string ParameterValueExpression(IPropertySymbol property)
+    {
+        var type = property.Type;
+        var isNullableEnum = type is INamedTypeSymbol nullable
+            && nullable.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T
+            && nullable.TypeArguments[0].TypeKind == TypeKind.Enum;
+
+        var enumType = isNullableEnum ? ((INamedTypeSymbol)type).TypeArguments[0] : type;
+        if (enumType.TypeKind != TypeKind.Enum)
+            return "entity." + property.Name;
+
+        if (HasEnumStringStorage(property))
+            return isNullableEnum
+                ? "(entity." + property.Name + ".HasValue ? entity." + property.Name + ".Value.ToString() : null)"
+                : "entity." + property.Name + ".ToString()";
+
+        var castType = EnumUnderlyingTypeName((INamedTypeSymbol)enumType);
+        return isNullableEnum
+            ? "(entity." + property.Name + ".HasValue ? (object)(" + castType + ")entity." + property.Name + ".Value : null)"
+            : "(" + castType + ")entity." + property.Name;
+    }
+
+    private static bool HasEnumStringStorage(IPropertySymbol property)
+    {
+        foreach (var attribute in property.GetAttributes())
+        {
+            var name = attribute.AttributeClass?.Name;
+            if (name is not ("ForgeEnumStorageAttribute" or "EnumStorageAttribute"))
+                continue;
+
+            if (attribute.ConstructorArguments.Length > 0)
+            {
+                var value = attribute.ConstructorArguments[0].Value;
+                if (value?.ToString()?.EndsWith("String", StringComparison.OrdinalIgnoreCase) == true)
+                    return true;
+                if (value is int i && i == 0)
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string EnumUnderlyingTypeName(INamedTypeSymbol enumType)
+    {
+        var underlying = enumType.EnumUnderlyingType;
+        return underlying?.SpecialType switch
+        {
+            SpecialType.System_Byte => "byte",
+            SpecialType.System_SByte => "sbyte",
+            SpecialType.System_Int16 => "short",
+            SpecialType.System_UInt16 => "ushort",
+            SpecialType.System_Int64 => "long",
+            SpecialType.System_UInt64 => "ulong",
+            SpecialType.System_UInt32 => "uint",
+            _ => "int"
+        };
+    }
+
     private static string? DbTypeFor(ITypeSymbol type)
     {
         if (type is INamedTypeSymbol named && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
             type = named.TypeArguments[0];
-        if (type.TypeKind == TypeKind.Enum) return "DbType.String";
+        if (type.TypeKind == TypeKind.Enum)
+            return EnumDbTypeFor((INamedTypeSymbol)type);
         return type.SpecialType switch
         {
             SpecialType.System_Int32 => "DbType.Int32",
@@ -490,6 +546,22 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
             SpecialType.System_Single => "DbType.Single",
             SpecialType.System_DateTime => "DbType.DateTime2",
             _ => type.ToDisplayString() == "System.Guid" ? "DbType.Guid" : null
+        };
+    }
+
+
+    private static string EnumDbTypeFor(INamedTypeSymbol enumType)
+    {
+        return enumType.EnumUnderlyingType?.SpecialType switch
+        {
+            SpecialType.System_Byte => "DbType.Byte",
+            SpecialType.System_SByte => "DbType.SByte",
+            SpecialType.System_Int16 => "DbType.Int16",
+            SpecialType.System_UInt16 => "DbType.UInt16",
+            SpecialType.System_Int64 => "DbType.Int64",
+            SpecialType.System_UInt64 => "DbType.UInt64",
+            SpecialType.System_UInt32 => "DbType.UInt32",
+            _ => "DbType.Int32"
         };
     }
 

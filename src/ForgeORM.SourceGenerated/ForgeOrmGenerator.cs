@@ -348,9 +348,7 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         foreach (var p in Properties(type))
         {
             var dbType = DbTypeFor(p.Type);
-            var valueExpression = p.Type.TypeKind == TypeKind.Enum || (p.Type is INamedTypeSymbol n && n.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T && n.TypeArguments[0].TypeKind == TypeKind.Enum)
-                ? "entity." + p.Name + ".ToString()"
-                : "entity." + p.Name;
+            var valueExpression = ParameterValueExpression(p);
             sb.AppendLine("            Add(command, \"" + Escape(p.Name) + "\", " + valueExpression + (dbType == null ? ");" : ", " + dbType + ");"));
             if (!string.Equals(ColumnName(p), p.Name, StringComparison.OrdinalIgnoreCase))
                 sb.AppendLine("            Add(command, \"" + Escape(ColumnName(p)) + "\", " + valueExpression + (dbType == null ? ");" : ", " + dbType + ");"));
@@ -362,8 +360,51 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("    {");
         sb.AppendLine("        var entity = (" + full + ")value;");
         foreach (var p in Properties(type))
-            sb.AppendLine("        Add(command, \"" + Escape(p.Name) + "\", entity." + p.Name + ");");
+        {
+            var dbType = DbTypeFor(p.Type);
+            var valueExpression = ParameterValueExpression(p);
+            sb.AppendLine("        Add(command, \"" + Escape(p.Name) + "\", " + valueExpression + (dbType == null ? ");" : ", " + dbType + ");"));
+        }
         sb.AppendLine("    }");
+    }
+    private static string ParameterValueExpression(IPropertySymbol p)
+    {
+        var type = p.Type;
+
+        if (type.TypeKind == TypeKind.Enum)
+        {
+            return $"(int)value.{p.Name}";
+        }
+
+        if (type is INamedTypeSymbol named
+            && named.IsGenericType
+            && named.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
+        {
+            var underlying = named.TypeArguments[0];
+
+            if (underlying.TypeKind == TypeKind.Enum)
+            {
+                return
+                    $"value.{p.Name}.HasValue ? (object)(int)value.{p.Name}.Value : DBNull.Value";
+            }
+
+            return
+                $"value.{p.Name}.HasValue ? (object)value.{p.Name}.Value : DBNull.Value";
+        }
+
+        if (type.SpecialType == SpecialType.System_String)
+        {
+            return
+                $"value.{p.Name} ?? (object)DBNull.Value";
+        }
+
+        if (p.NullableAnnotation == NullableAnnotation.Annotated)
+        {
+            return
+                $"value.{p.Name} ?? (object)DBNull.Value";
+        }
+
+        return $"value.{p.Name}";
     }
     public static DbType DbTypeFor(ITypeSymbol type)
     {
@@ -463,6 +504,22 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
 
     private static string TableName(INamedTypeSymbol type)
         => type.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name is "ForgeTableAttribute" or "TableAttribute")?.ConstructorArguments.FirstOrDefault().Value?.ToString() ?? type.Name;
+
+
+    private static string EnumDbTypeFor(INamedTypeSymbol enumType)
+    {
+        return enumType.EnumUnderlyingType?.SpecialType switch
+        {
+            SpecialType.System_Byte => "DbType.Byte",
+            SpecialType.System_SByte => "DbType.SByte",
+            SpecialType.System_Int16 => "DbType.Int16",
+            SpecialType.System_UInt16 => "DbType.UInt16",
+            SpecialType.System_Int64 => "DbType.Int64",
+            SpecialType.System_UInt64 => "DbType.UInt64",
+            SpecialType.System_UInt32 => "DbType.UInt32",
+            _ => "DbType.Int32"
+        };
+    }
 
     private static string Safe(INamedTypeSymbol type)
         => type.ToDisplayString().Replace('.', '_').Replace('+', '_').Replace('<', '_').Replace('>', '_').Replace(',', '_').Replace(' ', '_');

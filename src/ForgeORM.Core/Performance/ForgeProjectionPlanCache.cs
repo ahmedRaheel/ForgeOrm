@@ -1,7 +1,5 @@
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace ForgeORM.Core;
 
@@ -19,5 +17,5 @@ public static class ForgeProjectionPlanCache
     }
 
     private static string Fingerprint(string text)
-        => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
+        => ForgeFastHash.FingerprintSql(text);
 }

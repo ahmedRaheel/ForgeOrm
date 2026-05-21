@@ -6,6 +6,7 @@ using System.Data.Common;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
+using ForgeORM.Core.Performance;
 
 namespace ForgeORM.Core;
 
@@ -48,24 +49,8 @@ public static class ForgeAdo
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        var providerName = connection.GetType().FullName ?? connection.GetType().Name;
-        _ = ForgeCompiledQueryCache.GetOrAdd(providerName, typeof(T), sql, parameters?.GetType(), () => new ForgeCompiledQueryPlan(sql, typeof(T), parameters?.GetType(), providerName, ForgeCompiledQueryCache.Fingerprint(sql)));
-        _ = ForgePerformanceCommandPlanCache.GetOrAdd(providerName, sql, commandType, parameters?.GetType());
-
-        await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
-
-        if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
-
-        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
-        var rows = new List<T>(EstimateCapacity(sql));
-
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            rows.Add(materializer(reader));
-
-        return rows;
+        return await ForgePerformancePipeline.QueryAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -89,17 +74,8 @@ public static class ForgeAdo
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
-
-        if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
-        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
-
-        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
-            ? materializer(reader)
-            : default;
+        return await ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public static async Task<T?> QuerySingleOrDefaultAsync<T>(
@@ -111,23 +87,8 @@ public static class ForgeAdo
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
-
-        if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
-
-        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            return default;
-
-        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
-        var first = materializer(reader);
-
-        if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            throw new InvalidOperationException("Sequence contains more than one element.");
-
-        return first;
+        return await ForgePerformancePipeline.SingleOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken)
+            .ConfigureAwait(false);
     }
     /// <summary>
     /// Executes the Execute operation.
@@ -161,11 +122,8 @@ public static class ForgeAdo
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken);
-
-        await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
-        return await command.ExecuteNonQueryAsync(cancellationToken);
+        return await ForgePerformancePipeline.ExecuteAsync(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken)
+            .ConfigureAwait(false);
     }
     /// <summary>
     /// Executes the T operation.

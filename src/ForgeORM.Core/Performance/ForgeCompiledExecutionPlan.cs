@@ -1,0 +1,216 @@
+using System.Collections.Concurrent;
+using System.Data;
+using System.Data.Common;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+
+namespace ForgeORM.Core;
+
+/// <summary>
+/// Final compiled query plan used by the high-performance execution pipeline.
+/// SQL/command metadata and parameter layout are cached before execution; materializer is attached after reader shape is known.
+/// </summary>
+public sealed class ForgeCompiledQueryPlan<T>
+{
+    public required string Sql { get; init; }
+    public required CommandType CommandType { get; init; }
+    public required CommandBehavior Behavior { get; init; }
+    public required Action<DbCommand, object?> Binder { get; init; }
+    public Func<DbDataReader, T>? Materializer { get; set; }
+    public required string Provider { get; init; }
+    public required Type? ParameterType { get; init; }
+    public required string QueryFingerprint { get; init; }
+}
+
+internal static class ForgeCompiledExecutionPlanCache
+{
+    private static readonly ConcurrentDictionary<ForgeCompiledExecutionPlanKey, object> Cache = new();
+
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    public static ForgeCompiledQueryPlan<T> GetOrAdd<T>(DbConnection connection, string sql, object? parameters, CommandType commandType, CommandBehavior behavior)
+    {
+        var provider = connection.GetType().FullName ?? connection.GetType().Name;
+        var parameterType = parameters?.GetType();
+        var key = new ForgeCompiledExecutionPlanKey(provider, typeof(T), parameterType, commandType, behavior, ForgeFastHash.FingerprintSql(sql));
+        return (ForgeCompiledQueryPlan<T>)Cache.GetOrAdd(key, _ => new ForgeCompiledQueryPlan<T>
+        {
+            Sql = sql,
+            CommandType = commandType,
+            Behavior = behavior,
+            Provider = provider,
+            ParameterType = parameterType,
+            QueryFingerprint = key.SqlFingerprint,
+            Binder = ForgeParameterBinderCompiler.Compile(parameterType, sql, commandType)
+        });
+    }
+}
+
+internal readonly record struct ForgeCompiledExecutionPlanKey(
+    string Provider,
+    Type ResultType,
+    Type? ParameterType,
+    CommandType CommandType,
+    CommandBehavior Behavior,
+    string SqlFingerprint);
+
+/// <summary>
+/// Compiles reusable parameter layout/binder delegates. Command instances are still new per execution, but reflection and parameter discovery are not.
+/// </summary>
+internal static class ForgeParameterBinderCompiler
+{
+    private static readonly ConcurrentDictionary<ForgeParameterBinderKey, Action<DbCommand, object?>> Cache = new();
+
+    public static Action<DbCommand, object?> Compile(Type? parameterType, string sql, CommandType commandType)
+    {
+        var key = new ForgeParameterBinderKey(parameterType, commandType, ForgeFastHash.FingerprintSql(sql));
+        return Cache.GetOrAdd(key, _ => Build(parameterType, sql, commandType));
+    }
+
+    private static Action<DbCommand, object?> Build(Type? parameterType, string sql, CommandType commandType)
+    {
+        var sqlNames = commandType == CommandType.Text ? ExtractParameterNames(sql) : Array.Empty<string>();
+
+        if (parameterType is null)
+            return static (_, _) => { };
+
+        if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
+            && ForgeSourceGeneratedRegistry.TryGetProvider(parameterType, out var provider)
+            && provider.TryGetBinder(parameterType, out var generated)
+            && generated is not null)
+        {
+            return (command, value) =>
+            {
+                if (value is not null)
+                    generated(command, value);
+            };
+        }
+
+        if (IsScalar(parameterType))
+            return (command, value) => BindScalar(command, value, sqlNames);
+
+        if (typeof(System.Collections.IDictionary).IsAssignableFrom(parameterType))
+            return BindDictionary;
+
+        var props = parameterType.GetProperties(BindingFlags.Instance | BindingFlags.Public)
+            .Where(p => p.GetIndexParameters().Length == 0 && p.GetMethod is not null)
+            .Select(p => new ForgeParameterProperty(p.Name, p.GetMethod!, p.PropertyType))
+            .ToArray();
+
+        return (command, value) =>
+        {
+            if (value is null) return;
+            for (var i = 0; i < props.Length; i++)
+            {
+                var p = props[i];
+                Add(command, p.Name, p.Getter.Invoke(value, null), p.PropertyType);
+            }
+
+            // Safety: bind scalar-looking SQL names if property casing/prefix did not match.
+            if (sqlNames.Length > 0)
+            {
+                for (var i = 0; i < sqlNames.Length; i++)
+                {
+                    if (HasParameter(command, sqlNames[i])) continue;
+                    for (var x = 0; x < props.Length; x++)
+                    {
+                        if (!string.Equals(props[x].Name, sqlNames[i], StringComparison.OrdinalIgnoreCase)) continue;
+                        Add(command, sqlNames[i], props[x].Getter.Invoke(value, null), props[x].PropertyType);
+                        break;
+                    }
+                }
+            }
+        };
+    }
+
+    private static void BindDictionary(DbCommand command, object? value)
+    {
+        if (value is null) return;
+        if (value is IReadOnlyDictionary<string, object?> ro)
+        {
+            foreach (var item in ro)
+                Add(command, item.Key, item.Value, item.Value?.GetType());
+            return;
+        }
+        if (value is System.Collections.IDictionary dict)
+        {
+            foreach (System.Collections.DictionaryEntry item in dict)
+            {
+                if (item.Key is null) continue;
+                var name = Convert.ToString(item.Key, System.Globalization.CultureInfo.InvariantCulture);
+                if (!string.IsNullOrWhiteSpace(name)) Add(command, name!, item.Value, item.Value?.GetType());
+            }
+        }
+    }
+
+    private static void BindScalar(DbCommand command, object? value, string[] sqlNames)
+    {
+        if (value is null) return;
+        if (sqlNames.Length == 0)
+        {
+            Add(command, "Value", value, value.GetType());
+            return;
+        }
+        for (var i = 0; i < sqlNames.Length; i++)
+            Add(command, sqlNames[i], value, value.GetType());
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void Add(DbCommand command, string name, object? value, Type? valueType)
+    {
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name.Length > 0 && (name[0] == '@' || name[0] == ':') ? name : "@" + name;
+        parameter.Value = value ?? DBNull.Value;
+        command.Parameters.Add(parameter);
+    }
+
+    private static bool HasParameter(DbCommand command, string name)
+    {
+        var normalized = name.TrimStart('@', ':');
+        for (var i = 0; i < command.Parameters.Count; i++)
+        {
+            if (command.Parameters[i] is not DbParameter p) continue;
+            var current = p.ParameterName.TrimStart('@', ':');
+            if (string.Equals(current, normalized, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    private static string[] ExtractParameterNames(string sql)
+    {
+        if (string.IsNullOrWhiteSpace(sql)) return Array.Empty<string>();
+        var names = new List<string>(4);
+        for (var i = 0; i < sql.Length - 1; i++)
+        {
+            var marker = sql[i];
+            if (marker is not '@' and not ':') continue;
+            if (marker == '@' && i > 0 && sql[i - 1] == '@') continue;
+            var start = i + 1;
+            if (start >= sql.Length || !(char.IsLetter(sql[start]) || sql[start] == '_')) continue;
+            var end = start + 1;
+            while (end < sql.Length && (char.IsLetterOrDigit(sql[end]) || sql[end] == '_')) end++;
+            var name = sql[start..end];
+            var exists = false;
+            for (var n = 0; n < names.Count; n++)
+            {
+                if (!string.Equals(names[n], name, StringComparison.OrdinalIgnoreCase)) continue;
+                exists = true; break;
+            }
+            if (!exists) names.Add(name);
+            i = end - 1;
+        }
+        return names.Count == 0 ? Array.Empty<string>() : names.ToArray();
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsScalar(Type type)
+    {
+        type = Nullable.GetUnderlyingType(type) ?? type;
+        return type.IsPrimitive || type.IsEnum || type == typeof(string) || type == typeof(Guid) || type == typeof(decimal)
+            || type == typeof(DateTime) || type == typeof(DateTimeOffset) || type == typeof(DateOnly) || type == typeof(TimeOnly)
+            || type == typeof(TimeSpan) || type == typeof(byte[]);
+    }
+}
+
+internal readonly record struct ForgeParameterBinderKey(Type? ParameterType, CommandType CommandType, string SqlFingerprint);
+internal readonly record struct ForgeParameterProperty(string Name, MethodInfo Getter, Type PropertyType);

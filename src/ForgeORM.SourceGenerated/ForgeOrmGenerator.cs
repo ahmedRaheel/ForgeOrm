@@ -130,13 +130,7 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
     private static void EmitHelpers(StringBuilder sb)
     {
         sb.AppendLine("    private static int Ordinal(DbDataReader reader, string name)");
-        sb.AppendLine("    {");
-        sb.AppendLine("        for (var i = 0; i < reader.FieldCount; i++)");
-        sb.AppendLine("        {");
-        sb.AppendLine("            if (string.Equals(reader.GetName(i), name, StringComparison.OrdinalIgnoreCase)) return i;");
-        sb.AppendLine("        }");
-        sb.AppendLine("        return -1;");
-        sb.AppendLine("    }");
+        sb.AppendLine("        => ForgeColumnOrdinalShapeCache.GetOrdinalOrMinusOne(typeof(object), reader, name);");
         sb.AppendLine();
         sb.AppendLine("    private static TEnum ReadEnum<TEnum>(DbDataReader reader, int ordinal) where TEnum : struct, Enum");
         sb.AppendLine("    {");
@@ -154,8 +148,19 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine();
         sb.AppendLine("    private static void Add(DbCommand command, string name, object? value, DbType? dbType = null)");
         sb.AppendLine("    {");
+        sb.AppendLine("        var parameterName = name[0] == '@' || name[0] == ':' ? name : \"@\" + name;");
+        sb.AppendLine("        for (var i = 0; i < command.Parameters.Count; i++)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            if (command.Parameters[i] is not DbParameter existing) continue;");
+        sb.AppendLine("            if (string.Equals(existing.ParameterName.TrimStart('@', ':'), parameterName.TrimStart('@', ':'), StringComparison.OrdinalIgnoreCase))");
+        sb.AppendLine("            {");
+        sb.AppendLine("                if (dbType.HasValue) existing.DbType = dbType.Value;");
+        sb.AppendLine("                existing.Value = value ?? DBNull.Value;");
+        sb.AppendLine("                return;");
+        sb.AppendLine("            }");
+        sb.AppendLine("        }");
         sb.AppendLine("        var p = command.CreateParameter();");
-        sb.AppendLine("        p.ParameterName = name[0] == '@' || name[0] == ':' ? name : \"@\" + name;");
+        sb.AppendLine("        p.ParameterName = parameterName;");
         sb.AppendLine("        if (dbType.HasValue) p.DbType = dbType.Value;");
         sb.AppendLine("        p.Value = value ?? DBNull.Value;");
         sb.AppendLine("        command.Parameters.Add(p);");
@@ -171,7 +176,7 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
             return false;
         if (type.DeclaredAccessibility != Accessibility.Public)
             return false;
-        return HasForgeTableAttribute(type) || HasGenerateMapperAttribute(type) || Properties(type).Any();
+        return HasForgeTableAttribute(type) || HasGenerateMapperAttribute(type) || HasForgeDtoAttribute(type) || HasForgeProjectionAttribute(type);
     }
 
     private static bool HasForgeTableAttribute(INamedTypeSymbol type)
@@ -179,6 +184,12 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
 
     private static bool HasGenerateMapperAttribute(INamedTypeSymbol type)
         => type.GetAttributes().Any(a => a.AttributeClass?.Name is "ForgeGenerateMapperAttribute" or "GenerateMapperAttribute");
+
+    private static bool HasForgeDtoAttribute(INamedTypeSymbol type)
+        => type.GetAttributes().Any(a => a.AttributeClass?.Name is "ForgeDtoAttribute" or "ForgeDTOAttribute" or "DtoAttribute" or "DTOAttribute");
+
+    private static bool HasForgeProjectionAttribute(INamedTypeSymbol type)
+        => type.GetAttributes().Any(a => a.AttributeClass?.Name is "ForgeProjectionAttribute" or "ProjectionAttribute");
 
     private static IEnumerable<IPropertySymbol> Properties(INamedTypeSymbol type)
         => type.GetMembers().OfType<IPropertySymbol>()

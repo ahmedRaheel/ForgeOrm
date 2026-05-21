@@ -6,7 +6,8 @@ using ForgeORM.Abstractions;
 namespace ForgeORM.Core.Performance;
 
 /// <summary>
-/// Central high-performance ADO.NET pipeline used by ForgeDb. It relies on MSIL parameter binders and MSIL reader materializers.
+/// Central high-performance ADO.NET pipeline. It no longer delegates query execution to ForgeAdo;
+/// it owns plan lookup, parameter binding, command execution and source-generated/MSIL materialization.
 /// </summary>
 public static class ForgePerformancePipeline
 {
@@ -19,9 +20,20 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        _ = ForgeRuntimeQueryPlanCache.For<T>(sql, commandType, buffered: true);
-        return await ForgeAdo.QueryAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken)
-            .ConfigureAwait(false);
+        var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SequentialAccess);
+        await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
+
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        await using var reader = await command.ExecuteReaderAsync(plan.Behavior, cancellationToken).ConfigureAwait(false);
+        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
+        var rows = new List<T>(EstimateCapacity(sql));
+
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            rows.Add(materializer(reader));
+
+        return rows;
     }
 
     public static async IAsyncEnumerable<T> StreamAsync<T>(
@@ -33,21 +45,19 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        _ = ForgeRuntimeQueryPlanCache.For<T>(sql, commandType, buffered: false);
+        var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SequentialAccess | CommandBehavior.CloseConnection);
+        await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
 
-        await using var command = ForgeAdo.CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess | CommandBehavior.CloseConnection, cancellationToken)
-            .ConfigureAwait(false);
-
+        await using var reader = await command.ExecuteReaderAsync(plan.Behavior, cancellationToken).ConfigureAwait(false);
         var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             yield return materializer(reader);
     }
 
-    public static Task<T?> FirstOrDefaultAsync<T>(
+    public static async Task<T?> FirstOrDefaultAsync<T>(
         DbConnection connection,
         string sql,
         object? parameters = null,
@@ -56,11 +66,18 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        _ = ForgeRuntimeQueryPlanCache.For<T>(sql, commandType, buffered: true);
-        return ForgeAdo.QueryFirstOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken);
+        var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
+        await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
+
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        await using var reader = await command.ExecuteReaderAsync(plan.Behavior, cancellationToken).ConfigureAwait(false);
+        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
+        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false) ? materializer(reader) : default;
     }
 
-    public static Task<T?> SingleOrDefaultAsync<T>(
+    public static async Task<T?> SingleOrDefaultAsync<T>(
         DbConnection connection,
         string sql,
         object? parameters = null,
@@ -69,11 +86,24 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        _ = ForgeRuntimeQueryPlanCache.For<T>(sql, commandType, buffered: true);
-        return ForgeAdo.QuerySingleOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken);
+        var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SequentialAccess);
+        await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
+
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        await using var reader = await command.ExecuteReaderAsync(plan.Behavior, cancellationToken).ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            return default;
+
+        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
+        var first = materializer(reader);
+        if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            throw new InvalidOperationException("Sequence contains more than one element.");
+        return first;
     }
 
-    public static Task<int> ExecuteAsync(
+    public static async Task<int> ExecuteAsync(
         DbConnection connection,
         string sql,
         object? parameters = null,
@@ -82,8 +112,13 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        _ = ForgeRuntimeQueryPlanCache.For<int>(sql, commandType, buffered: true);
-        return ForgeAdo.ExecuteAsync(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken);
+        var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<int>(connection, sql, parameters, commandType, CommandBehavior.Default);
+        await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
+
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public static async Task<ForgePagedResult<T>> PageAsync<T>(
@@ -100,12 +135,21 @@ public static class ForgePerformancePipeline
         var rows = await QueryAsync<T>(connection, page.CommandText, page.Parameters, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
-        return new ForgePagedResult<T>
-        {
-            Items = rows,
-            Page = request.Page,
-            PageSize = request.PageSize,
-            TotalRecords = total
-        };
+        return new ForgePagedResult<T> { Items = rows, Page = request.Page, PageSize = request.PageSize, TotalRecords = total };
     }
+
+    private static DbCommand CreateCommand<T>(DbConnection connection, ForgeCompiledQueryPlan<T> plan, object? parameters, DbTransaction? transaction, int? timeoutSeconds)
+    {
+        var command = connection.CreateCommand();
+        command.CommandText = plan.Sql;
+        command.CommandType = plan.CommandType;
+        if (transaction is not null) command.Transaction = transaction;
+        if (timeoutSeconds.HasValue) command.CommandTimeout = timeoutSeconds.Value;
+        plan.Binder(command, parameters);
+        return command;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int EstimateCapacity(string sql)
+        => sql.Contains("TOP 1", StringComparison.OrdinalIgnoreCase) || sql.Contains("LIMIT 1", StringComparison.OrdinalIgnoreCase) ? 1 : 32;
 }

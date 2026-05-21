@@ -24,7 +24,7 @@ public static class ForgeQueryMonitor
 
     public static void Record(string sql, string? tag, Stopwatch stopwatch, int? rows, bool success, Exception? error = null)
     {
-        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(sql)))[..16];
+        var hash = ForgeFastHash.FingerprintSql(sql);
         _metrics.Enqueue(new ForgeQueryMetric(hash, tag, stopwatch.Elapsed, rows, success, error?.GetType().Name + ": " + error?.Message, DateTimeOffset.UtcNow));
         while (_metrics.Count > MaxMetrics && _metrics.TryDequeue(out _)) { }
     }

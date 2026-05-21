@@ -3,6 +3,7 @@ using System.Data;
 using System.Data.Common;
 using System.Reflection;
 using ForgeORM.Abstractions;
+using ForgeORM.Core.Performance;
 
 namespace ForgeORM.Core;
 
@@ -49,7 +50,7 @@ public partial class ForgeDb
     {
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken);
-        return await ForgeAdo.QueryAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+        return await ForgePerformancePipeline.QueryAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -59,7 +60,7 @@ public partial class ForgeDb
     {
         using var connection = CreateConnection();
         connection.Open();
-        return ForgeAdo.QuerySingleOrDefaultAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds).GetAwaiter().GetResult();
+        return ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds).GetAwaiter().GetResult();
     }
 
     /// <summary>
@@ -69,7 +70,7 @@ public partial class ForgeDb
     {
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken);
-        return await ForgeAdo.QuerySingleOrDefaultAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+        return await ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     }
 
     private ForgeFindPlan GetFindPlan(Type entityType)

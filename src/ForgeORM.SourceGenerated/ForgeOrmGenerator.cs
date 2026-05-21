@@ -111,6 +111,19 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("        binder = GetBinder(type);");
         sb.AppendLine("        return true;");
         sb.AppendLine("    }");
+        sb.AppendLine();        sb.AppendLine("    public bool TryGetTypedBinder<T>(out IForgeParameterBinder<T>? binder)");
+        sb.AppendLine("    {");
+        foreach (var type in entityTypes)
+        {
+            sb.AppendLine("        if (typeof(T).FullName == \"" + Escape(type.ToDisplayString()) + "\")");
+            sb.AppendLine("        {");
+            sb.AppendLine("            binder = (IForgeParameterBinder<T>)(object)new Binder_" + Safe(type) + "();");
+            sb.AppendLine("            return true;");
+            sb.AppendLine("        }");
+        }
+        sb.AppendLine("        binder = null;");
+        sb.AppendLine("        return false;");
+        sb.AppendLine("    }");
         sb.AppendLine();
         EmitHelpers(sb);
 
@@ -325,8 +338,26 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
     private static void EmitBinder(StringBuilder sb, INamedTypeSymbol type)
     {
         var full = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        var safe = Safe(type);
         sb.AppendLine();
-        sb.AppendLine("    private static void Bind_" + Safe(type) + "(DbCommand command, object value)");
+        sb.AppendLine("    private sealed class Binder_" + safe + " : IForgeParameterBinder<" + full + ">");
+        sb.AppendLine("    {");
+        sb.AppendLine("        public void Bind(DbCommand command, " + full + " entity)");
+        sb.AppendLine("        {");
+        foreach (var p in Properties(type))
+        {
+            var dbType = DbTypeFor(p.Type);
+            var valueExpression = p.Type.TypeKind == TypeKind.Enum || (p.Type is INamedTypeSymbol n && n.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T && n.TypeArguments[0].TypeKind == TypeKind.Enum)
+                ? "entity." + p.Name + ".ToString()"
+                : "entity." + p.Name;
+            sb.AppendLine("            Add(command, \"" + Escape(p.Name) + "\", " + valueExpression + (dbType is null ? ");" : ", " + dbType + ");"));
+            if (!string.Equals(ColumnName(p), p.Name, StringComparison.OrdinalIgnoreCase))
+                sb.AppendLine("            Add(command, \"" + Escape(ColumnName(p)) + "\", " + valueExpression + (dbType is null ? ");" : ", " + dbType + ");"));
+        }
+        sb.AppendLine("        }");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine("    private static void Bind_" + safe + "(DbCommand command, object value)");
         sb.AppendLine("    {");
         sb.AppendLine("        var entity = (" + full + ")value;");
         foreach (var p in Properties(type))

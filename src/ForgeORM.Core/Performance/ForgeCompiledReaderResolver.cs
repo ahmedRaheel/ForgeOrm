@@ -20,6 +20,12 @@ internal static class ForgeCompiledReaderResolver
             return generated;
         }
 
+        if (ForgeProviderMaterializerRegistry.TryCreateReader<T>(reader, out var providerSpecific)
+            && providerSpecific is not null)
+        {
+            return providerSpecific;
+        }
+
         if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGenerated)
             throw new InvalidOperationException($"No ForgeORM source-generated reader was registered for {type.FullName}.");
 

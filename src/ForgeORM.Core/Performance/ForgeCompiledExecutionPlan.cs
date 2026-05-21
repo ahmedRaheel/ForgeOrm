@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
@@ -74,15 +75,20 @@ internal static class ForgeParameterBinderCompiler
             return static (_, _) => { };
 
         if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
-            && ForgeSourceGeneratedRegistry.TryGetProvider(parameterType, out var provider)
-            && provider.TryGetBinder(parameterType, out var generated)
-            && generated is not null)
+            && ForgeSourceGeneratedRegistry.TryGetProvider(parameterType, out var provider))
         {
-            return (command, value) =>
+            var typedBinder = TryCreateTypedGeneratedBinder(provider, parameterType);
+            if (typedBinder is not null)
+                return typedBinder;
+
+            if (provider.TryGetBinder(parameterType, out var generated) && generated is not null)
             {
-                if (value is not null)
-                    generated(command, value);
-            };
+                return (command, value) =>
+                {
+                    if (value is not null)
+                        generated(command, value);
+                };
+            }
         }
 
         if (IsScalar(parameterType))
@@ -93,7 +99,7 @@ internal static class ForgeParameterBinderCompiler
 
         var props = parameterType.GetProperties(BindingFlags.Instance | BindingFlags.Public)
             .Where(p => p.GetIndexParameters().Length == 0 && p.GetMethod is not null)
-            .Select(p => new ForgeParameterProperty(p.Name, p.GetMethod!, p.PropertyType))
+            .Select(p => new ForgeParameterProperty(p.Name, CompileGetter(parameterType, p), p.PropertyType))
             .ToArray();
 
         return (command, value) =>
@@ -102,7 +108,7 @@ internal static class ForgeParameterBinderCompiler
             for (var i = 0; i < props.Length; i++)
             {
                 var p = props[i];
-                Add(command, p.Name, p.Getter.Invoke(value, null), p.PropertyType);
+                Add(command, p.Name, p.Getter(value), p.PropertyType);
             }
 
             // Safety: bind scalar-looking SQL names if property casing/prefix did not match.
@@ -114,12 +120,40 @@ internal static class ForgeParameterBinderCompiler
                     for (var x = 0; x < props.Length; x++)
                     {
                         if (!string.Equals(props[x].Name, sqlNames[i], StringComparison.OrdinalIgnoreCase)) continue;
-                        Add(command, sqlNames[i], props[x].Getter.Invoke(value, null), props[x].PropertyType);
+                        Add(command, sqlNames[i], props[x].Getter(value), props[x].PropertyType);
                         break;
                     }
                 }
             }
         };
+    }
+
+    private static Action<DbCommand, object?>? TryCreateTypedGeneratedBinder(IForgeSourceGeneratedAccessorProvider provider, Type parameterType)
+    {
+        var method = typeof(ForgeParameterBinderCompiler)
+            .GetMethod(nameof(CreateTypedGeneratedBinder), BindingFlags.NonPublic | BindingFlags.Static)!
+            .MakeGenericMethod(parameterType);
+
+        return (Action<DbCommand, object?>?)method.Invoke(null, new object[] { provider });
+    }
+
+    private static Action<DbCommand, object?>? CreateTypedGeneratedBinder<T>(IForgeSourceGeneratedAccessorProvider provider)
+    {
+        return provider.TryGetTypedBinder<T>(out var binder) && binder is not null
+            ? (command, value) =>
+            {
+                if (value is T typed) binder.Bind(command, typed);
+            }
+            : null;
+    }
+
+    private static Func<object, object?> CompileGetter(Type declaringType, PropertyInfo property)
+    {
+        var instance = Expression.Parameter(typeof(object), "instance");
+        var cast = Expression.Convert(instance, declaringType);
+        var access = Expression.Property(cast, property);
+        var box = Expression.Convert(access, typeof(object));
+        return Expression.Lambda<Func<object, object?>>(box, instance).Compile();
     }
 
     private static void BindDictionary(DbCommand command, object? value)
@@ -213,4 +247,4 @@ internal static class ForgeParameterBinderCompiler
 }
 
 internal readonly record struct ForgeParameterBinderKey(Type? ParameterType, CommandType CommandType, string SqlFingerprint);
-internal readonly record struct ForgeParameterProperty(string Name, MethodInfo Getter, Type PropertyType);
+internal readonly record struct ForgeParameterProperty(string Name, Func<object, object?> Getter, Type PropertyType);

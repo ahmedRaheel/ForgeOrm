@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Data;
 using System.Data.Common;
 using System.Runtime.CompilerServices;
 
@@ -9,6 +10,53 @@ namespace ForgeORM.Core;
 /// Auto prefers source-generated code when registered and falls back to RuntimeEmit.
 /// NativeAOT users can explicitly select SourceGenerated from configuration.
 /// </summary>
+
+/// <summary>
+/// Strongly-typed parameter binder used by generated code and high-performance fallback binders.
+/// This avoids boxing the parameter object and removes MethodInfo.Invoke from hot paths.
+/// </summary>
+public interface IForgeParameterBinder<T>
+{
+    void Bind(DbCommand command, T value);
+}
+
+/// <summary>
+/// Optional provider-specific materializer hook. Provider packages can register typed readers
+/// such as SqlDataReader/NpgsqlDataReader without forcing ForgeORM.Core to reference provider assemblies.
+/// </summary>
+public interface IForgeProviderMaterializer
+{
+    bool TryCreateReader<T>(DbDataReader reader, out Func<DbDataReader, T>? materializer);
+}
+
+/// <summary>Registry for provider-specific typed materializers.</summary>
+public static class ForgeProviderMaterializerRegistry
+{
+    private static readonly List<IForgeProviderMaterializer> Providers = new();
+    private static readonly object Gate = new();
+
+    public static void Register(IForgeProviderMaterializer provider)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        lock (Gate) Providers.Add(provider);
+    }
+
+    public static bool TryCreateReader<T>(DbDataReader reader, out Func<DbDataReader, T>? materializer)
+    {
+        lock (Gate)
+        {
+            for (var i = 0; i < Providers.Count; i++)
+            {
+                if (Providers[i].TryCreateReader(reader, out materializer))
+                    return true;
+            }
+        }
+
+        materializer = null;
+        return false;
+    }
+}
+
 public enum ForgeOrmCompilationMode
 {
     Auto = 0,
@@ -66,6 +114,13 @@ public interface IForgeSourceGeneratedAccessorProvider
 
         binder = GetBinder(type);
         return true;
+    }
+
+    /// <summary>Gets a generated strongly-typed parameter binder when available.</summary>
+    bool TryGetTypedBinder<T>(out IForgeParameterBinder<T>? binder)
+    {
+        binder = null;
+        return false;
     }
 }
 

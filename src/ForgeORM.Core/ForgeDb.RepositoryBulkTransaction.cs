@@ -21,7 +21,7 @@ public partial class ForgeDb
         var c = Provider.BuildGetById(metadata, id);
         using var connection = CreateConnection();
         connection.Open();
-        return ForgeAdo.QueryFirstOrDefaultAsync<T>(connection, c.CommandText, c.Parameters).GetAwaiter().GetResult();
+        return ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, c.CommandText, c.Parameters).GetAwaiter().GetResult();
     }
     /// <summary>
     /// Executes the T operation.
@@ -39,7 +39,7 @@ public partial class ForgeDb
         var c = Provider.BuildGetById(metadata, id);
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        return await ForgeAdo.QueryFirstOrDefaultAsync<T>(connection, c.CommandText, c.Parameters, timeoutSeconds: null, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return await ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, c.CommandText, c.Parameters, timeoutSeconds: null, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Gets one row by the configured key without boxing the key value at the public API.</summary>
@@ -52,7 +52,7 @@ public partial class ForgeDb
         var c = Provider.BuildGetById(metadata, id!);
         using var connection = CreateConnection();
         connection.Open();
-        return ForgeAdo.QueryFirstOrDefaultAsync<T>(connection, c.CommandText, c.Parameters).GetAwaiter().GetResult();
+        return ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, c.CommandText, c.Parameters).GetAwaiter().GetResult();
     }
 
     /// <summary>Gets one row by the configured key without boxing the key value at the public API.</summary>
@@ -65,7 +65,7 @@ public partial class ForgeDb
         var c = Provider.BuildGetById(metadata, id!);
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        return await ForgeAdo.QueryFirstOrDefaultAsync<T>(connection, c.CommandText, c.Parameters, timeoutSeconds: null, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return await ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, c.CommandText, c.Parameters, timeoutSeconds: null, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

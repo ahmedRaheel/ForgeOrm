@@ -121,6 +121,38 @@ public static class ForgePerformancePipeline
         return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
+
+    public static async Task<T?> ExecuteScalarAsync<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters = null,
+        DbTransaction? transaction = null,
+        CommandType commandType = CommandType.Text,
+        int? timeoutSeconds = null,
+        CancellationToken cancellationToken = default)
+    {
+        var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SingleResult);
+        await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
+
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        var value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        if (value is null || value is DBNull) return default;
+
+        var target = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
+        if (target.IsEnum)
+        {
+            if (value is string text)
+                return Enum.TryParse(target, text, true, out var parsed) ? (T)parsed! : default;
+            return (T)Enum.ToObject(target, value);
+        }
+
+        return value is T typed
+            ? typed
+            : (T)Convert.ChangeType(value, target, System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     public static async Task<ForgePagedResult<T>> PageAsync<T>(
         DbConnection connection,
         IForgeDatabaseProvider provider,
@@ -128,7 +160,7 @@ public static class ForgePerformancePipeline
         CancellationToken cancellationToken = default)
     {
         var count = provider.BuildCount(request.Sql, request.Parameters);
-        var total = await ForgeAdo.ExecuteScalarAsync<int>(connection, count.CommandText, count.Parameters, cancellationToken: cancellationToken)
+        var total = await ExecuteScalarAsync<int>(connection, count.CommandText, count.Parameters, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
         var page = provider.BuildPage(request);

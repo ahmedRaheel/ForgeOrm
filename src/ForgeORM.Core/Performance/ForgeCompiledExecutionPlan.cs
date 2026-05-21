@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
@@ -193,6 +194,16 @@ internal static class ForgeParameterBinderCompiler
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Add(DbCommand command, string name, object? value, Type? valueType)
     {
+        // SQL Server and most ADO.NET providers cannot bind List<int>/T[] as a single scalar value.
+        // Raw SQL and split-query paths commonly render: WHERE Id IN @Ids.
+        // Expand those enumerable parameters into provider-safe scalar parameters before execution:
+        // WHERE Id IN (@Ids0, @Ids1, ...). Strings and byte[] remain scalar.
+        if (IsEnumerableParameter(value))
+        {
+            ExpandEnumerableParameter(command, name, (IEnumerable)value!);
+            return;
+        }
+
         var parameterName = NormalizeParameterName(name);
         var parameter = FindParameter(command, parameterName);
         if (parameter is null)
@@ -202,6 +213,90 @@ internal static class ForgeParameterBinderCompiler
             command.Parameters.Add(parameter);
         }
         parameter.Value = NormalizeParameterValue(value, valueType);
+    }
+
+    private static bool IsEnumerableParameter(object? value)
+    {
+        if (value is null)
+            return false;
+
+        if (value is string or byte[])
+            return false;
+
+        return value is IEnumerable;
+    }
+
+    private static void ExpandEnumerableParameter(DbCommand command, string name, IEnumerable values)
+    {
+        var cleanName = name.TrimStart('@', ':');
+        var originalParameterName = NormalizeParameterName(cleanName);
+
+        RemoveParameter(command, originalParameterName);
+
+        var parameterNames = new List<string>(8);
+        var index = 0;
+
+        foreach (var item in values)
+        {
+            var expandedName = cleanName + index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var expandedParameterName = NormalizeParameterName(expandedName);
+
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = expandedParameterName;
+            parameter.Value = NormalizeParameterValue(item, item?.GetType());
+            command.Parameters.Add(parameter);
+
+            parameterNames.Add(expandedParameterName);
+            index++;
+        }
+
+        var replacement = parameterNames.Count == 0
+            ? "(NULL)"
+            : "(" + string.Join(", ", parameterNames) + ")";
+
+        command.CommandText = ReplaceParameterToken(command.CommandText, cleanName, replacement);
+    }
+
+    private static void RemoveParameter(DbCommand command, string parameterName)
+    {
+        var normalized = parameterName.TrimStart('@', ':');
+        for (var i = command.Parameters.Count - 1; i >= 0; i--)
+        {
+            if (command.Parameters[i] is not DbParameter parameter)
+                continue;
+
+            if (string.Equals(parameter.ParameterName.TrimStart('@', ':'), normalized, StringComparison.OrdinalIgnoreCase))
+                command.Parameters.RemoveAt(i);
+        }
+    }
+
+    private static string ReplaceParameterToken(string sql, string parameterName, string replacement)
+    {
+        if (string.IsNullOrEmpty(sql))
+            return sql;
+
+        var atName = "@" + parameterName;
+        var colonName = ":" + parameterName;
+
+        return ReplaceToken(ReplaceToken(sql, atName, replacement), colonName, replacement);
+    }
+
+    private static string ReplaceToken(string sql, string token, string replacement)
+    {
+        var index = 0;
+        while ((index = sql.IndexOf(token, index, StringComparison.OrdinalIgnoreCase)) >= 0)
+        {
+            var end = index + token.Length;
+            if (end < sql.Length && (char.IsLetterOrDigit(sql[end]) || sql[end] == '_'))
+            {
+                index = end;
+                continue;
+            }
+
+            return sql[..index] + replacement + sql[end..];
+        }
+
+        return sql;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

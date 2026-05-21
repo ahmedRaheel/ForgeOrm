@@ -34,7 +34,7 @@ public static class RawSqlEndpoints
                 WHERE Status = @status
                 ORDER BY CreatedAt DESC
                 """,
-                new { status },
+                new { status = (int)status },
                 cancellationToken: ct)));
 
         return app;

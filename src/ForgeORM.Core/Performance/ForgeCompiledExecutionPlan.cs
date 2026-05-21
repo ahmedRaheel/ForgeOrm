@@ -229,17 +229,27 @@ internal static class ForgeParameterBinderCompiler
     private static void ExpandEnumerableParameter(DbCommand command, string name, IEnumerable values)
     {
         var cleanName = name.TrimStart('@', ':');
-        var originalParameterName = NormalizeParameterName(cleanName);
 
-        RemoveParameter(command, originalParameterName);
+        // Important: one logical collection parameter can be seen twice by the binder
+        // (once from the object property pass and once from the SQL-name safety pass).
+        // Remove both the original parameter and any previously expanded @Ids0/@Ids1 family
+        // before adding the new scalar parameters, otherwise SqlClient throws:
+        // "The variable name '@Ids0' has already been declared."
+        RemoveParameterFamily(command, cleanName);
 
         var parameterNames = new List<string>(8);
         var index = 0;
 
         foreach (var item in values)
         {
-            var expandedName = cleanName + index.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            var expandedParameterName = NormalizeParameterName(expandedName);
+            string expandedParameterName;
+            do
+            {
+                var expandedName = cleanName + index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                expandedParameterName = NormalizeParameterName(expandedName);
+                index++;
+            }
+            while (FindParameter(command, expandedParameterName) is not null);
 
             var parameter = command.CreateParameter();
             parameter.ParameterName = expandedParameterName;
@@ -247,7 +257,6 @@ internal static class ForgeParameterBinderCompiler
             command.Parameters.Add(parameter);
 
             parameterNames.Add(expandedParameterName);
-            index++;
         }
 
         var replacement = parameterNames.Count == 0
@@ -257,17 +266,30 @@ internal static class ForgeParameterBinderCompiler
         command.CommandText = ReplaceParameterToken(command.CommandText, cleanName, replacement);
     }
 
-    private static void RemoveParameter(DbCommand command, string parameterName)
+    private static void RemoveParameterFamily(DbCommand command, string logicalName)
     {
-        var normalized = parameterName.TrimStart('@', ':');
+        var normalized = logicalName.TrimStart('@', ':');
         for (var i = command.Parameters.Count - 1; i >= 0; i--)
         {
             if (command.Parameters[i] is not DbParameter parameter)
                 continue;
 
-            if (string.Equals(parameter.ParameterName.TrimStart('@', ':'), normalized, StringComparison.OrdinalIgnoreCase))
+            var current = parameter.ParameterName.TrimStart('@', ':');
+            if (string.Equals(current, normalized, StringComparison.OrdinalIgnoreCase) || IsExpandedParameterName(current, normalized))
                 command.Parameters.RemoveAt(i);
         }
+    }
+
+    private static bool IsExpandedParameterName(string current, string logicalName)
+    {
+        if (!current.StartsWith(logicalName, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (current.Length == logicalName.Length)
+            return true;
+
+        var suffixStart = current[logicalName.Length];
+        return char.IsDigit(suffixStart) || suffixStart == '_';
     }
 
     private static string ReplaceParameterToken(string sql, string parameterName, string replacement)
@@ -284,6 +306,9 @@ internal static class ForgeParameterBinderCompiler
     private static string ReplaceToken(string sql, string token, string replacement)
     {
         var index = 0;
+        System.Text.StringBuilder? builder = null;
+        var lastCopyIndex = 0;
+
         while ((index = sql.IndexOf(token, index, StringComparison.OrdinalIgnoreCase)) >= 0)
         {
             var end = index + token.Length;
@@ -293,10 +318,18 @@ internal static class ForgeParameterBinderCompiler
                 continue;
             }
 
-            return sql[..index] + replacement + sql[end..];
+            builder ??= new System.Text.StringBuilder(sql.Length + replacement.Length);
+            builder.Append(sql, lastCopyIndex, index - lastCopyIndex);
+            builder.Append(replacement);
+            lastCopyIndex = end;
+            index = end;
         }
 
-        return sql;
+        if (builder is null)
+            return sql;
+
+        builder.Append(sql, lastCopyIndex, sql.Length - lastCopyIndex);
+        return builder.ToString();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -335,7 +368,7 @@ internal static class ForgeParameterBinderCompiler
         {
             if (command.Parameters[i] is not DbParameter p) continue;
             var current = p.ParameterName.TrimStart('@', ':');
-            if (string.Equals(current, normalized, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(current, normalized, StringComparison.OrdinalIgnoreCase) || IsExpandedParameterName(current, normalized))
                 return true;
         }
         return false;

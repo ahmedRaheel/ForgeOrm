@@ -400,18 +400,26 @@ public static class ForgeAdo
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool HasParameter(DbCommand command, string name)
     {
-        var expected = "@" + name.TrimStart('@', ':');
+        var normalized = name.TrimStart('@', ':');
 
         foreach (DbParameter parameter in command.Parameters)
         {
-            if (string.Equals(parameter.ParameterName, expected, StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            if (string.Equals(parameter.ParameterName.TrimStart('@', ':'), name, StringComparison.OrdinalIgnoreCase))
+            var current = parameter.ParameterName.TrimStart('@', ':');
+            if (string.Equals(current, normalized, StringComparison.OrdinalIgnoreCase) || IsExpandedParameterName(current, normalized))
                 return true;
         }
 
         return false;
+    }
+
+    private static bool IsExpandedParameterName(string current, string logicalName)
+    {
+        if (!current.StartsWith(logicalName, StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (current.Length == logicalName.Length)
+            return true;
+        var suffixStart = current[logicalName.Length];
+        return char.IsDigit(suffixStart) || suffixStart == '_';
     }
 
     private static void BindSingleOrEnumerable(
@@ -435,12 +443,20 @@ public static class ForgeAdo
         IEnumerable values)
     {
         var cleanName = name.TrimStart('@', ':');
+        RemoveParameterFamily(command, cleanName);
+
         var parameterNames = new List<string>();
         var index = 0;
 
         foreach (var value in values)
         {
-            var parameterName = $"{cleanName}{index++}";
+            string parameterName;
+            do
+            {
+                parameterName = $"{cleanName}{index++}";
+            }
+            while (HasExactParameter(command, parameterName));
+
             parameterNames.Add("@" + parameterName);
             AddParameter(command, parameterName, ForgeValueConverter.ToDatabase(value, value?.GetType()));
         }
@@ -452,11 +468,74 @@ public static class ForgeAdo
         command.CommandText = ReplaceParameterToken(command.CommandText, cleanName, replacement);
     }
 
+    private static void RemoveParameterFamily(DbCommand command, string logicalName)
+    {
+        var normalized = logicalName.TrimStart('@', ':');
+        for (var i = command.Parameters.Count - 1; i >= 0; i--)
+        {
+            if (command.Parameters[i] is not DbParameter parameter)
+                continue;
+
+            var current = parameter.ParameterName.TrimStart('@', ':');
+            if (string.Equals(current, normalized, StringComparison.OrdinalIgnoreCase) || IsExpandedParameterName(current, normalized))
+                command.Parameters.RemoveAt(i);
+        }
+    }
+
+    private static bool HasExactParameter(DbCommand command, string name)
+    {
+        var normalized = name.TrimStart('@', ':');
+        foreach (DbParameter parameter in command.Parameters)
+        {
+            if (string.Equals(parameter.ParameterName.TrimStart('@', ':'), normalized, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
     private static string ReplaceParameterToken(string sql, string parameterName, string replacement)
     {
-        sql = sql.Replace("@" + parameterName, replacement, StringComparison.OrdinalIgnoreCase);
-        sql = sql.Replace(":" + parameterName, replacement, StringComparison.OrdinalIgnoreCase);
-        return sql;
+        return ReplaceToken(ReplaceToken(sql, "@" + parameterName, replacement), ":" + parameterName, replacement);
+    }
+
+    private static string ReplaceToken(string sql, string token, string replacement)
+    {
+        var index = 0;
+        System.Text.StringBuilder? builder = null;
+        var lastCopyIndex = 0;
+
+        while ((index = sql.IndexOf(token, index, StringComparison.OrdinalIgnoreCase)) >= 0)
+        {
+            var end = index + token.Length;
+            if (end < sql.Length && (char.IsLetterOrDigit(sql[end]) || sql[end] == '_'))
+            {
+                index = end;
+                continue;
+            }
+
+            builder ??= new System.Text.StringBuilder(sql.Length + replacement.Length);
+            builder.Append(sql, lastCopyIndex, index - lastCopyIndex);
+            builder.Append(replacement);
+            lastCopyIndex = end;
+            index = end;
+        }
+
+        if (builder is null)
+            return sql;
+
+        builder.Append(sql, lastCopyIndex, sql.Length - lastCopyIndex);
+        return builder.ToString();
+    }
+
+    private static DbParameter? FindExactParameter(DbCommand command, string name)
+    {
+        var normalized = name.TrimStart('@', ':');
+        foreach (DbParameter parameter in command.Parameters)
+        {
+            if (string.Equals(parameter.ParameterName.TrimStart('@', ':'), normalized, StringComparison.OrdinalIgnoreCase))
+                return parameter;
+        }
+        return null;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -464,16 +543,20 @@ public static class ForgeAdo
     {
         name = name.TrimStart('@', ':');
 
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = "@" + name;
+        var parameter = FindExactParameter(command, name);
+        if (parameter is null)
+        {
+            parameter = command.CreateParameter();
+            parameter.ParameterName = "@" + name;
+            command.Parameters.Add(parameter);
+        }
+
         parameter.Value = NormalizeParameterValue(value) ?? DBNull.Value;
 
         if (value is DateTime)
             parameter.DbType = DbType.DateTime2;
         else if (value is DateTimeOffset)
             parameter.DbType = DbType.DateTimeOffset;
-
-        command.Parameters.Add(parameter);
     }
 
     private static Action<DbCommand, object> BuildParameterWriter(Type type)

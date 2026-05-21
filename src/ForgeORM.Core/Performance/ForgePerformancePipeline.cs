@@ -329,10 +329,77 @@ public static class ForgePerformancePipeline
         if (timeoutSeconds.HasValue) command.CommandTimeout = timeoutSeconds.Value;
         ForgeCommandParameterLayout.Prepare(command, plan.ParameterNames);
         plan.Binder(command, parameters);
+        NormalizeRawEnumStringParameters<T>(command);
         return command;
+    }
+
+    private static void NormalizeRawEnumStringParameters<T>(DbCommand command)
+    {
+        if (command.Parameters.Count == 0)
+            return;
+
+        var enumMap = ForgeRawEnumParameterMap<T>.Map;
+        if (enumMap.Count == 0)
+            return;
+
+        for (var i = 0; i < command.Parameters.Count; i++)
+        {
+            if (command.Parameters[i] is not DbParameter parameter)
+                continue;
+
+            if (parameter.Value is not string text || string.IsNullOrWhiteSpace(text))
+                continue;
+
+            var name = parameter.ParameterName.TrimStart('@', ':');
+            if (!enumMap.TryGetValue(name, out var enumType))
+                continue;
+
+            if (!Enum.TryParse(enumType, text, ignoreCase: true, out var parsed) || parsed is null)
+                continue;
+
+            var underlying = Enum.GetUnderlyingType(enumType);
+            parameter.Value = Convert.ChangeType(parsed, underlying, System.Globalization.CultureInfo.InvariantCulture) ?? DBNull.Value;
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int EstimateCapacity(string sql)
         => sql.Contains("TOP 1", StringComparison.OrdinalIgnoreCase) || sql.Contains("LIMIT 1", StringComparison.OrdinalIgnoreCase) ? 1 : 32;
+}
+
+internal static class ForgeRawEnumParameterMap<T>
+{
+    internal static readonly System.Collections.Generic.IReadOnlyDictionary<string, Type> Map = Build();
+
+    private static System.Collections.Generic.IReadOnlyDictionary<string, Type> Build()
+    {
+        var properties = typeof(T).GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
+        if (properties.Length == 0)
+            return new System.Collections.Generic.Dictionary<string, Type>(0, StringComparer.OrdinalIgnoreCase);
+
+        var result = new System.Collections.Generic.Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < properties.Length; i++)
+        {
+            var property = properties[i];
+            var type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+            if (!type.IsEnum)
+                continue;
+
+            result[property.Name] = type;
+
+            // Also support [ForgeColumn("StatusId")] / [Column("StatusId")] style attributes without
+            // referencing those attribute types directly from this hot-path helper.
+            foreach (var attribute in property.GetCustomAttributes(inherit: true))
+            {
+                var attrType = attribute.GetType();
+                var nameProperty = attrType.GetProperty("Name") ?? attrType.GetProperty("ColumnName");
+                if (nameProperty?.GetValue(attribute) is string columnName && !string.IsNullOrWhiteSpace(columnName))
+                    result[columnName] = type;
+            }
+        }
+
+        return result.Count == 0
+            ? new System.Collections.Generic.Dictionary<string, Type>(0, StringComparer.OrdinalIgnoreCase)
+            : result;
+    }
 }

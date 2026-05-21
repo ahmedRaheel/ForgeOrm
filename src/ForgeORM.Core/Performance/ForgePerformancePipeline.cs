@@ -11,10 +11,39 @@ namespace ForgeORM.Core.Performance;
 /// </summary>
 public static class ForgePerformancePipeline
 {
-    public static async Task<IReadOnlyList<T>> QueryAsync<T>(
+    public static async ValueTask<IReadOnlyList<T>> QueryAsync<T>(
         DbConnection connection,
         string sql,
         object? parameters = null,
+        DbTransaction? transaction = null,
+        CommandType commandType = CommandType.Text,
+        int? timeoutSeconds = null,
+        CancellationToken cancellationToken = default)
+    {
+        var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SequentialAccess);
+        await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
+
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        await using var reader = await command.ExecuteReaderAsync(plan.Behavior, cancellationToken).ConfigureAwait(false);
+        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
+        var rows = new List<T>(EstimateCapacity(sql));
+
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            rows.Add(materializer(reader));
+
+        return rows;
+    }
+
+    /// <summary>
+    /// Lower-allocation typed parameter overload. Use this from new public APIs when the parameter type is known.
+    /// It avoids boxing the parameter container before it reaches the binder cache.
+    /// </summary>
+    public static async ValueTask<IReadOnlyList<T>> QueryAsync<T, TParameters>(
+        DbConnection connection,
+        string sql,
+        TParameters parameters,
         DbTransaction? transaction = null,
         CommandType commandType = CommandType.Text,
         int? timeoutSeconds = null,
@@ -57,7 +86,7 @@ public static class ForgePerformancePipeline
             yield return materializer(reader);
     }
 
-    public static async Task<T?> FirstOrDefaultAsync<T>(
+    public static async ValueTask<T?> FirstOrDefaultAsync<T>(
         DbConnection connection,
         string sql,
         object? parameters = null,
@@ -77,7 +106,7 @@ public static class ForgePerformancePipeline
         return await reader.ReadAsync(cancellationToken).ConfigureAwait(false) ? materializer(reader) : default;
     }
 
-    public static async Task<T?> SingleOrDefaultAsync<T>(
+    public static async ValueTask<T?> SingleOrDefaultAsync<T>(
         DbConnection connection,
         string sql,
         object? parameters = null,
@@ -103,7 +132,7 @@ public static class ForgePerformancePipeline
         return first;
     }
 
-    public static async Task<int> ExecuteAsync(
+    public static async ValueTask<int> ExecuteAsync(
         DbConnection connection,
         string sql,
         object? parameters = null,
@@ -122,7 +151,7 @@ public static class ForgePerformancePipeline
     }
 
 
-    public static async Task<T?> ExecuteScalarAsync<T>(
+    public static async ValueTask<T?> ExecuteScalarAsync<T>(
         DbConnection connection,
         string sql,
         object? parameters = null,
@@ -153,7 +182,7 @@ public static class ForgePerformancePipeline
             : (T)Convert.ChangeType(value, target, System.Globalization.CultureInfo.InvariantCulture);
     }
 
-    public static async Task<ForgePagedResult<T>> PageAsync<T>(
+    public static async ValueTask<ForgePagedResult<T>> PageAsync<T>(
         DbConnection connection,
         IForgeDatabaseProvider provider,
         ForgePageRequest request,
@@ -177,6 +206,7 @@ public static class ForgePerformancePipeline
         command.CommandType = plan.CommandType;
         if (transaction is not null) command.Transaction = transaction;
         if (timeoutSeconds.HasValue) command.CommandTimeout = timeoutSeconds.Value;
+        ForgeCommandParameterLayout.Prepare(command, plan.ParameterNames);
         plan.Binder(command, parameters);
         return command;
     }

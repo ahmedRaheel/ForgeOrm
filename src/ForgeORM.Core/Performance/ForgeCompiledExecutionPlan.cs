@@ -17,6 +17,7 @@ public sealed class ForgeCompiledQueryPlan<T>
     public required CommandType CommandType { get; init; }
     public required CommandBehavior Behavior { get; init; }
     public required Action<DbCommand, object?> Binder { get; init; }
+    public required string[] ParameterNames { get; init; }
     public Func<DbDataReader, T>? Materializer { get; set; }
     public required string Provider { get; init; }
     public required Type? ParameterType { get; init; }
@@ -41,6 +42,7 @@ internal static class ForgeCompiledExecutionPlanCache
             Provider = provider,
             ParameterType = parameterType,
             QueryFingerprint = key.SqlFingerprint,
+            ParameterNames = ForgeParameterBinderCompiler.ExtractParameterNames(sql, commandType),
             Binder = ForgeParameterBinderCompiler.Compile(parameterType, sql, commandType)
         });
     }
@@ -69,7 +71,7 @@ internal static class ForgeParameterBinderCompiler
 
     private static Action<DbCommand, object?> Build(Type? parameterType, string sql, CommandType commandType)
     {
-        var sqlNames = commandType == CommandType.Text ? ExtractParameterNames(sql) : Array.Empty<string>();
+        var sqlNames = commandType == CommandType.Text ? ExtractParameterNames(sql, commandType) : Array.Empty<string>();
 
         if (parameterType is null)
             return static (_, _) => { };
@@ -191,10 +193,31 @@ internal static class ForgeParameterBinderCompiler
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Add(DbCommand command, string name, object? value, Type? valueType)
     {
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = name.Length > 0 && (name[0] == '@' || name[0] == ':') ? name : "@" + name;
+        var parameterName = NormalizeParameterName(name);
+        var parameter = FindParameter(command, parameterName);
+        if (parameter is null)
+        {
+            parameter = command.CreateParameter();
+            parameter.ParameterName = parameterName;
+            command.Parameters.Add(parameter);
+        }
         parameter.Value = value ?? DBNull.Value;
-        command.Parameters.Add(parameter);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static string NormalizeParameterName(string name)
+        => name.Length > 0 && (name[0] == '@' || name[0] == ':') ? name : "@" + name;
+
+    private static DbParameter? FindParameter(DbCommand command, string parameterName)
+    {
+        var normalized = parameterName.TrimStart('@', ':');
+        for (var i = 0; i < command.Parameters.Count; i++)
+        {
+            if (command.Parameters[i] is not DbParameter p) continue;
+            if (string.Equals(p.ParameterName.TrimStart('@', ':'), normalized, StringComparison.OrdinalIgnoreCase))
+                return p;
+        }
+        return null;
     }
 
     private static bool HasParameter(DbCommand command, string name)
@@ -210,8 +233,9 @@ internal static class ForgeParameterBinderCompiler
         return false;
     }
 
-    private static string[] ExtractParameterNames(string sql)
+    internal static string[] ExtractParameterNames(string sql, CommandType commandType = CommandType.Text)
     {
+        if (commandType != CommandType.Text) return Array.Empty<string>();
         if (string.IsNullOrWhiteSpace(sql)) return Array.Empty<string>();
         var names = new List<string>(4);
         for (var i = 0; i < sql.Length - 1; i++)

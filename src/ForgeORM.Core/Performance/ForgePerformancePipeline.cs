@@ -1,5 +1,6 @@
 using System.Data;
 using System.Data.Common;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using ForgeORM.Abstractions;
 
@@ -26,14 +27,8 @@ public static class ForgePerformancePipeline
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        await using var reader = await command.ExecuteReaderAsync(plan.Behavior, cancellationToken).ConfigureAwait(false);
-        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
-        var rows = new List<T>(EstimateCapacity(sql));
-
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            rows.Add(materializer(reader));
-
-        return rows;
+        return await ExecuteReaderListAsync<T>(command, plan, ForgeCommandOperation.Query, EstimateCapacity(sql), cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -55,14 +50,8 @@ public static class ForgePerformancePipeline
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        await using var reader = await command.ExecuteReaderAsync(plan.Behavior, cancellationToken).ConfigureAwait(false);
-        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
-        var rows = new List<T>(EstimateCapacity(sql));
-
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            rows.Add(materializer(reader));
-
-        return rows;
+        return await ExecuteReaderListAsync<T>(command, plan, ForgeCommandOperation.Query, EstimateCapacity(sql), cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public static async IAsyncEnumerable<T> StreamAsync<T>(
@@ -80,10 +69,29 @@ public static class ForgePerformancePipeline
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        await using var reader = await command.ExecuteReaderAsync(plan.Behavior, cancellationToken).ConfigureAwait(false);
-        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            yield return materializer(reader);
+        var context = ForgeEnterpriseRuntime.CreateContext(command, ForgeCommandOperation.Stream, typeof(T), plan.ParameterType, plan.QueryFingerprint);
+        var stopwatch = ForgeEnterpriseRuntime.IsEnabled ? Stopwatch.StartNew() : null;
+        try
+        {
+            if (ForgeEnterpriseRuntime.IsEnabled)
+                await ForgeEnterpriseRuntime.OnExecutingAsync(command, context, cancellationToken).ConfigureAwait(false);
+
+            await using var reader = await command.ExecuteReaderAsync(plan.Behavior, cancellationToken).ConfigureAwait(false);
+            var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
+            var rowCount = 0;
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                rowCount++;
+                yield return materializer(reader);
+            }
+
+            if (ForgeEnterpriseRuntime.IsEnabled)
+                await ForgeEnterpriseRuntime.OnExecutedAsync(command, new ForgeCommandExecutionResult(context, stopwatch!.Elapsed, rowCount, null), cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            stopwatch?.Stop();
+        }
     }
 
     public static async ValueTask<T?> FirstOrDefaultAsync<T>(
@@ -101,9 +109,8 @@ public static class ForgePerformancePipeline
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        await using var reader = await command.ExecuteReaderAsync(plan.Behavior, cancellationToken).ConfigureAwait(false);
-        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
-        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false) ? materializer(reader) : default;
+        return await ExecuteReaderSingleAsync<T>(command, plan, ForgeCommandOperation.FirstOrDefault, requireSingle: false, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public static async ValueTask<T?> SingleOrDefaultAsync<T>(
@@ -121,15 +128,8 @@ public static class ForgePerformancePipeline
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        await using var reader = await command.ExecuteReaderAsync(plan.Behavior, cancellationToken).ConfigureAwait(false);
-        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            return default;
-
-        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
-        var first = materializer(reader);
-        if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            throw new InvalidOperationException("Sequence contains more than one element.");
-        return first;
+        return await ExecuteReaderSingleAsync<T>(command, plan, ForgeCommandOperation.SingleOrDefault, requireSingle: true, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public static async ValueTask<int> ExecuteAsync(
@@ -147,7 +147,7 @@ public static class ForgePerformancePipeline
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        return await ExecuteNonQueryWithEnterpriseHooksAsync(command, plan, cancellationToken).ConfigureAwait(false);
     }
 
 
@@ -166,20 +166,8 @@ public static class ForgePerformancePipeline
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        var value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        if (value is null || value is DBNull) return default;
-
-        var target = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
-        if (target.IsEnum)
-        {
-            if (value is string text)
-                return Enum.TryParse(target, text, true, out var parsed) ? (T)parsed! : default;
-            return (T)Enum.ToObject(target, value);
-        }
-
-        return value is T typed
-            ? typed
-            : (T)Convert.ChangeType(value, target, System.Globalization.CultureInfo.InvariantCulture);
+        var value = await ExecuteScalarWithEnterpriseHooksAsync(command, plan, cancellationToken).ConfigureAwait(false);
+        return ForgeScalarConverter.Convert<T>(value);
     }
 
     public static async ValueTask<ForgePagedResult<T>> PageAsync<T>(
@@ -197,6 +185,139 @@ public static class ForgePerformancePipeline
             .ConfigureAwait(false);
 
         return new ForgePagedResult<T> { Items = rows, Page = request.Page, PageSize = request.PageSize, TotalRecords = total };
+    }
+
+
+    private static async ValueTask<IReadOnlyList<T>> ExecuteReaderListAsync<T>(
+        DbCommand command,
+        ForgeCompiledQueryPlan<T> plan,
+        ForgeCommandOperation operation,
+        int capacity,
+        CancellationToken cancellationToken)
+    {
+        var context = ForgeEnterpriseRuntime.CreateContext(command, operation, typeof(T), plan.ParameterType, plan.QueryFingerprint);
+        var stopwatch = ForgeEnterpriseRuntime.IsEnabled ? Stopwatch.StartNew() : null;
+        try
+        {
+            if (ForgeEnterpriseRuntime.IsEnabled)
+                await ForgeEnterpriseRuntime.OnExecutingAsync(command, context, cancellationToken).ConfigureAwait(false);
+
+            await using var reader = await command.ExecuteReaderAsync(plan.Behavior, cancellationToken).ConfigureAwait(false);
+            var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
+            var rows = new List<T>(capacity);
+
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                rows.Add(materializer(reader));
+
+            if (ForgeEnterpriseRuntime.IsEnabled)
+                await ForgeEnterpriseRuntime.OnExecutedAsync(command, new ForgeCommandExecutionResult(context, stopwatch!.Elapsed, rows.Count, null), cancellationToken).ConfigureAwait(false);
+
+            return rows;
+        }
+        catch (Exception ex)
+        {
+            if (ForgeEnterpriseRuntime.IsEnabled)
+                await ForgeEnterpriseRuntime.OnFailedAsync(command, new ForgeCommandExecutionResult(context, stopwatch?.Elapsed ?? TimeSpan.Zero, null, ex), cancellationToken).ConfigureAwait(false);
+            throw;
+        }
+        finally
+        {
+            stopwatch?.Stop();
+        }
+    }
+
+    private static async ValueTask<T?> ExecuteReaderSingleAsync<T>(
+        DbCommand command,
+        ForgeCompiledQueryPlan<T> plan,
+        ForgeCommandOperation operation,
+        bool requireSingle,
+        CancellationToken cancellationToken)
+    {
+        var context = ForgeEnterpriseRuntime.CreateContext(command, operation, typeof(T), plan.ParameterType, plan.QueryFingerprint);
+        var stopwatch = ForgeEnterpriseRuntime.IsEnabled ? Stopwatch.StartNew() : null;
+        try
+        {
+            if (ForgeEnterpriseRuntime.IsEnabled)
+                await ForgeEnterpriseRuntime.OnExecutingAsync(command, context, cancellationToken).ConfigureAwait(false);
+
+            await using var reader = await command.ExecuteReaderAsync(plan.Behavior, cancellationToken).ConfigureAwait(false);
+            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (ForgeEnterpriseRuntime.IsEnabled)
+                    await ForgeEnterpriseRuntime.OnExecutedAsync(command, new ForgeCommandExecutionResult(context, stopwatch!.Elapsed, 0, null), cancellationToken).ConfigureAwait(false);
+                return default;
+            }
+
+            var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
+            var first = materializer(reader);
+            if (requireSingle && await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                throw new InvalidOperationException("Sequence contains more than one element.");
+
+            if (ForgeEnterpriseRuntime.IsEnabled)
+                await ForgeEnterpriseRuntime.OnExecutedAsync(command, new ForgeCommandExecutionResult(context, stopwatch!.Elapsed, 1, null), cancellationToken).ConfigureAwait(false);
+
+            return first;
+        }
+        catch (Exception ex)
+        {
+            if (ForgeEnterpriseRuntime.IsEnabled)
+                await ForgeEnterpriseRuntime.OnFailedAsync(command, new ForgeCommandExecutionResult(context, stopwatch?.Elapsed ?? TimeSpan.Zero, null, ex), cancellationToken).ConfigureAwait(false);
+            throw;
+        }
+        finally
+        {
+            stopwatch?.Stop();
+        }
+    }
+
+    private static async ValueTask<int> ExecuteNonQueryWithEnterpriseHooksAsync<T>(DbCommand command, ForgeCompiledQueryPlan<T> plan, CancellationToken cancellationToken)
+    {
+        var context = ForgeEnterpriseRuntime.CreateContext(command, ForgeCommandOperation.Execute, typeof(T), plan.ParameterType, plan.QueryFingerprint);
+        var stopwatch = ForgeEnterpriseRuntime.IsEnabled ? Stopwatch.StartNew() : null;
+        try
+        {
+            if (ForgeEnterpriseRuntime.IsEnabled)
+                await ForgeEnterpriseRuntime.OnExecutingAsync(command, context, cancellationToken).ConfigureAwait(false);
+            var affected = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            if (ForgeEnterpriseRuntime.IsEnabled)
+                await ForgeEnterpriseRuntime.OnExecutedAsync(command, new ForgeCommandExecutionResult(context, stopwatch!.Elapsed, affected, null), cancellationToken).ConfigureAwait(false);
+            return affected;
+        }
+        catch (Exception ex)
+        {
+            if (ForgeEnterpriseRuntime.IsEnabled)
+                await ForgeEnterpriseRuntime.OnFailedAsync(command, new ForgeCommandExecutionResult(context, stopwatch?.Elapsed ?? TimeSpan.Zero, null, ex), cancellationToken).ConfigureAwait(false);
+            throw;
+        }
+        finally
+        {
+            stopwatch?.Stop();
+        }
+    }
+
+    private static async ValueTask<object?> ExecuteScalarWithEnterpriseHooksAsync<T>(DbCommand command, ForgeCompiledQueryPlan<T> plan, CancellationToken cancellationToken)
+    {
+        var context = ForgeEnterpriseRuntime.CreateContext(command, ForgeCommandOperation.Scalar, typeof(T), plan.ParameterType, plan.QueryFingerprint);
+        var stopwatch = ForgeEnterpriseRuntime.IsEnabled ? Stopwatch.StartNew() : null;
+        try
+        {
+            if (ForgeEnterpriseRuntime.IsEnabled)
+                await ForgeEnterpriseRuntime.OnExecutingAsync(command, context, cancellationToken).ConfigureAwait(false);
+            var value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            if (ForgeEnterpriseRuntime.IsEnabled)
+                await ForgeEnterpriseRuntime.OnExecutedAsync(command, new ForgeCommandExecutionResult(context, stopwatch!.Elapsed, value is null or DBNull ? 0 : 1, null), cancellationToken).ConfigureAwait(false);
+            return value;
+        }
+        catch (Exception ex)
+        {
+            if (ForgeEnterpriseRuntime.IsEnabled)
+                await ForgeEnterpriseRuntime.OnFailedAsync(command, new ForgeCommandExecutionResult(context, stopwatch?.Elapsed ?? TimeSpan.Zero, null, ex), cancellationToken).ConfigureAwait(false);
+            throw;
+        }
+        finally
+        {
+            stopwatch?.Stop();
+        }
     }
 
     private static DbCommand CreateCommand<T>(DbConnection connection, ForgeCompiledQueryPlan<T> plan, object? parameters, DbTransaction? transaction, int? timeoutSeconds)

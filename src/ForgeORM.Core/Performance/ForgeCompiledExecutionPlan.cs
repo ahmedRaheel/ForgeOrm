@@ -345,7 +345,7 @@ internal static class ForgeParameterBinderCompiler
             // Reading remains storage-agnostic and accepts both int and string database values.
             // String enum binding is only an explicit opt-in; it is never required for materialization.
             if (IsStringEnumStorage(property))
-                return value?? DBNull.Value;
+                return value ?? DBNull.Value;
 
             return Convert.ChangeType(value, Enum.GetUnderlyingType(type), System.Globalization.CultureInfo.InvariantCulture) ?? DBNull.Value;
         }

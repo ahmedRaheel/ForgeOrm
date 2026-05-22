@@ -150,8 +150,8 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
 
     private static void EmitHelpers(StringBuilder sb)
     {
-        sb.AppendLine("    private static int Ordinal(DbDataReader reader, string name)");
-        sb.AppendLine("        => ForgeColumnOrdinalShapeCache.GetOrdinalOrMinusOne(typeof(object), reader, name);");
+        sb.AppendLine("    private static int Ordinal(Type targetType, DbDataReader reader, string name)");
+        sb.AppendLine("        => ForgeColumnOrdinalShapeCache.GetOrdinalOrMinusOne(targetType, reader, name);");
         sb.AppendLine();
         sb.AppendLine("    private static string Normalize(string value)");
         sb.AppendLine("    {");
@@ -257,9 +257,9 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("    {");
         foreach (var p in props)
         {
-            sb.AppendLine("        var ord_" + p.Name + " = Ordinal(reader, \"" + Escape(ColumnName(p)) + "\");");
+            sb.AppendLine("        var ord_" + p.Name + " = Ordinal(typeof(" + full + "), reader, \"" + Escape(ColumnName(p)) + "\");");
             if (!string.Equals(ColumnName(p), p.Name, StringComparison.OrdinalIgnoreCase))
-                sb.AppendLine("        if (ord_" + p.Name + " < 0) ord_" + p.Name + " = Ordinal(reader, \"" + Escape(p.Name) + "\");");
+                sb.AppendLine("        if (ord_" + p.Name + " < 0) ord_" + p.Name + " = Ordinal(typeof(" + full + "), reader, \"" + Escape(p.Name) + "\");");
         }
         sb.AppendLine("        return r =>");
         sb.AppendLine("        {");

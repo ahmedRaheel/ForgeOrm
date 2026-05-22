@@ -3,14 +3,19 @@ using System.Diagnostics;
 
 namespace ForgeORM.Core;
 
-public sealed record ForgeQueryMetricV1(
-    string SqlHash,
-    string? QueryTag,
-    TimeSpan Duration,
-    int? Rows,
-    bool Success,
-    string? Error,
-    DateTimeOffset TimestampUtc);
+public sealed class ForgeQueryMetricV2 
+{
+    public string SqlHash { get; set; }
+    public string? QueryTag { get; set; }
+    public TimeSpan Duration { get; set; }
+    public int? Rows { get; set; }
+    public bool Success { get; set; }
+    public string? Error { get; set; }
+    public DateTimeOffset TimestampUtc { get; set; }
+
+    
+}
+   
 
 /// <summary>
 /// Lightweight in-process query monitor for slow query dashboards, heatmaps, and diagnostics.
@@ -25,7 +30,7 @@ public static class ForgeQueryMonitor
     public static void Record(string sql, string? tag, Stopwatch stopwatch, int? rows, bool success, Exception? error = null)
     {
         var hash = ForgeFastHash.FingerprintSql(sql);
-        //_metrics.Enqueue(new ForgeQueryMetricV1(hash, tag, stopwatch.Elapsed, rows, success, error?.GetType().Name + ": " + error?.Message, DateTimeOffset.UtcNow));
+        //_metrics.Enqueue(new () { SqlHash = hash, QueryTag = tag, Duration = stopwatch.Elapsed, Rows = rows, Success = success, Error = error?.GetType().Name + ": " + error?.Message, TimestampUtc = DateTimeOffset.UtcNow });
         while (_metrics.Count > MaxMetrics && _metrics.TryDequeue(out _)) { }
     }
 }

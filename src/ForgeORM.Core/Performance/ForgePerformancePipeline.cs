@@ -2,6 +2,7 @@ using System.Data;
 using System.Data.Common;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using ForgeORM.Abstractions;
 
 namespace ForgeORM.Core.Performance;
@@ -330,7 +331,40 @@ public static class ForgePerformancePipeline
         ForgeCommandParameterLayout.Prepare(command, plan.ParameterNames);
         plan.Binder(command, parameters);
         NormalizeRawEnumStringParameters<T>(command);
+        NormalizeRawEnumStringLiterals<T>(command);
         return command;
+    }
+
+
+    private static void NormalizeRawEnumStringLiterals<T>(DbCommand command)
+    {
+        if (string.IsNullOrWhiteSpace(command.CommandText))
+            return;
+
+        var enumMap = ForgeRawEnumParameterMap<T>.Map;
+        if (enumMap.Count == 0)
+            return;
+
+        foreach (var item in enumMap)
+        {
+            var columnOrPropertyName = Regex.Escape(item.Key);
+            var enumType = item.Value;
+
+            command.CommandText = Regex.Replace(
+                command.CommandText,
+                $@"(?<left>(?:\b|\[){columnOrPropertyName}(?:\b|\])\s*=\s*)'(?<value>[^']+)'",
+                match =>
+                {
+                    var text = match.Groups["value"].Value;
+                    if (!Enum.TryParse(enumType, text, ignoreCase: true, out var parsed) || parsed is null)
+                        return match.Value;
+
+                    var underlying = Enum.GetUnderlyingType(enumType);
+                    var numeric = Convert.ChangeType(parsed, underlying, System.Globalization.CultureInfo.InvariantCulture);
+                    return match.Groups["left"].Value + Convert.ToString(numeric, System.Globalization.CultureInfo.InvariantCulture);
+                },
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        }
     }
 
     private static void NormalizeRawEnumStringParameters<T>(DbCommand command)

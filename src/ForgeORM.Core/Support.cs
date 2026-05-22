@@ -1184,9 +1184,7 @@ internal sealed class ForgeTransaction : IForgeTransaction
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the T operation.</returns>
     public IEnumerable<T> Query<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
-        => ForgePerformancePipeline.QueryAsync<T>(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds)
-            .GetAwaiter()
-            .GetResult();
+        => ForgeAdo.Query<T>(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds).ToList();
 
     /// <summary>
     /// Executes the T operation.
@@ -1208,9 +1206,7 @@ internal sealed class ForgeTransaction : IForgeTransaction
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the Execute operation.</returns>
     public int Execute(string sql, object? parameters = null, int? timeoutSeconds = null)
-        => ForgePerformancePipeline.ExecuteAsync(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds)
-            .GetAwaiter()
-            .GetResult();
+        => ForgeAdo.Execute(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds);
 
     /// <summary>
     /// Executes the ExecuteAsync operation.
@@ -1221,7 +1217,7 @@ internal sealed class ForgeTransaction : IForgeTransaction
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ExecuteAsync operation.</returns>
     public Task<int> ExecuteAsync(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-        => ForgePerformancePipeline.ExecuteAsync(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken).AsTask();
+        => ForgeAdo.ExecuteAsync(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
 
     /// <summary>
     /// Executes the T operation.
@@ -1232,9 +1228,7 @@ internal sealed class ForgeTransaction : IForgeTransaction
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the T operation.</returns>
     public T? ExecuteScalar<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
-        => ForgePerformancePipeline.ExecuteScalarAsync<T>(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds)
-            .GetAwaiter()
-            .GetResult();
+        => ForgeAdo.ExecuteScalar<T>(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds);
 
     /// <summary>
     /// Executes the T operation.

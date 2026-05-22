@@ -40,9 +40,7 @@ public partial class ForgeDb
     {
         using var connection = CreateConnection();
         connection.Open();
-        return ForgePerformancePipeline.QueryAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds)
-            .GetAwaiter()
-            .GetResult();
+        return ForgeAdo.Query<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds);
     }
 
     /// <summary>

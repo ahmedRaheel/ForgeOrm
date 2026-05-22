@@ -167,7 +167,7 @@ public static class ForgePerformancePipeline
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         var value = await ExecuteScalarWithEnterpriseHooksAsync(command, plan, cancellationToken).ConfigureAwait(false);
-        return ForgeScalarConverter.Convert<T>(value);
+        return ForgeScalarConverter.To<T>(value);
     }
 
     public static async ValueTask<ForgePagedResult<T>> PageAsync<T>(

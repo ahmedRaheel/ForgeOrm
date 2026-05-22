@@ -200,7 +200,7 @@ internal static class ForgeParameterBinderCompiler
         // WHERE Id IN (@Ids0, @Ids1, ...). Strings and byte[] remain scalar.
         if (IsEnumerableParameter(value))
         {
-            ExpandEnumerableParameter(command, name, (IEnumerable)value!);
+            ForgeProviderNativeCollectionBinder.BindInList(command, name, (IEnumerable)value!);
             return;
         }
 

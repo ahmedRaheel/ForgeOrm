@@ -49,12 +49,10 @@ public partial class ForgeDb : IForgeDb
     /// <returns>The result of the T operation.</returns>
     public IReadOnlyList<T> Query<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
-        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-            return ForgeSqlServerProviderDirectHotPath.Query<T>(_connectionString, sql, parameters, timeoutSeconds);
-
         using var c = CreateConnection();
-        c.Open();
-        return ForgeAdo.Query<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds);
+        return ForgePerformancePipeline.QueryAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds)
+            .GetAwaiter()
+            .GetResult();
     }
 
     /// <summary>
@@ -208,12 +206,10 @@ public partial class ForgeDb : IForgeDb
     /// <returns>The result of the Execute operation.</returns>
     public int Execute(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
-        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-            return ForgeSqlServerProviderDirectHotPath.Execute(_connectionString, sql, parameters, timeoutSeconds);
-
         using var c = CreateConnection();
-        c.Open();
-        return ForgeAdo.Execute(c, sql, parameters, timeoutSeconds: timeoutSeconds);
+        return ForgePerformancePipeline.ExecuteAsync(c, sql, parameters, timeoutSeconds: timeoutSeconds)
+            .GetAwaiter()
+            .GetResult();
     }
 
     /// <summary>
@@ -226,12 +222,9 @@ public partial class ForgeDb : IForgeDb
     /// <returns>The result of the ExecuteAsync operation.</returns>
     public async Task<int> ExecuteAsync(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
-        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-            return await ForgeSqlServerProviderDirectHotPath.ExecuteAsync(_connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false);
-
         await using var c = CreateConnection();
-        await c.OpenAsync(cancellationToken);
-        return await ForgeAdo.ExecuteAsync(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+        return await ForgePerformancePipeline.ExecuteAsync(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -244,12 +237,10 @@ public partial class ForgeDb : IForgeDb
     /// <returns>The result of the T operation.</returns>
     public T? ExecuteScalar<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
-        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-            return ForgeSqlServerProviderDirectHotPath.ExecuteScalar<T>(_connectionString, sql, parameters, timeoutSeconds);
-
         using var c = CreateConnection();
-        c.Open();
-        return ForgeAdo.ExecuteScalar<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds);
+        return ForgePerformancePipeline.ExecuteScalarAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds)
+            .GetAwaiter()
+            .GetResult();
     }
 
     /// <summary>
@@ -310,8 +301,9 @@ public partial class ForgeDb : IForgeDb
     public IEnumerable<T> QueryProcedure<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null)
     {
         using var c = CreateConnection();
-        c.Open();
-        return ForgeAdo.Query<T>(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds).ToList();
+        return ForgePerformancePipeline.QueryAsync<T>(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds)
+            .GetAwaiter()
+            .GetResult();
     }
 
     /// <summary>
@@ -372,8 +364,9 @@ public partial class ForgeDb : IForgeDb
     public int ExecuteProcedure(string procedureName, object? parameters = null, int? timeoutSeconds = null)
     {
         using var c = CreateConnection();
-        c.Open();
-        return ForgeAdo.Execute(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds);
+        return ForgePerformancePipeline.ExecuteAsync(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds)
+            .GetAwaiter()
+            .GetResult();
     }
 
     /// <summary>
@@ -387,8 +380,8 @@ public partial class ForgeDb : IForgeDb
     public async Task<int> ExecuteProcedureAsync(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         await using var c = CreateConnection();
-        await c.OpenAsync(cancellationToken);
-        return await ForgeAdo.ExecuteAsync(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+        return await ForgePerformancePipeline.ExecuteAsync(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -402,8 +395,9 @@ public partial class ForgeDb : IForgeDb
     public T? ExecuteProcedureScalar<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null)
     {
         using var c = CreateConnection();
-        c.Open();
-        return ForgeAdo.ExecuteScalar<T>(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds);
+        return ForgePerformancePipeline.ExecuteScalarAsync<T>(c, procedureName, parameters, commandType: CommandType.StoredProcedure, timeoutSeconds: timeoutSeconds)
+            .GetAwaiter()
+            .GetResult();
     }
 
     /// <summary>

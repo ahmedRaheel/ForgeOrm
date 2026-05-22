@@ -102,7 +102,7 @@ internal static class ForgeParameterBinderCompiler
 
         var props = parameterType.GetProperties(BindingFlags.Instance | BindingFlags.Public)
             .Where(p => p.GetIndexParameters().Length == 0 && p.GetMethod is not null)
-            .Select(p => new ForgeParameterProperty(p.Name, CompileGetter(parameterType, p), p.PropertyType))
+            .Select(p => new ForgeParameterProperty(p.Name, CompileGetter(parameterType, p), p.PropertyType, p))
             .ToArray();
 
         return (command, value) =>
@@ -111,7 +111,7 @@ internal static class ForgeParameterBinderCompiler
             for (var i = 0; i < props.Length; i++)
             {
                 var p = props[i];
-                Add(command, p.Name, p.Getter(value), p.PropertyType);
+                Add(command, p.Name, p.Getter(value), p.PropertyType, p.Property);
             }
 
             // Safety: bind scalar-looking SQL names if property casing/prefix did not match.
@@ -123,7 +123,7 @@ internal static class ForgeParameterBinderCompiler
                     for (var x = 0; x < props.Length; x++)
                     {
                         if (!string.Equals(props[x].Name, sqlNames[i], StringComparison.OrdinalIgnoreCase)) continue;
-                        Add(command, sqlNames[i], props[x].Getter(value), props[x].PropertyType);
+                        Add(command, sqlNames[i], props[x].Getter(value), props[x].PropertyType, props[x].Property);
                         break;
                     }
                 }
@@ -192,7 +192,7 @@ internal static class ForgeParameterBinderCompiler
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Add(DbCommand command, string name, object? value, Type? valueType)
+    private static void Add(DbCommand command, string name, object? value, Type? valueType, PropertyInfo? property = null)
     {
         // SQL Server and most ADO.NET providers cannot bind List<int>/T[] as a single scalar value.
         // Raw SQL and split-query paths commonly render: WHERE Id IN @Ids.
@@ -212,7 +212,7 @@ internal static class ForgeParameterBinderCompiler
             parameter.ParameterName = parameterName;
             command.Parameters.Add(parameter);
         }
-        parameter.Value = NormalizeParameterValue(value, valueType);
+        parameter.Value = NormalizeParameterValue(value, valueType, property);
     }
 
     private static bool IsEnumerableParameter(object? value)
@@ -333,16 +333,40 @@ internal static class ForgeParameterBinderCompiler
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static object NormalizeParameterValue(object? value, Type? declaredType)
+    private static object NormalizeParameterValue(object? value, Type? declaredType, PropertyInfo? property = null)
     {
         if (value is null)
             return DBNull.Value;
 
         var type = Nullable.GetUnderlyingType(declaredType ?? value.GetType()) ?? (declaredType ?? value.GetType());
         if (type.IsEnum)
+        {
+            // Enterprise default: bind enums as their underlying numeric value, same as EF Core.
+            // Reading remains storage-agnostic and accepts both int and string database values.
+            // String enum binding is only an explicit opt-in; it is never required for materialization.
+            if (IsStringEnumStorage(property))
+                return value?? DBNull.Value;
+
             return Convert.ChangeType(value, Enum.GetUnderlyingType(type), System.Globalization.CultureInfo.InvariantCulture) ?? DBNull.Value;
+        }
 
         return value;
+    }
+
+    private static bool IsStringEnumStorage(PropertyInfo? property)
+    {
+        if (property is null)
+            return false;
+
+        var attr = property.GetCustomAttributes(inherit: true)
+            .FirstOrDefault(a => a.GetType().Name is "ForgeEnumStorageAttribute" or "EnumStorageAttribute");
+
+        if (attr is null)
+            return false;
+
+        var storageProperty = attr.GetType().GetProperty("Storage");
+        var storage = storageProperty?.GetValue(attr);
+        return storage?.ToString()?.Equals("String", StringComparison.OrdinalIgnoreCase) == true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -412,4 +436,4 @@ internal static class ForgeParameterBinderCompiler
 }
 
 internal readonly record struct ForgeParameterBinderKey(Type? ParameterType, CommandType CommandType, string SqlFingerprint);
-internal readonly record struct ForgeParameterProperty(string Name, Func<object, object?> Getter, Type PropertyType);
+internal readonly record struct ForgeParameterProperty(string Name, Func<object, object?> Getter, Type PropertyType, PropertyInfo Property);

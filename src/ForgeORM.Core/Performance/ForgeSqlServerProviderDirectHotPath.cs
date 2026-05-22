@@ -374,7 +374,9 @@ internal static class ForgeSqlServerProviderDirectHotPath
         else parameter = command.Parameters.Add(parameterName, SqlDbType.NVarChar);
 
         if (actualType.IsEnum)
-            parameter.Value = value is null ? DBNull.Value : value.ToString();
+            parameter.Value = value is null
+                ? DBNull.Value
+                : Convert.ChangeType(value, Enum.GetUnderlyingType(actualType), System.Globalization.CultureInfo.InvariantCulture);
         else if (value is DateOnly d)
             parameter.Value = d.ToDateTime(TimeOnly.MinValue);
         else if (value is TimeOnly t)

@@ -187,15 +187,10 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine("    private static TEnum ReadEnum<TEnum>(DbDataReader reader, int ordinal) where TEnum : struct, Enum");
-        sb.AppendLine("    {");
-        sb.AppendLine("        var value = reader.GetValue(ordinal);");
-        sb.AppendLine("        if (value is string text) return Enum.TryParse<TEnum>(text, true, out var parsed) ? parsed : default;");
-        sb.AppendLine("        var underlying = Enum.GetUnderlyingType(typeof(TEnum));");
-        sb.AppendLine("        return (TEnum)Enum.ToObject(typeof(TEnum), Convert.ChangeType(value, underlying));");
-        sb.AppendLine("    }");
+        sb.AppendLine("        => ForgeEnumReader.ReadEnum<TEnum>(reader, ordinal);");
         sb.AppendLine();
         sb.AppendLine("    private static TEnum? ReadNullableEnum<TEnum>(DbDataReader reader, int ordinal) where TEnum : struct, Enum");
-        sb.AppendLine("        => ordinal < 0 || reader.IsDBNull(ordinal) ? null : ReadEnum<TEnum>(reader, ordinal);");
+        sb.AppendLine("        => ordinal < 0 || reader.IsDBNull(ordinal) ? null : ForgeEnumReader.ReadNullableEnum<TEnum>(reader, ordinal);");
         sb.AppendLine();
     }
 
@@ -374,7 +369,7 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("        {");
         foreach (var p in Properties(type))
         {
-            var dbType = DbTypeFor(p.Type);
+            var dbType = DbTypeFor(p);
             var valueExpression = ParameterValueExpression(p);
             sb.AppendLine("            Add(command, \"" + Escape(p.Name) + "\", " + valueExpression + (dbType is null ? ");" : ", " + dbType + ");"));
             if (!string.Equals(ColumnName(p), p.Name, StringComparison.OrdinalIgnoreCase))
@@ -388,7 +383,7 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("        var entity = (" + full + ")value;");
         foreach (var p in Properties(type))
         {
-            var dbType = DbTypeFor(p.Type);
+            var dbType = DbTypeFor(p);
             var valueExpression = ParameterValueExpression(p);
             sb.AppendLine("        Add(command, \"" + Escape(p.Name) + "\", " + valueExpression + (dbType is null ? ");" : ", " + dbType + ");"));
             if (!string.Equals(ColumnName(p), p.Name, StringComparison.OrdinalIgnoreCase))
@@ -526,6 +521,18 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
             SpecialType.System_UInt32 => "uint",
             _ => "int"
         };
+    }
+
+    private static string? DbTypeFor(IPropertySymbol property)
+    {
+        var type = property.Type;
+        if (type is INamedTypeSymbol named && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+            type = named.TypeArguments[0];
+
+        if (type.TypeKind == TypeKind.Enum && HasEnumStringStorage(property))
+            return "DbType.String";
+
+        return DbTypeFor(type);
     }
 
     private static string? DbTypeFor(ITypeSymbol type)

@@ -330,41 +330,205 @@ public static class ForgePerformancePipeline
         if (timeoutSeconds.HasValue) command.CommandTimeout = timeoutSeconds.Value;
         ForgeCommandParameterLayout.Prepare(command, plan.ParameterNames);
         plan.Binder(command, parameters);
+        NormalizeRawEnumPredicates<T>(command);
         NormalizeRawEnumStringParameters<T>(command);
         NormalizeRawEnumStringLiterals<T>(command);
         return command;
     }
 
 
-    private static void NormalizeRawEnumStringLiterals<T>(DbCommand command)
+    /// <summary>
+    /// Handles raw SQL enum predicates without attributes and without knowing the physical column type.
+    /// Example:
+    ///     WHERE Status = @status
+    /// becomes on SQL Server:
+    ///     WHERE (TRY_CONVERT(bigint, Status) = @status OR CONVERT(nvarchar(128), Status) = @status__enum_text)
+    /// This allows both INT enum storage and NVARCHAR enum storage (Paid) to work from the same raw query.
+    /// </summary>
+    private static void NormalizeRawEnumPredicates<T>(DbCommand command)
     {
-        if (string.IsNullOrWhiteSpace(command.CommandText))
+        if (command.CommandType != CommandType.Text || string.IsNullOrWhiteSpace(command.CommandText) || command.Parameters.Count == 0)
+            return;
+
+        if (!IsSqlServer(command.Connection))
             return;
 
         var enumMap = ForgeRawEnumParameterMap<T>.Map;
         if (enumMap.Count == 0)
             return;
 
+        for (var i = 0; i < command.Parameters.Count; i++)
+        {
+            if (command.Parameters[i] is not DbParameter parameter)
+                continue;
+
+            var logicalParameterName = parameter.ParameterName.TrimStart('@', ':');
+            var enumType = ResolveEnumTypeForParameter(logicalParameterName, enumMap);
+            if (enumType is null)
+                continue;
+
+            if (!TryGetEnumText(parameter.Value, enumType, out var enumText))
+                continue;
+
+            var textParameterName = ForgeParameterBinderCompiler.NormalizeParameterName(logicalParameterName + "__enum_text");
+            if (!HasParameter(command, textParameterName))
+            {
+                var textParameter = command.CreateParameter();
+                textParameter.ParameterName = textParameterName;
+                textParameter.DbType = DbType.String;
+                textParameter.Value = enumText;
+                command.Parameters.Add(textParameter);
+            }
+
+            command.CommandText = RewriteEnumComparison(command.CommandText, parameter.ParameterName, textParameterName, enumMap);
+        }
+    }
+
+    private static Type? ResolveEnumTypeForParameter(string parameterName, System.Collections.Generic.IReadOnlyDictionary<string, Type> enumMap)
+    {
+        if (enumMap.TryGetValue(parameterName, out var direct))
+            return direct;
+
+        // Common raw SQL style: new { status } for property/column Status.
         foreach (var item in enumMap)
         {
-            var columnOrPropertyName = Regex.Escape(item.Key);
-            var enumType = item.Value;
-
-            command.CommandText = Regex.Replace(
-                command.CommandText,
-                $@"(?<left>(?:\b|\[){columnOrPropertyName}(?:\b|\])\s*=\s*)'(?<value>[^']+)'",
-                match =>
-                {
-                    var text = match.Groups["value"].Value;
-                    if (!Enum.TryParse(enumType, text, ignoreCase: true, out var parsed) || parsed is null)
-                        return match.Value;
-
-                    var underlying = Enum.GetUnderlyingType(enumType);
-                    var numeric = Convert.ChangeType(parsed, underlying, System.Globalization.CultureInfo.InvariantCulture);
-                    return match.Groups["left"].Value + Convert.ToString(numeric, System.Globalization.CultureInfo.InvariantCulture);
-                },
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (string.Equals(item.Key, parameterName, StringComparison.OrdinalIgnoreCase))
+                return item.Value;
         }
+
+        return null;
+    }
+
+    private static bool TryGetEnumText(object? value, Type enumType, out string enumText)
+    {
+        enumText = string.Empty;
+        if (value is null || value is DBNull)
+            return false;
+
+        if (value is string s)
+        {
+            if (!Enum.TryParse(enumType, s, ignoreCase: true, out var parsed) || parsed is null)
+                return false;
+            enumText = Enum.GetName(enumType, parsed) ?? s;
+            return true;
+        }
+
+        if (value.GetType().IsEnum)
+        {
+            enumText = Enum.GetName(enumType, value) ?? value.ToString() ?? string.Empty;
+            return enumText.Length > 0;
+        }
+
+        try
+        {
+            var numeric = Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture);
+            var enumValue = Enum.ToObject(enumType, numeric);
+            enumText = Enum.GetName(enumType, enumValue) ?? Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+            return enumText.Length > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string RewriteEnumComparison(
+        string sql,
+        string parameterName,
+        string textParameterName,
+        System.Collections.Generic.IReadOnlyDictionary<string, Type> enumMap)
+    {
+        var parameterToken = Regex.Escape(parameterName);
+        const string identifier = @"(?:\[[^\]]+\]|\b[A-Za-z_][A-Za-z0-9_]*\b)";
+        var columnPattern = $@"(?<column>{identifier}(?:\s*\.\s*{identifier})?)";
+
+        return Regex.Replace(
+            sql,
+            $@"{columnPattern}\s*=\s*{parameterToken}(?![A-Za-z0-9_])",
+            match =>
+            {
+                var column = match.Groups["column"].Value;
+                var simpleColumnName = ExtractSimpleSqlIdentifier(column);
+                if (!enumMap.ContainsKey(simpleColumnName))
+                    return match.Value;
+
+                return $"(TRY_CONVERT(bigint, {column}) = {parameterName} OR CONVERT(nvarchar(128), {column}) = {textParameterName})";
+            },
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    }
+
+    private static string ExtractSimpleSqlIdentifier(string sqlIdentifier)
+    {
+        var text = sqlIdentifier.Trim();
+        var dot = text.LastIndexOf('.');
+        if (dot >= 0)
+            text = text[(dot + 1)..].Trim();
+
+        if (text.Length >= 2 && text[0] == '[' && text[^1] == ']')
+            text = text[1..^1];
+
+        return text;
+    }
+
+    private static bool IsSqlServer(DbConnection? connection)
+    {
+        if (connection is null)
+            return false;
+
+        var name = connection.GetType().FullName ?? connection.GetType().Name;
+        return name.Contains("SqlClient", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("SqlConnection", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasParameter(DbCommand command, string parameterName)
+    {
+        var normalized = parameterName.TrimStart('@', ':');
+        for (var i = 0; i < command.Parameters.Count; i++)
+        {
+            if (command.Parameters[i] is not DbParameter p)
+                continue;
+
+            if (string.Equals(p.ParameterName.TrimStart('@', ':'), normalized, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static void NormalizeRawEnumStringLiterals<T>(DbCommand command)
+    {
+        if (command.CommandType != CommandType.Text || string.IsNullOrWhiteSpace(command.CommandText))
+            return;
+
+        if (!IsSqlServer(command.Connection))
+            return;
+
+        var enumMap = ForgeRawEnumParameterMap<T>.Map;
+        if (enumMap.Count == 0)
+            return;
+
+        const string identifier = @"(?:\[[^\]]+\]|\b[A-Za-z_][A-Za-z0-9_]*\b)";
+        var columnPattern = $@"(?<column>{identifier}(?:\s*\.\s*{identifier})?)";
+
+        command.CommandText = Regex.Replace(
+            command.CommandText,
+            $@"{columnPattern}\s*=\s*'(?<value>[^']+)'",
+            match =>
+            {
+                var column = match.Groups["column"].Value;
+                var simpleColumnName = ExtractSimpleSqlIdentifier(column);
+                if (!enumMap.TryGetValue(simpleColumnName, out var enumType))
+                    return match.Value;
+
+                var text = match.Groups["value"].Value;
+                if (!Enum.TryParse(enumType, text, ignoreCase: true, out var parsed) || parsed is null)
+                    return match.Value;
+
+                var numeric = Convert.ToInt64(parsed, System.Globalization.CultureInfo.InvariantCulture);
+                var escaped = text.Replace("'", "''");
+                return $"(TRY_CONVERT(bigint, {column}) = {numeric.ToString(System.Globalization.CultureInfo.InvariantCulture)} OR CONVERT(nvarchar(128), {column}) = N'{escaped}')";
+            },
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     }
 
     private static void NormalizeRawEnumStringParameters<T>(DbCommand command)

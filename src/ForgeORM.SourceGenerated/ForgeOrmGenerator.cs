@@ -151,7 +151,7 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("        var value = reader.GetValue(ordinal);");
         sb.AppendLine("        if (value is string text) return Enum.Parse<TEnum>(text, ignoreCase: true);");
         sb.AppendLine(@"        var underlying = Enum.GetUnderlyingType(typeof(TEnum));
-                    return (TEnum)Enum.ToObject(typeof(TEnum), Convert.ChangeType(value, underlying));");
+        return (TEnum)Enum.ToObject(typeof(TEnum), Convert.ChangeType(value, underlying));");
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine("    private static TEnum? ReadNullableEnum<TEnum>(DbDataReader reader, int ordinal) where TEnum : struct, Enum");

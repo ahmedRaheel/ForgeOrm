@@ -50,6 +50,7 @@ public sealed class Order
     public int Id { get; set; }
     public int CustomerId { get; set; }
     public string OrderNo { get; set; } = "";
+    [ForgeEnumStorage(ForgeEnumStorage.String)]
     public OrderStatus Status { get; set; } = OrderStatus.Draft;
     public decimal GrandTotal { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;

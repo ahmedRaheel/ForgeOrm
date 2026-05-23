@@ -23,7 +23,13 @@ internal static class ForgeSqlServerProviderDirectHotPath
 
     public static bool CanUse(IForgeDatabaseProvider provider)
     {
-        if (string.Equals(provider.ProviderName, "SqlServer", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(provider.ProviderName, "SqlServer", StringComparison.OrdinalIgnoreCase)
+            || provider.ProviderName.Contains("SqlServer", StringComparison.OrdinalIgnoreCase)
+            || provider.ProviderName.Contains("SqlClient", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (provider.Dialect.Name.Contains("SqlServer", StringComparison.OrdinalIgnoreCase)
+            || provider.Dialect.Name.Contains("SqlClient", StringComparison.OrdinalIgnoreCase))
             return true;
 
         var providerType = provider.GetType().FullName ?? provider.GetType().Name;
@@ -246,6 +252,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
         ValidateNoUnboundSqlParameters(command, plan.ParameterNames);
         return command;
     }
+
 
     private static SqlServerEntityPlan BuildGetByIdPlan(ForgeEntityMetadata metadata)
     {

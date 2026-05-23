@@ -13,8 +13,14 @@ internal static class ForgeSqlServerParameterBinderCache
         => GetOrAdd(parameterType, parameterNames, CreateParameterNamesKey(parameterNames));
 
     public static Action<SqlCommand, object> GetOrAdd(Type parameterType, string[] parameterNames, string parameterNamesKey)
-        => Cache.GetOrAdd(new SqlServerParameterBinderKey(parameterType, parameterNamesKey),
-            _ => Build(parameterType, parameterNames));
+    {
+        var key = new SqlServerParameterBinderKey(parameterType, parameterNamesKey);
+        if (Cache.TryGetValue(key, out var cached))
+            return cached;
+
+        var built = Build(parameterType, parameterNames);
+        return Cache.GetOrAdd(key, built);
+    }
 
     private static string CreateParameterNamesKey(string[] parameterNames)
     {

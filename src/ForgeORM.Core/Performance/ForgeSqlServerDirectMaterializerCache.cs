@@ -23,7 +23,11 @@ internal static class ForgeSqlServerDirectMaterializerCache
     {
         var type = typeof(T);
         var key = CreateKey(type, reader);
-        return (Func<SqlDataReader, T>)Cache.GetOrAdd(key, _ => Build<T>(reader));
+        if (Cache.TryGetValue(key, out var cached))
+            return (Func<SqlDataReader, T>)cached;
+
+        var built = Build<T>(reader);
+        return (Func<SqlDataReader, T>)Cache.GetOrAdd(key, built);
     }
 
     /// <summary>
@@ -36,7 +40,11 @@ internal static class ForgeSqlServerDirectMaterializerCache
     public static Func<SqlDataReader, T> GetOrCreate<T>(SqlDataReader reader, string sql)
     {
         var key = new SqlMaterializerPlanKey(typeof(T), sql);
-        return (Func<SqlDataReader, T>)SqlPlanCache.GetOrAdd(key, _ => Build<T>(reader));
+        if (SqlPlanCache.TryGetValue(key, out var cached))
+            return (Func<SqlDataReader, T>)cached;
+
+        var built = Build<T>(reader);
+        return (Func<SqlDataReader, T>)SqlPlanCache.GetOrAdd(key, built);
     }
 
     private static string CreateKey(Type type, SqlDataReader reader)

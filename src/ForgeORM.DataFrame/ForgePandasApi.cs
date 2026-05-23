@@ -447,8 +447,25 @@ public static class ForgePandasExtensions
     /// <summary>Converts a column to DateTimeOffset values in-place.</summary>
     public static ForgeDataFrame ToDateTime(this ForgeDataFrame frame, string column)
     {
-        foreach (var row in frame.Rows.OfType<IDictionary<string, object?>>())
-            row[column] = ForgePandas.ToDateTime(ForgeDataFrame.Get(row, column));
+        ArgumentNullException.ThrowIfNull(frame);
+
+        if (string.IsNullOrWhiteSpace(column))
+            throw new ArgumentException("Column name is required.", nameof(column));
+
+        foreach (var row in frame.Rows)
+        {
+            if (row is IDictionary<string, object?> mutableRow)
+            {
+                mutableRow[column] = ForgePandas.ToDateTime(
+                    ForgeDataFrame.Get((IReadOnlyDictionary<string, object?>)mutableRow, column));
+            }
+            else
+            {
+                throw new InvalidOperationException(
+                    "ForgeDataFrame rows must implement IDictionary<string, object?>.");
+            }
+        }
+
         return frame;
     }
 

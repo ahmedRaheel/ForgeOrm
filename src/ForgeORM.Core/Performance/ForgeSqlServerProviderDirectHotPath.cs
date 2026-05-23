@@ -22,20 +22,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
     private static readonly ConcurrentDictionary<string, string[]> SqlParameterTokenCache = new(StringComparer.Ordinal);
 
     public static bool CanUse(IForgeDatabaseProvider provider)
-    {
-        if (string.Equals(provider.ProviderName, "SqlServer", StringComparison.OrdinalIgnoreCase)
-            || provider.ProviderName.Contains("SqlServer", StringComparison.OrdinalIgnoreCase)
-            || provider.ProviderName.Contains("SqlClient", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (provider.Dialect.Name.Contains("SqlServer", StringComparison.OrdinalIgnoreCase)
-            || provider.Dialect.Name.Contains("SqlClient", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        var providerType = provider.GetType().FullName ?? provider.GetType().Name;
-        return providerType.Contains("SqlServer", StringComparison.OrdinalIgnoreCase)
-            || providerType.Contains("SqlClient", StringComparison.OrdinalIgnoreCase);
-    }
+        => string.Equals(provider.ProviderName, "SqlServer", StringComparison.OrdinalIgnoreCase);
 
     public static T? GetById<T>(string connectionString, ForgeEntityMetadata metadata, object id)
         => ForgeSqlServerDirectGetByIdExecutor<T>.Execute(connectionString, metadata, id);
@@ -49,7 +36,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
         await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
-        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader, sql);
+        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
         return await reader.ReadAsync(cancellationToken).ConfigureAwait(false) ? materializer(reader) : default;
     }
 
@@ -59,71 +46,8 @@ internal static class ForgeSqlServerProviderDirectHotPath
         connection.Open();
         using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
         using var reader = command.ExecuteReader(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
-        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader, sql);
+        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
         return reader.Read() ? materializer(reader) : default;
-    }
-
-    public static async ValueTask<T?> QueryFirstOrDefaultAsync<T>(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds, CancellationToken cancellationToken)
-    {
-        await using var command = CreateTextCommand(connection, sql, parameters, transaction, timeoutSeconds);
-        if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
-        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader, sql);
-        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false) ? materializer(reader) : default;
-    }
-
-    public static T? QueryFirstOrDefault<T>(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds)
-    {
-        using var command = CreateTextCommand(connection, sql, parameters, transaction, timeoutSeconds);
-        if (connection.State != ConnectionState.Open)
-            connection.Open();
-        using var reader = command.ExecuteReader(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
-        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader, sql);
-        return reader.Read() ? materializer(reader) : default;
-    }
-
-    public static async ValueTask<IReadOnlyList<T>> QueryAsync<T>(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds, CancellationToken cancellationToken)
-    {
-        await using var command = CreateTextCommand(connection, sql, parameters, transaction, timeoutSeconds);
-        if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
-        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader, sql);
-        var rows = new List<T>(EstimateCapacity(sql));
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            rows.Add(materializer(reader));
-        return rows;
-    }
-
-    public static IReadOnlyList<T> Query<T>(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds)
-    {
-        using var command = CreateTextCommand(connection, sql, parameters, transaction, timeoutSeconds);
-        if (connection.State != ConnectionState.Open)
-            connection.Open();
-        using var reader = command.ExecuteReader(CommandBehavior.SequentialAccess);
-        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader, sql);
-        var rows = new List<T>(EstimateCapacity(sql));
-        while (reader.Read())
-            rows.Add(materializer(reader));
-        return rows;
-    }
-
-    public static async ValueTask<T?> ExecuteScalarAsync<T>(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds, CancellationToken cancellationToken)
-    {
-        await using var command = CreateTextCommand(connection, sql, parameters, transaction, timeoutSeconds);
-        if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        var value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        return ForgeScalarConverter.To<T>(value);
-    }
-
-    public static async ValueTask<int> ExecuteAsync(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds, CancellationToken cancellationToken)
-    {
-        await using var command = CreateTextCommand(connection, sql, parameters, transaction, timeoutSeconds);
-        if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public static async Task<IReadOnlyList<T>> QueryAsync<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
@@ -132,7 +56,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
         await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
-        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader, sql);
+        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
         var rows = new List<T>(EstimateCapacity(sql));
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             rows.Add(materializer(reader));
@@ -145,7 +69,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
         connection.Open();
         using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
         using var reader = command.ExecuteReader(CommandBehavior.SequentialAccess);
-        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader, sql);
+        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
         var rows = new List<T>(EstimateCapacity(sql));
         while (reader.Read())
             rows.Add(materializer(reader));
@@ -210,7 +134,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
         await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess | CommandBehavior.CloseConnection, cancellationToken).ConfigureAwait(false);
-        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader, sql);
+        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             yield return materializer(reader);
     }
@@ -237,7 +161,8 @@ internal static class ForgeSqlServerProviderDirectHotPath
         parameters = expanded.Parameters;
 
         var key = new SqlQueryPlanKey(sql, parameters?.GetType());
-        var plan = QueryPlans.GetOrAdd(key, static k => CreateSqlQueryPlan(k.Sql));
+        var plan = QueryPlans.GetOrAdd(key, static k => new SqlQueryPlan(k.Sql, SqlParameterTokenCache.GetOrAdd(k.Sql, ExtractParameterNames)));
+        _ = ForgePreparedCommandPool.GetOrAdd(plan.Sql, plan.ParameterNames, parameters?.GetType(), timeoutSeconds);
         var command = connection.CreateCommand();
         command.CommandText = plan.Sql;
         command.CommandType = CommandType.Text;
@@ -245,14 +170,13 @@ internal static class ForgeSqlServerProviderDirectHotPath
             command.Transaction = transaction;
         if (timeoutSeconds.HasValue)
             command.CommandTimeout = timeoutSeconds.Value;
-        BindParameters(command, plan.ParameterNames, plan.ParameterNamesKey, parameters);
+        BindParameters(command, plan.ParameterNames, parameters);
         if (parameters is not null && IsScalar(parameters.GetType()))
             EnsureScalarSqlParametersBound(command, parameters, parameters.GetType());
         EnsureReferencedSqlParametersAreBound(command, plan.ParameterNames, parameters);
         ValidateNoUnboundSqlParameters(command, plan.ParameterNames);
         return command;
     }
-
 
     private static SqlServerEntityPlan BuildGetByIdPlan(ForgeEntityMetadata metadata)
     {
@@ -377,7 +301,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
         return true;
     }
 
-    private static void BindParameters(SqlCommand command, string[] parameterNames, string parameterNamesKey, object? parameters)
+    private static void BindParameters(SqlCommand command, string[] parameterNames, object? parameters)
     {
         if (parameters is null)
             return;
@@ -421,57 +345,8 @@ internal static class ForgeSqlServerProviderDirectHotPath
             return;
         }
 
-        var binder = ForgeSqlServerParameterBinderCache.GetOrAdd(parameters.GetType(), parameterNames, parameterNamesKey);
+        var binder = ForgeSqlServerParameterBinderCache.GetOrAdd(parameters.GetType(), parameterNames);
         binder(command, parameters);
-    }
-
-
-    internal static void AddInt32Parameter(SqlCommand command, string parameterName, int value)
-    {
-        if (!parameterName.StartsWith('@')) parameterName = "@" + parameterName;
-        command.Parameters.Add(parameterName, SqlDbType.Int).Value = value;
-    }
-
-    internal static void AddInt64Parameter(SqlCommand command, string parameterName, long value)
-    {
-        if (!parameterName.StartsWith('@')) parameterName = "@" + parameterName;
-        command.Parameters.Add(parameterName, SqlDbType.BigInt).Value = value;
-    }
-
-    internal static void AddStringParameter(SqlCommand command, string parameterName, string? value)
-    {
-        if (!parameterName.StartsWith('@')) parameterName = "@" + parameterName;
-        command.Parameters.Add(parameterName, SqlDbType.NVarChar).Value = value is null ? DBNull.Value : value;
-    }
-
-    internal static void AddDecimalParameter(SqlCommand command, string parameterName, decimal value)
-    {
-        if (!parameterName.StartsWith('@')) parameterName = "@" + parameterName;
-        command.Parameters.Add(parameterName, SqlDbType.Decimal).Value = value;
-    }
-
-    internal static void AddGuidParameter(SqlCommand command, string parameterName, Guid value)
-    {
-        if (!parameterName.StartsWith('@')) parameterName = "@" + parameterName;
-        command.Parameters.Add(parameterName, SqlDbType.UniqueIdentifier).Value = value;
-    }
-
-    internal static void AddBooleanParameter(SqlCommand command, string parameterName, bool value)
-    {
-        if (!parameterName.StartsWith('@')) parameterName = "@" + parameterName;
-        command.Parameters.Add(parameterName, SqlDbType.Bit).Value = value;
-    }
-
-    internal static void AddDateTimeParameter(SqlCommand command, string parameterName, DateTime value)
-    {
-        if (!parameterName.StartsWith('@')) parameterName = "@" + parameterName;
-        command.Parameters.Add(parameterName, SqlDbType.DateTime2).Value = value;
-    }
-
-    internal static void AddEnumInt32Parameter<TEnum>(SqlCommand command, string parameterName, TEnum value) where TEnum : struct, Enum
-    {
-        if (!parameterName.StartsWith('@')) parameterName = "@" + parameterName;
-        command.Parameters.Add(parameterName, SqlDbType.Int).Value = Convert.ToInt32(value, System.Globalization.CultureInfo.InvariantCulture);
     }
 
     internal static void AddTypedParameter(SqlCommand command, string parameterName, object? value, Type declaredType)
@@ -597,22 +472,6 @@ internal static class ForgeSqlServerProviderDirectHotPath
         return type.IsPrimitive || type.IsEnum || type == typeof(string) || type == typeof(Guid) || type == typeof(decimal) || type == typeof(DateTime) || type == typeof(DateTimeOffset) || type == typeof(DateOnly) || type == typeof(TimeOnly) || type == typeof(TimeSpan) || type == typeof(byte[]);
     }
 
-
-    private static SqlQueryPlan CreateSqlQueryPlan(string sql)
-    {
-        var names = SqlParameterTokenCache.GetOrAdd(sql, ExtractParameterNames);
-        return new SqlQueryPlan(sql, names, CreateParameterNamesKey(names));
-    }
-
-    private static string CreateParameterNamesKey(string[] parameterNames)
-    {
-        if (parameterNames.Length == 0) return string.Empty;
-        var copy = new string[parameterNames.Length];
-        Array.Copy(parameterNames, copy, parameterNames.Length);
-        Array.Sort(copy, StringComparer.OrdinalIgnoreCase);
-        return string.Join("|", copy);
-    }
-
     private static string[] ExtractParameterNames(string sql)
     {
         // Hot-path scanner: avoids Regex allocations for every new SQL shape.
@@ -648,5 +507,5 @@ internal static class ForgeSqlServerProviderDirectHotPath
     private readonly record struct ExpandedSql(string Sql, object? Parameters);
     private sealed record SqlServerEntityPlan(string Sql, string ParameterName, Type KeyType);
     private readonly record struct SqlQueryPlanKey(string Sql, Type? ParameterType);
-    private sealed record SqlQueryPlan(string Sql, string[] ParameterNames, string ParameterNamesKey);
+    private sealed record SqlQueryPlan(string Sql, string[] ParameterNames);
 }

@@ -38,15 +38,19 @@ public partial class ForgeDb
     /// </summary>
     public IReadOnlyList<T> QueryFast<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
-        return Query<T>(sql, parameters, timeoutSeconds);
+        using var connection = CreateConnection();
+        connection.Open();
+        return ForgeAdo.Query<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds);
     }
 
     /// <summary>
     /// Fast raw SQL list path. Skips expression translation and navigation processing.
     /// </summary>
-    public Task<IReadOnlyList<T>> QueryFastAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<T>> QueryFastAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
-        return QueryAsync<T>(sql, parameters, timeoutSeconds, cancellationToken);
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+        return await ForgePerformancePipeline.QueryAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -54,15 +58,19 @@ public partial class ForgeDb
     /// </summary>
     public T? QueryFirstFast<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
-        return QueryFirstOrDefault<T>(sql, parameters, timeoutSeconds);
+        using var connection = CreateConnection();
+        connection.Open();
+        return ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds).GetAwaiter().GetResult();
     }
 
     /// <summary>
     /// Fast raw SQL single-row path. Skips expression translation and navigation processing.
     /// </summary>
-    public Task<T?> QueryFirstFastAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+    public async Task<T?> QueryFirstFastAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
-        return QueryFirstOrDefaultAsync<T>(sql, parameters, timeoutSeconds, cancellationToken);
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken);
+        return await ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     }
 
     private ForgeFindPlan GetFindPlan(Type entityType)

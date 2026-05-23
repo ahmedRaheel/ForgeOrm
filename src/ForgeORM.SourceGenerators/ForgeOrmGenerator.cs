@@ -66,12 +66,19 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.Runtime.CompilerServices;");
         sb.AppendLine("using ForgeORM.Core;");
+        sb.AppendLine("using ForgeORM.Abstractions;");
         sb.AppendLine("namespace ForgeORM.Generated;");
         sb.AppendLine();
         sb.AppendLine("public sealed class ForgeGeneratedAccessorProvider : IForgeSourceGeneratedAccessorProvider");
         sb.AppendLine("{");
         sb.AppendLine("    [ModuleInitializer]");
-        sb.AppendLine("    public static void Register() => ForgeSourceGeneratedRegistry.Register(new ForgeGeneratedAccessorProvider());");
+        sb.AppendLine("    public static void Register()");
+        sb.AppendLine("    {");
+        sb.AppendLine("        var provider = new ForgeGeneratedAccessorProvider();");
+        sb.AppendLine("        ForgeSourceGeneratedRegistry.Register(provider);");
+        foreach (var type in entityTypes)
+            EmitMetadataRegistration(sb, type);
+        sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine("    public bool CanHandle(Type type) => type.FullName switch");
         sb.AppendLine("    {");
@@ -146,6 +153,44 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
 
         sb.AppendLine("}");
         context.AddSource("ForgeORM.Generated.Accessors.g.cs", SourceText.From(sb.ToString(), Encoding.UTF8));
+    }
+
+
+    private static void EmitMetadataRegistration(StringBuilder sb, INamedTypeSymbol type)
+    {
+        var full = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        var props = Properties(type).ToArray();
+        var keys = ResolveKeys(type, props).ToArray();
+        var keyColumn = keys.Length > 0 ? ColumnName(keys[0]) : "Id";
+        var code = props.FirstOrDefault(p => string.Equals(p.Name, "Code", StringComparison.OrdinalIgnoreCase));
+        var codeColumn = code is null ? "Code" : ColumnName(code);
+
+        sb.AppendLine("        ForgeSourceGeneratedRegistry.RegisterMetadata(typeof(" + full + "), new ForgeEntityMetadata");
+        sb.AppendLine("        {");
+        sb.AppendLine("            EntityType = typeof(" + full + "),");
+        sb.AppendLine("            TableName = \"" + Escape(TableName(type)) + "\",");
+        sb.AppendLine("            KeyColumn = \"" + Escape(keyColumn) + "\",");
+        sb.AppendLine("            CodeColumn = \"" + Escape(codeColumn) + "\",");
+        sb.AppendLine("            Properties = new ForgePropertyMetadata[]");
+        sb.AppendLine("            {");
+        foreach (var p in props)
+        {
+            var isKey = keys.Any(k => SymbolEqualityComparer.Default.Equals(k, p)) ? "true" : "false";
+            var isCode = string.Equals(p.Name, "Code", StringComparison.OrdinalIgnoreCase) || p.GetAttributes().Any(a => a.AttributeClass?.Name is "ForgeCodeAttribute" or "CodeAttribute") ? "true" : "false";
+            var isComputed = IsComputed(p) ? "true" : "false";
+            var typeName = p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            sb.AppendLine("                new ForgePropertyMetadata");
+            sb.AppendLine("                {");
+            sb.AppendLine("                    PropertyName = \"" + Escape(p.Name) + "\",");
+            sb.AppendLine("                    ColumnName = \"" + Escape(ColumnName(p)) + "\",");
+            sb.AppendLine("                    PropertyType = typeof(" + typeName + "),");
+            sb.AppendLine("                    IsKey = " + isKey + ",");
+            sb.AppendLine("                    IsCode = " + isCode + ",");
+            sb.AppendLine("                    IsComputed = " + isComputed);
+            sb.AppendLine("                },");
+        }
+        sb.AppendLine("            }");
+        sb.AppendLine("        });");
     }
 
     private static void EmitHelpers(StringBuilder sb)

@@ -2,7 +2,6 @@ using System.Collections;
 using System.Data.Common;
 using System.Reflection;
 using ForgeORM.Core.Graph;
-using ForgeORM.Core.Performance;
 
 namespace ForgeORM.Core;
 
@@ -92,7 +91,7 @@ public partial class ForgeDb
         await connection.OpenAsync(cancellationToken);
 
         var parentCommand = Provider.BuildDelete(_metadata.Resolve<T>(), id);
-        return await ForgePerformancePipeline.ExecuteAsync(
+        return await ForgeAdo.ExecuteAsync(
             connection,
             parentCommand.CommandText,
             parentCommand.Parameters,
@@ -134,7 +133,7 @@ public partial class ForgeDb
                     var fkColumn = ForgeEntityShape.ColumnName(fk);
                     var childSql = $"UPDATE {childShape.TableName} SET {options.SoftDeleteColumn} = 1 WHERE {fkColumn} = @ParentId";
 
-                    affected += await ForgePerformancePipeline.ExecuteAsync(
+                    affected += await ForgeAdo.ExecuteAsync(
                         connection,
                         childSql,
                         new Dictionary<string, object?> { ["ParentId"] = id },
@@ -149,7 +148,7 @@ public partial class ForgeDb
 
             var parentSql = $"UPDATE {parentShape.TableName} SET {options.SoftDeleteColumn} = 1 WHERE {ForgeEntityShape.ColumnName(parentKey)} = @Id";
 
-            affected += await ForgePerformancePipeline.ExecuteAsync(
+            affected += await ForgeAdo.ExecuteAsync(
                 connection,
                 parentSql,
                 new Dictionary<string, object?> { ["Id"] = id },

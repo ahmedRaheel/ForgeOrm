@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using System.Runtime.CompilerServices;
+using ForgeORM.Abstractions;
 
 namespace ForgeORM.Core;
 
@@ -132,9 +133,27 @@ public static class ForgeSourceGeneratedRegistry
 {
     private static readonly List<IForgeSourceGeneratedAccessorProvider> Providers = new();
     private static readonly ConcurrentDictionary<Type, IForgeSourceGeneratedAccessorProvider?> ProviderByType = new();
+    private static readonly ConcurrentDictionary<Type, ForgeEntityMetadata> MetadataByType = new();
     private static readonly object Gate = new();
 
     public static ForgeOrmCompilationMode CompilationMode { get; set; } = ForgeOrmCompilationMode.Auto;
+
+    /// <summary>True when at least one entity metadata map has been registered by generated code.</summary>
+    public static bool HasGeneratedMetadata => !MetadataByType.IsEmpty;
+
+    /// <summary>Registers source-generated metadata for an entity or projection type.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void RegisterMetadata(Type type, ForgeEntityMetadata metadata)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        ArgumentNullException.ThrowIfNull(metadata);
+        MetadataByType[type] = metadata;
+    }
+
+    /// <summary>Gets source-generated metadata when available.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryGetMetadata(Type type, out ForgeEntityMetadata metadata)
+        => MetadataByType.TryGetValue(type, out metadata!);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Register(IForgeSourceGeneratedAccessorProvider provider)

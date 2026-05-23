@@ -22,7 +22,14 @@ internal static class ForgeSqlServerProviderDirectHotPath
     private static readonly ConcurrentDictionary<string, string[]> SqlParameterTokenCache = new(StringComparer.Ordinal);
 
     public static bool CanUse(IForgeDatabaseProvider provider)
-        => string.Equals(provider.ProviderName, "SqlServer", StringComparison.OrdinalIgnoreCase);
+    {
+        if (string.Equals(provider.ProviderName, "SqlServer", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var providerType = provider.GetType().FullName ?? provider.GetType().Name;
+        return providerType.Contains("SqlServer", StringComparison.OrdinalIgnoreCase)
+            || providerType.Contains("SqlClient", StringComparison.OrdinalIgnoreCase);
+    }
 
     public static T? GetById<T>(string connectionString, ForgeEntityMetadata metadata, object id)
         => ForgeSqlServerDirectGetByIdExecutor<T>.Execute(connectionString, metadata, id);
@@ -48,6 +55,69 @@ internal static class ForgeSqlServerProviderDirectHotPath
         using var reader = command.ExecuteReader(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
         var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader, sql);
         return reader.Read() ? materializer(reader) : default;
+    }
+
+    public static async ValueTask<T?> QueryFirstOrDefaultAsync<T>(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds, CancellationToken cancellationToken)
+    {
+        await using var command = CreateTextCommand(connection, sql, parameters, transaction, timeoutSeconds);
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
+        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader, sql);
+        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false) ? materializer(reader) : default;
+    }
+
+    public static T? QueryFirstOrDefault<T>(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds)
+    {
+        using var command = CreateTextCommand(connection, sql, parameters, transaction, timeoutSeconds);
+        if (connection.State != ConnectionState.Open)
+            connection.Open();
+        using var reader = command.ExecuteReader(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
+        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader, sql);
+        return reader.Read() ? materializer(reader) : default;
+    }
+
+    public static async ValueTask<IReadOnlyList<T>> QueryAsync<T>(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds, CancellationToken cancellationToken)
+    {
+        await using var command = CreateTextCommand(connection, sql, parameters, transaction, timeoutSeconds);
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
+        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader, sql);
+        var rows = new List<T>(EstimateCapacity(sql));
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            rows.Add(materializer(reader));
+        return rows;
+    }
+
+    public static IReadOnlyList<T> Query<T>(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds)
+    {
+        using var command = CreateTextCommand(connection, sql, parameters, transaction, timeoutSeconds);
+        if (connection.State != ConnectionState.Open)
+            connection.Open();
+        using var reader = command.ExecuteReader(CommandBehavior.SequentialAccess);
+        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader, sql);
+        var rows = new List<T>(EstimateCapacity(sql));
+        while (reader.Read())
+            rows.Add(materializer(reader));
+        return rows;
+    }
+
+    public static async ValueTask<T?> ExecuteScalarAsync<T>(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds, CancellationToken cancellationToken)
+    {
+        await using var command = CreateTextCommand(connection, sql, parameters, transaction, timeoutSeconds);
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        var value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        return ForgeScalarConverter.To<T>(value);
+    }
+
+    public static async ValueTask<int> ExecuteAsync(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds, CancellationToken cancellationToken)
+    {
+        await using var command = CreateTextCommand(connection, sql, parameters, transaction, timeoutSeconds);
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public static async Task<IReadOnlyList<T>> QueryAsync<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
@@ -346,6 +416,55 @@ internal static class ForgeSqlServerProviderDirectHotPath
 
         var binder = ForgeSqlServerParameterBinderCache.GetOrAdd(parameters.GetType(), parameterNames, parameterNamesKey);
         binder(command, parameters);
+    }
+
+
+    internal static void AddInt32Parameter(SqlCommand command, string parameterName, int value)
+    {
+        if (!parameterName.StartsWith('@')) parameterName = "@" + parameterName;
+        command.Parameters.Add(parameterName, SqlDbType.Int).Value = value;
+    }
+
+    internal static void AddInt64Parameter(SqlCommand command, string parameterName, long value)
+    {
+        if (!parameterName.StartsWith('@')) parameterName = "@" + parameterName;
+        command.Parameters.Add(parameterName, SqlDbType.BigInt).Value = value;
+    }
+
+    internal static void AddStringParameter(SqlCommand command, string parameterName, string? value)
+    {
+        if (!parameterName.StartsWith('@')) parameterName = "@" + parameterName;
+        command.Parameters.Add(parameterName, SqlDbType.NVarChar).Value = value is null ? DBNull.Value : value;
+    }
+
+    internal static void AddDecimalParameter(SqlCommand command, string parameterName, decimal value)
+    {
+        if (!parameterName.StartsWith('@')) parameterName = "@" + parameterName;
+        command.Parameters.Add(parameterName, SqlDbType.Decimal).Value = value;
+    }
+
+    internal static void AddGuidParameter(SqlCommand command, string parameterName, Guid value)
+    {
+        if (!parameterName.StartsWith('@')) parameterName = "@" + parameterName;
+        command.Parameters.Add(parameterName, SqlDbType.UniqueIdentifier).Value = value;
+    }
+
+    internal static void AddBooleanParameter(SqlCommand command, string parameterName, bool value)
+    {
+        if (!parameterName.StartsWith('@')) parameterName = "@" + parameterName;
+        command.Parameters.Add(parameterName, SqlDbType.Bit).Value = value;
+    }
+
+    internal static void AddDateTimeParameter(SqlCommand command, string parameterName, DateTime value)
+    {
+        if (!parameterName.StartsWith('@')) parameterName = "@" + parameterName;
+        command.Parameters.Add(parameterName, SqlDbType.DateTime2).Value = value;
+    }
+
+    internal static void AddEnumInt32Parameter<TEnum>(SqlCommand command, string parameterName, TEnum value) where TEnum : struct, Enum
+    {
+        if (!parameterName.StartsWith('@')) parameterName = "@" + parameterName;
+        command.Parameters.Add(parameterName, SqlDbType.Int).Value = Convert.ToInt32(value, System.Globalization.CultureInfo.InvariantCulture);
     }
 
     internal static void AddTypedParameter(SqlCommand command, string parameterName, object? value, Type declaredType)

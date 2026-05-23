@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using ForgeORM.Abstractions;
+using Microsoft.Data.SqlClient;
 
 namespace ForgeORM.Core.Performance;
 
@@ -13,6 +14,10 @@ namespace ForgeORM.Core.Performance;
 /// </summary>
 public static class ForgePerformancePipeline
 {
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsSqlServerText(DbConnection connection, CommandType commandType)
+        => commandType == CommandType.Text && connection is SqlConnection;
+
     public static async ValueTask<IReadOnlyList<T>> QueryAsync<T>(
         DbConnection connection,
         string sql,
@@ -22,6 +27,9 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
+        if (IsSqlServerText(connection, commandType))
+            return await ForgeSqlServerProviderDirectHotPath.QueryAsync<T>((SqlConnection)connection, sql, parameters, (SqlTransaction?)transaction, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
         var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SequentialAccess);
         await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
 
@@ -45,6 +53,9 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
+        if (IsSqlServerText(connection, commandType))
+            return await ForgeSqlServerProviderDirectHotPath.QueryAsync<T>((SqlConnection)connection, sql, parameters, (SqlTransaction?)transaction, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
         var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SequentialAccess);
         await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
 
@@ -109,6 +120,9 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
+        if (IsSqlServerText(connection, commandType))
+            return await ForgeSqlServerProviderDirectHotPath.QueryFirstOrDefaultAsync<T>((SqlConnection)connection, sql, parameters, (SqlTransaction?)transaction, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
         var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
         await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
 
@@ -147,6 +161,9 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
+        if (IsSqlServerText(connection, commandType))
+            return await ForgeSqlServerProviderDirectHotPath.ExecuteAsync((SqlConnection)connection, sql, parameters, (SqlTransaction?)transaction, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
         var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<int>(connection, sql, parameters, commandType, CommandBehavior.Default);
         await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
 
@@ -166,6 +183,9 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
+        if (IsSqlServerText(connection, commandType))
+            return await ForgeSqlServerProviderDirectHotPath.ExecuteScalarAsync<T>((SqlConnection)connection, sql, parameters, (SqlTransaction?)transaction, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
         var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SingleResult);
         await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
 

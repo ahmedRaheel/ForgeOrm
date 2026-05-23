@@ -17,12 +17,26 @@ namespace ForgeORM.Core.Performance;
 internal static class ForgeSqlServerDirectMaterializerCache
 {
     private static readonly ConcurrentDictionary<string, Delegate> Cache = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<SqlMaterializerPlanKey, Delegate> SqlPlanCache = new();
 
     public static Func<SqlDataReader, T> GetOrCreate<T>(SqlDataReader reader)
     {
         var type = typeof(T);
         var key = CreateKey(type, reader);
         return (Func<SqlDataReader, T>)Cache.GetOrAdd(key, _ => Build<T>(reader));
+    }
+
+    /// <summary>
+    /// SQL-plan keyed materializer cache for provider-direct execution.
+    /// The generic shape-key overload is safe but allocates column/type strings every call.
+    /// Provider-direct query APIs already execute a stable SQL plan, so after the first execution
+    /// we reuse the materializer by result type + SQL text and avoid rebuilding the reader-shape key
+    /// on every query.
+    /// </summary>
+    public static Func<SqlDataReader, T> GetOrCreate<T>(SqlDataReader reader, string sql)
+    {
+        var key = new SqlMaterializerPlanKey(typeof(T), sql);
+        return (Func<SqlDataReader, T>)SqlPlanCache.GetOrAdd(key, _ => Build<T>(reader));
     }
 
     private static string CreateKey(Type type, SqlDataReader reader)
@@ -268,4 +282,5 @@ internal static class ForgeSqlServerDirectMaterializerCache
 
     private sealed record ConstructorPlan(ConstructorInfo? Constructor, ConstructorParameterBinding[] Parameters, HashSet<string> ParameterNames);
     private readonly record struct ConstructorParameterBinding(Type ParameterType, int Ordinal, bool HasColumn);
+    private readonly record struct SqlMaterializerPlanKey(Type ResultType, string Sql);
 }

@@ -10,16 +10,15 @@ internal static class ForgeSqlServerParameterBinderCache
     private static readonly ConcurrentDictionary<SqlServerParameterBinderKey, Action<SqlCommand, object>> Cache = new();
 
     public static Action<SqlCommand, object> GetOrAdd(Type parameterType, string[] parameterNames)
-        => GetOrAdd(parameterType, parameterNames, CreateParameterNameKey(parameterNames));
+        => GetOrAdd(parameterType, parameterNames, CreateParameterNamesKey(parameterNames));
 
-    public static Action<SqlCommand, object> GetOrAdd(Type parameterType, string[] parameterNames, string parameterNameKey)
-        => Cache.GetOrAdd(new SqlServerParameterBinderKey(parameterType, parameterNameKey),
+    public static Action<SqlCommand, object> GetOrAdd(Type parameterType, string[] parameterNames, string parameterNamesKey)
+        => Cache.GetOrAdd(new SqlServerParameterBinderKey(parameterType, parameterNamesKey),
             _ => Build(parameterType, parameterNames));
 
-    private static string CreateParameterNameKey(string[] parameterNames)
+    private static string CreateParameterNamesKey(string[] parameterNames)
     {
-        if (parameterNames.Length == 0)
-            return string.Empty;
+        if (parameterNames.Length == 0) return string.Empty;
         var copy = new string[parameterNames.Length];
         Array.Copy(parameterNames, copy, parameterNames.Length);
         Array.Sort(copy, StringComparer.OrdinalIgnoreCase);

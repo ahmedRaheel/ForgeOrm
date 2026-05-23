@@ -3,6 +3,7 @@ using System.Data;
 using System.Data.Common;
 using System.Reflection;
 using ForgeORM.Abstractions;
+using ForgeORM.Core.Performance;
 
 namespace ForgeORM.Core;
 
@@ -32,7 +33,7 @@ public partial class ForgeDb
             foreach (var row in rows)
             {
                 var command = Provider.BuildInsert(metadata, row!);
-                affected += await ForgeAdo.ExecuteAsync(
+                affected += await ForgePerformancePipeline.ExecuteAsync(
                     connection,
                     command.CommandText,
                     command.Parameters,
@@ -170,13 +171,13 @@ public partial class ForgeDb
 
                 var childShape = ForgeEntityShape.For(childType);
                 var sql = $"DELETE FROM {childShape.TableName} WHERE {ForgeEntityShape.ColumnName(fk)} = @ParentId";
-                affected += await ForgeAdo.ExecuteAsync(connection, sql, new Dictionary<string, object?> { ["ParentId"] = id }, transaction, cancellationToken: cancellationToken);
+                affected += await ForgePerformancePipeline.ExecuteAsync(connection, sql, new Dictionary<string, object?> { ["ParentId"] = id }, transaction, cancellationToken: cancellationToken);
             }
 
             var parentShape = ForgeEntityShape.For(typeof(T));
             var parentKey = parentShape.KeyProperty ?? throw new InvalidOperationException($"ForgeORM graph delete requires a key property on {typeof(T).Name}.");
             var parentSql = $"DELETE FROM {parentShape.TableName} WHERE {ForgeEntityShape.ColumnName(parentKey)} = @Id";
-            affected += await ForgeAdo.ExecuteAsync(
+            affected += await ForgePerformancePipeline.ExecuteAsync(
                 connection,
                 parentSql,
                 new Dictionary<string, object?> { ["Id"] = id, [parentKey.Name] = id },
@@ -246,7 +247,7 @@ public partial class ForgeDb
                     ? $"DELETE FROM {childShape.TableName} WHERE {ForgeEntityShape.ColumnName(fk)} = @ParentId"
                     : $"DELETE FROM {childShape.TableName} WHERE {ForgeEntityShape.ColumnName(fk)} = @ParentId AND {ForgeEntityShape.ColumnName(childKey)} NOT IN @Ids";
                 var parameters = new Dictionary<string, object?> { ["ParentId"] = keyValue, ["Ids"] = suppliedKeys };
-                affected += await ForgeAdo.ExecuteAsync(connection, deleteSql, parameters, transaction, cancellationToken: cancellationToken);
+                affected += await ForgePerformancePipeline.ExecuteAsync(connection, deleteSql, parameters, transaction, cancellationToken: cancellationToken);
             }
 
             foreach (var child in children)
@@ -309,7 +310,7 @@ public partial class ForgeDb
         var sql = $"UPDATE {shape.TableName} SET {setClause} WHERE {ForgeEntityShape.ColumnName(key)} = @{key.Name}";
         var parameters = ForgeGraphWriteHelpers.CreateParameterDictionary(props, entity);
         parameters[key.Name] = ForgeGraphWriteHelpers.NormalizeDatabaseValue(ForgeRuntimeAccessorCache.Get(key, entity), key);
-        return await ForgeAdo.ExecuteAsync(connection, sql, parameters, transaction, cancellationToken: cancellationToken);
+        return await ForgePerformancePipeline.ExecuteAsync(connection, sql, parameters, transaction, cancellationToken: cancellationToken);
     }
 
     private async Task<IReadOnlyList<object>> QueryDynamicListAsync(Type type, string sql, object? parameters, CancellationToken cancellationToken)

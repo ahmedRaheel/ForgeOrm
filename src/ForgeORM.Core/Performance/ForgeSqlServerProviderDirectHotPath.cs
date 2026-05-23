@@ -34,9 +34,9 @@ internal static class ForgeSqlServerProviderDirectHotPath
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds, out var plan);
+        await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
         await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
-        var materializer = GetOrCreateMaterializer<T>(plan, reader);
+        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader, sql);
         return await reader.ReadAsync(cancellationToken).ConfigureAwait(false) ? materializer(reader) : default;
     }
 
@@ -44,50 +44,19 @@ internal static class ForgeSqlServerProviderDirectHotPath
     {
         using var connection = new SqlConnection(connectionString);
         connection.Open();
-        using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds, out var plan);
+        using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
         using var reader = command.ExecuteReader(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
-        var materializer = GetOrCreateMaterializer<T>(plan, reader);
+        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader, sql);
         return reader.Read() ? materializer(reader) : default;
     }
-
-    public static async Task<T?> QuerySingleOrDefaultAsync<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
-    {
-        await using var connection = new SqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds, out var plan);
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
-        var materializer = GetOrCreateMaterializer<T>(plan, reader);
-        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            return default;
-        var first = materializer(reader);
-        if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            throw new InvalidOperationException("Sequence contains more than one element.");
-        return first;
-    }
-
-    public static T? QuerySingleOrDefault<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds)
-    {
-        using var connection = new SqlConnection(connectionString);
-        connection.Open();
-        using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds, out var plan);
-        using var reader = command.ExecuteReader(CommandBehavior.SequentialAccess);
-        var materializer = GetOrCreateMaterializer<T>(plan, reader);
-        if (!reader.Read())
-            return default;
-        var first = materializer(reader);
-        if (reader.Read())
-            throw new InvalidOperationException("Sequence contains more than one element.");
-        return first;
-    }
-
 
     public static async Task<IReadOnlyList<T>> QueryAsync<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds, out var plan);
+        await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
         await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
-        var materializer = GetOrCreateMaterializer<T>(plan, reader);
+        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader, sql);
         var rows = new List<T>(EstimateCapacity(sql));
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             rows.Add(materializer(reader));
@@ -98,9 +67,9 @@ internal static class ForgeSqlServerProviderDirectHotPath
     {
         using var connection = new SqlConnection(connectionString);
         connection.Open();
-        using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds, out var plan);
+        using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
         using var reader = command.ExecuteReader(CommandBehavior.SequentialAccess);
-        var materializer = GetOrCreateMaterializer<T>(plan, reader);
+        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader, sql);
         var rows = new List<T>(EstimateCapacity(sql));
         while (reader.Read())
             rows.Add(materializer(reader));
@@ -163,22 +132,11 @@ internal static class ForgeSqlServerProviderDirectHotPath
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds, out var plan);
+        await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
         await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess | CommandBehavior.CloseConnection, cancellationToken).ConfigureAwait(false);
-        var materializer = GetOrCreateMaterializer<T>(plan, reader);
+        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader, sql);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             yield return materializer(reader);
-    }
-
-    private static Func<SqlDataReader, T> GetOrCreateMaterializer<T>(SqlQueryPlan plan, SqlDataReader reader)
-    {
-        var type = typeof(T);
-        if (plan.Materializers.TryGetValue(type, out var existing))
-            return (Func<SqlDataReader, T>)existing;
-
-        var created = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
-        plan.Materializers.TryAdd(type, created);
-        return created;
     }
 
     public static SqlCommand CreateGetByIdCommand(SqlConnection connection, ForgeEntityMetadata metadata, object id, SqlTransaction? transaction, int? timeoutSeconds)
@@ -197,20 +155,13 @@ internal static class ForgeSqlServerProviderDirectHotPath
     }
 
     public static SqlCommand CreateTextCommand(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds)
-        => CreateTextCommand(connection, sql, parameters, transaction, timeoutSeconds, out _);
-
-    private static SqlCommand CreateTextCommand(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds, out SqlQueryPlan plan)
     {
         var expanded = ExpandEnumerableSqlParameters(sql, parameters);
         sql = expanded.Sql;
         parameters = expanded.Parameters;
 
         var key = new SqlQueryPlanKey(sql, parameters?.GetType());
-        plan = QueryPlans.GetOrAdd(key, static k =>
-        {
-            var names = SqlParameterTokenCache.GetOrAdd(k.Sql, ExtractParameterNames);
-            return new SqlQueryPlan(k.Sql, names, CreateParameterNameKey(names));
-        });
+        var plan = QueryPlans.GetOrAdd(key, static k => CreateSqlQueryPlan(k.Sql));
         var command = connection.CreateCommand();
         command.CommandText = plan.Sql;
         command.CommandType = CommandType.Text;
@@ -520,10 +471,16 @@ internal static class ForgeSqlServerProviderDirectHotPath
         return type.IsPrimitive || type.IsEnum || type == typeof(string) || type == typeof(Guid) || type == typeof(decimal) || type == typeof(DateTime) || type == typeof(DateTimeOffset) || type == typeof(DateOnly) || type == typeof(TimeOnly) || type == typeof(TimeSpan) || type == typeof(byte[]);
     }
 
-    private static string CreateParameterNameKey(string[] parameterNames)
+
+    private static SqlQueryPlan CreateSqlQueryPlan(string sql)
     {
-        if (parameterNames.Length == 0)
-            return string.Empty;
+        var names = SqlParameterTokenCache.GetOrAdd(sql, ExtractParameterNames);
+        return new SqlQueryPlan(sql, names, CreateParameterNamesKey(names));
+    }
+
+    private static string CreateParameterNamesKey(string[] parameterNames)
+    {
+        if (parameterNames.Length == 0) return string.Empty;
         var copy = new string[parameterNames.Length];
         Array.Copy(parameterNames, copy, parameterNames.Length);
         Array.Sort(copy, StringComparer.OrdinalIgnoreCase);
@@ -565,18 +522,5 @@ internal static class ForgeSqlServerProviderDirectHotPath
     private readonly record struct ExpandedSql(string Sql, object? Parameters);
     private sealed record SqlServerEntityPlan(string Sql, string ParameterName, Type KeyType);
     private readonly record struct SqlQueryPlanKey(string Sql, Type? ParameterType);
-    private sealed class SqlQueryPlan
-    {
-        public SqlQueryPlan(string sql, string[] parameterNames, string parameterNamesKey)
-        {
-            Sql = sql;
-            ParameterNames = parameterNames;
-            ParameterNamesKey = parameterNamesKey;
-        }
-
-        public string Sql { get; }
-        public string[] ParameterNames { get; }
-        public string ParameterNamesKey { get; }
-        public ConcurrentDictionary<Type, Delegate> Materializers { get; } = new();
-    }
+    private sealed record SqlQueryPlan(string Sql, string[] ParameterNames, string ParameterNamesKey);
 }

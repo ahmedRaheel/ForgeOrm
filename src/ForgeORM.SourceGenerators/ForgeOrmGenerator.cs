@@ -205,7 +205,7 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("        var index = 0;");
         sb.AppendLine("        foreach (var c in value)");
         sb.AppendLine("        {");
-        sb.AppendLine("            if (c == '_' || c == '-' || c == ' ' || c == '[' || c == ']' || c == '\\"') continue;");
+        sb.AppendLine("            if (c == '_' || c == '-' || c == ' ' || c == '[' || c == ']' || c == '\"') continue;");
         sb.AppendLine("            buffer[index++] = char.ToUpperInvariant(c);");
         sb.AppendLine("        }");
         sb.AppendLine("        return new string(buffer[..index]);");

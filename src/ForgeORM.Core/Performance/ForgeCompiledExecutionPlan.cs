@@ -23,6 +23,7 @@ public sealed class ForgeCompiledQueryPlan<T>
     public required string Provider { get; init; }
     public required Type? ParameterType { get; init; }
     public required string QueryFingerprint { get; init; }
+    public required bool RequiresEnumNormalization { get; init; }
 }
 
 internal static class ForgeCompiledExecutionPlanCache
@@ -34,7 +35,8 @@ internal static class ForgeCompiledExecutionPlanCache
     {
         var provider = connection.GetType().FullName ?? connection.GetType().Name;
         var parameterType = parameters?.GetType();
-        var key = new ForgeCompiledExecutionPlanKey(provider, typeof(T), parameterType, commandType, behavior, ForgeFastHash.FingerprintSql(sql));
+        var sqlHash = ForgeFastHash.HashSql(sql);
+        var key = new ForgeCompiledExecutionPlanKey(provider, typeof(T), parameterType, commandType, behavior, sqlHash);
         return (ForgeCompiledQueryPlan<T>)Cache.GetOrAdd(key, _ => new ForgeCompiledQueryPlan<T>
         {
             Sql = sql,
@@ -42,11 +44,59 @@ internal static class ForgeCompiledExecutionPlanCache
             Behavior = behavior,
             Provider = provider,
             ParameterType = parameterType,
-            QueryFingerprint = key.SqlFingerprint,
+            QueryFingerprint = key.SqlFingerprint.ToString("X16", System.Globalization.CultureInfo.InvariantCulture),
             ParameterNames = ForgeParameterBinderCompiler.ExtractParameterNames(sql, commandType),
-            Binder = ForgeParameterBinderCompiler.Compile(parameterType, sql, commandType)
+            Binder = ForgeParameterBinderCompiler.Compile(parameterType, sql, commandType, sqlHash),
+            RequiresEnumNormalization = ForgeRawEnumSqlAnalyzer.RequiresNormalization<T>(sql, commandType)
         });
     }
+}
+
+
+internal static class ForgeRawEnumSqlAnalyzer
+{
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    public static bool RequiresNormalization<T>(string sql, CommandType commandType)
+    {
+        if (commandType != CommandType.Text || string.IsNullOrWhiteSpace(sql))
+            return false;
+
+        var enumMap = ForgeORM.Core.Performance.ForgeRawEnumParameterMap<T>.Map;
+        if (enumMap.Count == 0)
+            return false;
+
+        // Do this once during plan creation, not once per execution.
+        // QueryById should not pay enum/raw-SQL rewriting cost when the SQL does not reference enum columns.
+        foreach (var item in enumMap)
+        {
+            if (ContainsIdentifier(sql, item.Key))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool ContainsIdentifier(string sql, string identifier)
+    {
+        var index = 0;
+        while ((index = sql.IndexOf(identifier, index, StringComparison.OrdinalIgnoreCase)) >= 0)
+        {
+            var before = index == 0 ? '\0' : sql[index - 1];
+            var afterIndex = index + identifier.Length;
+            var after = afterIndex >= sql.Length ? '\0' : sql[afterIndex];
+
+            if (!IsIdentifierChar(before) && !IsIdentifierChar(after))
+                return true;
+
+            index = afterIndex;
+        }
+
+        return false;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsIdentifierChar(char ch)
+        => char.IsLetterOrDigit(ch) || ch == '_' || ch == '@' || ch == ':';
 }
 
 internal readonly record struct ForgeCompiledExecutionPlanKey(
@@ -55,7 +105,7 @@ internal readonly record struct ForgeCompiledExecutionPlanKey(
     Type? ParameterType,
     CommandType CommandType,
     CommandBehavior Behavior,
-    string SqlFingerprint);
+    ulong SqlFingerprint);
 
 /// <summary>
 /// Compiles reusable parameter layout/binder delegates. Command instances are still new per execution, but reflection and parameter discovery are not.
@@ -64,9 +114,9 @@ internal static class ForgeParameterBinderCompiler
 {
     private static readonly ConcurrentDictionary<ForgeParameterBinderKey, Action<DbCommand, object?>> Cache = new();
 
-    public static Action<DbCommand, object?> Compile(Type? parameterType, string sql, CommandType commandType)
+    public static Action<DbCommand, object?> Compile(Type? parameterType, string sql, CommandType commandType, ulong sqlHash)
     {
-        var key = new ForgeParameterBinderKey(parameterType, commandType, ForgeFastHash.FingerprintSql(sql));
+        var key = new ForgeParameterBinderKey(parameterType, commandType, sqlHash);
         return Cache.GetOrAdd(key, _ => Build(parameterType, sql, commandType));
     }
 
@@ -435,5 +485,5 @@ internal static class ForgeParameterBinderCompiler
     }
 }
 
-internal readonly record struct ForgeParameterBinderKey(Type? ParameterType, CommandType CommandType, string SqlFingerprint);
+internal readonly record struct ForgeParameterBinderKey(Type? ParameterType, CommandType CommandType, ulong SqlFingerprint);
 internal readonly record struct ForgeParameterProperty(string Name, Func<object, object?> Getter, Type PropertyType, PropertyInfo Property);

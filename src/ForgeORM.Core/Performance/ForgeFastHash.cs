@@ -13,10 +13,10 @@ internal static class ForgeFastHash
     private const ulong Prime = 1099511628211UL;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    public static string FingerprintSql(string? value)
+    public static ulong HashSql(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
-            return string.Empty;
+            return 0UL;
 
         var hash = Offset;
         var pendingSpace = false;
@@ -41,8 +41,12 @@ internal static class ForgeFastHash
             hash *= Prime;
         }
 
-        return hash.ToString("X16", System.Globalization.CultureInfo.InvariantCulture);
+        return hash;
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    public static string FingerprintSql(string? value)
+        => HashSql(value).ToString("X16", System.Globalization.CultureInfo.InvariantCulture);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static string FingerprintReaderShape(DbDataReaderShape shape)

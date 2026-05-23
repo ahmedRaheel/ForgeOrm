@@ -32,6 +32,12 @@ internal static class ForgeSqlServerProviderDirectHotPath
 
     public static async Task<T?> QueryFirstOrDefaultAsync<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
     {
+        if (ForgeSourceGeneratedRegistry.TryExecuteSqlServerFirstOrDefaultAsync<T>(
+                connectionString, sql, parameters, timeoutSeconds, cancellationToken, out var generated))
+        {
+            return await generated.ConfigureAwait(false);
+        }
+
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
@@ -162,7 +168,6 @@ internal static class ForgeSqlServerProviderDirectHotPath
 
         var key = new SqlQueryPlanKey(sql, parameters?.GetType());
         var plan = QueryPlans.GetOrAdd(key, static k => new SqlQueryPlan(k.Sql, SqlParameterTokenCache.GetOrAdd(k.Sql, ExtractParameterNames)));
-        _ = ForgePreparedCommandPool.GetOrAdd(plan.Sql, plan.ParameterNames, parameters?.GetType(), timeoutSeconds);
         var command = connection.CreateCommand();
         command.CommandText = plan.Sql;
         command.CommandType = CommandType.Text;

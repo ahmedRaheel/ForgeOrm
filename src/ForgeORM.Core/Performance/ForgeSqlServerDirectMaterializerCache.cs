@@ -20,6 +20,14 @@ internal static class ForgeSqlServerDirectMaterializerCache
 
     public static Func<SqlDataReader, T> GetOrCreate<T>(SqlDataReader reader)
     {
+        if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
+            && ForgeSourceGeneratedRegistry.TryGetProvider(typeof(T), out var provider)
+            && provider.TryCreateReader<T>(reader, out var generated)
+            && generated is not null)
+        {
+            return r => generated(r);
+        }
+
         var type = typeof(T);
         var key = CreateKey(type, reader);
         return (Func<SqlDataReader, T>)Cache.GetOrAdd(key, _ => Build<T>(reader));

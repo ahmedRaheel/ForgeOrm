@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 using ForgeORM.Abstractions;
 
 namespace ForgeORM.Core;
@@ -123,6 +125,22 @@ public interface IForgeSourceGeneratedAccessorProvider
         binder = null;
         return false;
     }
+
+    /// <summary>
+    /// Optional full query executor generated for provider-native hot paths.
+    /// When this returns true the generic ForgeORM runtime pipeline is bypassed.
+    /// </summary>
+    bool TryExecuteSqlServerFirstOrDefaultAsync<T>(
+        string connectionString,
+        string sql,
+        object? parameters,
+        int? timeoutSeconds,
+        CancellationToken cancellationToken,
+        out ValueTask<T?> result)
+    {
+        result = default;
+        return false;
+    }
 }
 
 /// <summary>
@@ -176,5 +194,30 @@ public static class ForgeSourceGeneratedRegistry
         })!;
 
         return provider is not null;
+    }
+
+    /// <summary>Attempts to execute a full source-generated SQL Server first-row query.</summary>
+    public static bool TryExecuteSqlServerFirstOrDefaultAsync<T>(
+        string connectionString,
+        string sql,
+        object? parameters,
+        int? timeoutSeconds,
+        CancellationToken cancellationToken,
+        out ValueTask<T?> result)
+    {
+        if (CompilationMode == ForgeOrmCompilationMode.RuntimeEmit)
+        {
+            result = default;
+            return false;
+        }
+
+        if (TryGetProvider(typeof(T), out var provider) &&
+            provider.TryExecuteSqlServerFirstOrDefaultAsync(connectionString, sql, parameters, timeoutSeconds, cancellationToken, out result))
+        {
+            return true;
+        }
+
+        result = default;
+        return false;
     }
 }

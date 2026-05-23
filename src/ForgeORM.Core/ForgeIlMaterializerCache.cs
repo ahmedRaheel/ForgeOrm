@@ -28,7 +28,7 @@ internal static class ForgeIlMaterializerCache
             return sourceReader;
         }
 
-        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGenerated)
+        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGeneratedStrict)
             throw new InvalidOperationException($"No ForgeORM source-generated reader was registered for {type.FullName}.");
 
         var key = ForgeReaderShapeCache.CreateKey(type, reader);
@@ -41,7 +41,7 @@ internal static class ForgeIlMaterializerCache
             && ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider))
             return provider.GetReader(type, reader);
 
-        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGenerated)
+        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGeneratedStrict)
             throw new InvalidOperationException($"No ForgeORM source-generated reader was registered for {type.FullName}.");
 
         var key = ForgeReaderShapeCache.CreateKey(type, reader);

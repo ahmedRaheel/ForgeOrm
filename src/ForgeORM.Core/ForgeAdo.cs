@@ -567,7 +567,7 @@ public static class ForgeAdo
             && generatedBinder is not null)
             return generatedBinder;
 
-        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGenerated)
+        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGeneratedStrict)
             throw new InvalidOperationException($"No ForgeORM source-generated parameter binder was registered for {type.FullName}.");
 
         var props = ParameterPropertyCache.GetOrAdd(type, BuildParameterProperties);

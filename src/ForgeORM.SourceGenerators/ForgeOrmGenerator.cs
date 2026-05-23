@@ -244,9 +244,36 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         if (type.TypeKind is not (TypeKind.Class or TypeKind.Struct)) return false;
         if (type.TypeKind == TypeKind.Class && type.IsAbstract) return false;
         if (type.DeclaredAccessibility != Accessibility.Public) return false;
-        if (type.ContainingNamespace?.ToDisplayString().StartsWith("System", StringComparison.Ordinal) == true) return false;
-        return HasForgeTableAttribute(type) || HasGenerateMapperAttribute(type) || HasForgeDtoAttribute(type) || HasForgeProjectionAttribute(type);
+
+        var ns = type.ContainingNamespace?.ToDisplayString() ?? string.Empty;
+        if (ns.StartsWith("System", StringComparison.Ordinal) ||
+            ns.StartsWith("Microsoft", StringComparison.Ordinal) ||
+            ns.StartsWith("BenchmarkDotNet", StringComparison.Ordinal))
+            return false;
+
+        if (HasForgeTableAttribute(type) || HasGenerateMapperAttribute(type) || HasForgeDtoAttribute(type) || HasForgeProjectionAttribute(type))
+            return true;
+
+        // Enterprise framework-level policy: generation should not require attributes for every
+        // model/projection. Convention-based generation covers common app/benchmark/sample model
+        // namespaces while avoiding random infrastructure classes.
+        if (ns.EndsWith(".Models", StringComparison.Ordinal) ||
+            ns.Contains(".Models.", StringComparison.Ordinal) ||
+            ns.EndsWith(".Dtos", StringComparison.Ordinal) ||
+            ns.Contains(".Dtos.", StringComparison.Ordinal) ||
+            ns.EndsWith(".Projections", StringComparison.Ordinal) ||
+            ns.Contains(".Projections.", StringComparison.Ordinal))
+            return Properties(type).Any(IsSupportedGeneratedProperty);
+
+        return type.Name.EndsWith("Dto", StringComparison.OrdinalIgnoreCase) ||
+               type.Name.EndsWith("Record", StringComparison.OrdinalIgnoreCase) ||
+               type.Name.EndsWith("Projection", StringComparison.OrdinalIgnoreCase)
+            ? Properties(type).Any(IsSupportedGeneratedProperty)
+            : false;
     }
+
+    private static bool IsSupportedGeneratedProperty(IPropertySymbol p)
+        => !p.IsStatic && p.GetMethod is not null && IsScalar(p.Type);
 
     private static bool HasForgeTableAttribute(INamedTypeSymbol type)
         => type.GetAttributes().Any(a => a.AttributeClass?.Name is "ForgeTableAttribute" or "TableAttribute");

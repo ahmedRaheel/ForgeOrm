@@ -22,5 +22,7 @@
     <ProjectReference Include="..\..\src\ForgeORM.Analytics\ForgeORM.Analytics.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.DataFrame\ForgeORM.DataFrame.csproj" />
       <ProjectReference Include="..\..\src\ForgeORM.Abstractions\ForgeORM.Abstractions.csproj" />
+  
+    <ProjectReference Include="..\..\src\ForgeORM.SourceGenerators\ForgeORM.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" />
   </ItemGroup>
 </Project>

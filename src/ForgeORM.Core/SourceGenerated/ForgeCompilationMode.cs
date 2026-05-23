@@ -63,9 +63,17 @@ public static class ForgeProviderMaterializerRegistry
 
 public enum ForgeOrmCompilationMode
 {
+    /// <summary>Prefer source-generated artifacts, but safely fall back to provider-native/MSIL runtime emit when a generated artifact is missing.</summary>
     Auto = 0,
+
+    /// <summary>Force runtime emit/materializer fallback and ignore source-generated providers.</summary>
     RuntimeEmit = 1,
-    SourceGenerated = 2
+
+    /// <summary>Prefer source-generated artifacts globally, but do not break execution when a projection/entity was not generated.</summary>
+    SourceGenerated = 2,
+
+    /// <summary>NativeAOT/strict mode. Fail fast if any required generated artifact is missing.</summary>
+    SourceGeneratedStrict = 3
 }
 
 /// <summary>

@@ -27,8 +27,8 @@ public sealed class SourceGeneratedForgeEntityMetadataResolver : IForgeEntityMet
 }
 
 /// <summary>
-/// Default metadata resolver for Auto mode. It prefers generated metadata and falls back to reflection
-/// only when generation is unavailable. In SourceGenerated mode it fails fast instead of silently using reflection.
+/// Default metadata resolver for Auto/SourceGenerated mode. It prefers generated metadata and falls back to reflection
+/// when generation is unavailable. SourceGeneratedStrict fails fast for NativeAOT/strict deployments.
 /// </summary>
 public sealed class HybridForgeEntityMetadataResolver : IForgeEntityMetadataResolver
 {
@@ -38,7 +38,7 @@ public sealed class HybridForgeEntityMetadataResolver : IForgeEntityMetadataReso
     /// <summary>Resolves metadata for <typeparamref name="T"/>.</summary>
     public ForgeEntityMetadata Resolve<T>() => Resolve(typeof(T));
 
-    /// <summary>Resolves metadata using generated metadata first and reflection fallback only in Auto/RuntimeEmit mode.</summary>
+    /// <summary>Resolves metadata using generated metadata first and reflection fallback unless SourceGeneratedStrict mode is enabled.</summary>
     public ForgeEntityMetadata Resolve(Type type)
     {
         ArgumentNullException.ThrowIfNull(type);
@@ -48,7 +48,7 @@ public sealed class HybridForgeEntityMetadataResolver : IForgeEntityMetadataReso
         if (ForgeSourceGeneratedRegistry.TryGetMetadata(type, out var generated))
             return _cache.GetOrAdd(type, generated);
 
-        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGenerated)
+        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGeneratedStrict)
             throw new InvalidOperationException(
                 $"SourceGenerated mode is enabled, but no generated metadata was registered for {type.FullName}.");
 

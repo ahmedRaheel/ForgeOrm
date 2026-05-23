@@ -15,13 +15,8 @@ public partial class ForgeDb
     public T? GetById<T>(object id)
     {
         var metadata = _metadata.Resolve<T>();
-        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-            return ForgeSqlServerProviderDirectHotPath.GetById<T>(_connectionString, metadata, id);
-
         var c = Provider.BuildGetById(metadata, id);
-        using var connection = CreateConnection();
-        connection.Open();
-        return ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, c.CommandText, c.Parameters).GetAwaiter().GetResult();
+        return ForgeFrameworkExecutionPolicy.FirstOrDefault<T>(Provider, _connectionString, c.CommandText, c.Parameters, timeoutSeconds: null);
     }
     /// <summary>
     /// Executes the T operation.
@@ -33,39 +28,24 @@ public partial class ForgeDb
     public async Task<T?> GetByIdAsync<T>(object id, CancellationToken cancellationToken = default)
     {
         var metadata = _metadata.Resolve<T>();
-        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-            return await ForgeSqlServerProviderDirectHotPath.GetByIdAsync<T>(_connectionString, metadata, id, cancellationToken).ConfigureAwait(false);
-
         var c = Provider.BuildGetById(metadata, id);
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        return await ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, c.CommandText, c.Parameters, timeoutSeconds: null, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return await ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T>(Provider, _connectionString, c.CommandText, c.Parameters, timeoutSeconds: null, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Gets one row by the configured key without boxing the key value at the public API.</summary>
     public T? GetById<T, TKey>(TKey id)
     {
         var metadata = _metadata.Resolve<T>();
-        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-            return ForgeSqlServerProviderDirectHotPath.GetById<T>(_connectionString, metadata, id!);
-
         var c = Provider.BuildGetById(metadata, id!);
-        using var connection = CreateConnection();
-        connection.Open();
-        return ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, c.CommandText, c.Parameters).GetAwaiter().GetResult();
+        return ForgeFrameworkExecutionPolicy.FirstOrDefault<T>(Provider, _connectionString, c.CommandText, c.Parameters, timeoutSeconds: null);
     }
 
     /// <summary>Gets one row by the configured key without boxing the key value at the public API.</summary>
     public async Task<T?> GetByIdAsync<T, TKey>(TKey id, CancellationToken cancellationToken = default)
     {
         var metadata = _metadata.Resolve<T>();
-        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-            return await ForgeSqlServerProviderDirectHotPath.GetByIdAsync<T>(_connectionString, metadata, id!, cancellationToken).ConfigureAwait(false);
-
         var c = Provider.BuildGetById(metadata, id!);
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        return await ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, c.CommandText, c.Parameters, timeoutSeconds: null, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return await ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T>(Provider, _connectionString, c.CommandText, c.Parameters, timeoutSeconds: null, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

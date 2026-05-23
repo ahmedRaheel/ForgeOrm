@@ -22,6 +22,10 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
+        if (!ForgeEnterpriseRuntime.IsEnabled &&
+            ForgeSourceGeneratedRegistry.TryExecuteQueryAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var generatedQuery))
+            return await generatedQuery.ConfigureAwait(false);
+
         var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SequentialAccess);
         await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
 
@@ -45,6 +49,10 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
+        if (!ForgeEnterpriseRuntime.IsEnabled &&
+            ForgeSourceGeneratedRegistry.TryExecuteQueryAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var generatedQuery))
+            return await generatedQuery.ConfigureAwait(false);
+
         var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SequentialAccess);
         await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
 
@@ -109,6 +117,10 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
+        if (!ForgeEnterpriseRuntime.IsEnabled &&
+            ForgeSourceGeneratedRegistry.TryExecuteFirstOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var generatedFirst))
+            return await generatedFirst.ConfigureAwait(false);
+
         var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
         await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
 
@@ -128,6 +140,18 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
+        if (!ForgeEnterpriseRuntime.IsEnabled &&
+            ForgeSourceGeneratedRegistry.TryExecuteQueryAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var generatedRows))
+        {
+            var rows = await generatedRows.ConfigureAwait(false);
+            return rows.Count switch
+            {
+                0 => default,
+                1 => rows[0],
+                _ => throw new InvalidOperationException("Sequence contains more than one element.")
+            };
+        }
+
         var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SequentialAccess);
         await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
 
@@ -166,6 +190,10 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
+        if (!ForgeEnterpriseRuntime.IsEnabled &&
+            ForgeSourceGeneratedRegistry.TryExecuteScalarAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var generatedScalar))
+            return await generatedScalar.ConfigureAwait(false);
+
         var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SingleResult);
         await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
 

@@ -23,15 +23,7 @@ public partial class ForgeDb
         int? timeoutSeconds = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-        {
-            await foreach (var row in ForgeSqlServerProviderDirectHotPath.StreamAsync<T>(_connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false))
-                yield return row;
-            yield break;
-        }
-
-        await using var connection = CreateConnection();
-        await foreach (var row in ForgePerformancePipeline.StreamAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
+        await foreach (var row in ForgeFrameworkExecutionPolicy.StreamAsync<T>(Provider, _connectionString, sql, parameters, timeoutSeconds, cancellationToken)
             .ConfigureAwait(false))
         {
             yield return row;
@@ -47,12 +39,7 @@ public partial class ForgeDb
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-            return await ForgeSqlServerProviderDirectHotPath.QueryAsync<T>(_connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false);
-
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        return await ForgePerformancePipeline.QueryAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
+        return await ForgeFrameworkExecutionPolicy.QueryAsync<T>(Provider, _connectionString, sql, parameters, timeoutSeconds, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -66,12 +53,7 @@ public partial class ForgeDb
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        if (commandType == CommandType.Text && ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-            return await ForgeSqlServerProviderDirectHotPath.ExecuteAsync(_connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false);
-
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        return await ForgePerformancePipeline.ExecuteAsync(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
+        return await ForgeFrameworkExecutionPolicy.ExecuteAsync(Provider, _connectionString, sql, parameters, commandType, timeoutSeconds, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -115,9 +97,7 @@ public partial class ForgeDb
             throw new InvalidOperationException($"No key column found for {typeof(T).Name}.");
 
         var sql = $"SELECT {plan.SelectColumnsSql} FROM {plan.TableName} WHERE {plan.Key.ColumnName} = @{plan.Key.PropertyName}";
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        return await ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, sql, new Dictionary<string, object?> { [plan.Key.PropertyName] = id }, cancellationToken: cancellationToken)
+        return await ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T>(Provider, _connectionString, sql, new Dictionary<string, object?> { [plan.Key.PropertyName] = id }, timeoutSeconds: null, cancellationToken)
             .ConfigureAwait(false);
     }
 

@@ -17,16 +17,6 @@ public partial class ForgeDb
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-        {
-            return await ForgeSqlServerProviderDirectHotPath.QueryDictionaryAsync(
-                _connectionString,
-                sql,
-                parameters,
-                timeoutSeconds,
-                cancellationToken).ConfigureAwait(false);
-        }
-
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 

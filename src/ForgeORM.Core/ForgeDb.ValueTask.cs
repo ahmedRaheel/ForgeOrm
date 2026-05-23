@@ -11,8 +11,7 @@ public partial class ForgeDb
     /// </summary>
     public async ValueTask<IReadOnlyList<T>> QueryValueAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
-        await using var c = CreateConnection();
-        return await ForgePerformancePipeline.QueryAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
+        return await ForgeFrameworkExecutionPolicy.QueryValueAsync<T>(Provider, _connectionString, sql, parameters, timeoutSeconds, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -22,8 +21,7 @@ public partial class ForgeDb
     /// </summary>
     public async ValueTask<IReadOnlyList<T>> QueryValueAsync<T, TParameters>(string sql, TParameters parameters, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
-        await using var c = CreateConnection();
-        return await ForgePerformancePipeline.QueryAsync<T, TParameters>(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
+        return await ForgeFrameworkExecutionPolicy.QueryValueAsync<T, TParameters>(Provider, _connectionString, sql, parameters, timeoutSeconds, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -32,8 +30,7 @@ public partial class ForgeDb
     /// </summary>
     public async ValueTask<T?> ExecuteScalarValueAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
-        await using var c = CreateConnection();
-        return await ForgePerformancePipeline.ExecuteScalarAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
+        return await ForgeFrameworkExecutionPolicy.ScalarValueAsync<T>(Provider, _connectionString, sql, parameters, System.Data.CommandType.Text, timeoutSeconds, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -43,8 +40,7 @@ public partial class ForgeDb
     /// </summary>
     public async IAsyncEnumerable<T> StreamValueAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await using var c = CreateConnection();
-        await foreach (var item in ForgePerformancePipeline.StreamAsync<T>(c, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
+        await foreach (var item in ForgeFrameworkExecutionPolicy.StreamAsync<T>(Provider, _connectionString, sql, parameters, timeoutSeconds, cancellationToken)
             .ConfigureAwait(false))
         {
             yield return item;

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
 using System.Runtime.CompilerServices;
@@ -127,8 +128,71 @@ public interface IForgeSourceGeneratedAccessorProvider
     }
 
     /// <summary>
-    /// Optional full query executor generated for provider-native hot paths.
-    /// When this returns true the generic ForgeORM runtime pipeline is bypassed.
+    /// Optional provider-neutral full query executor generated for hot paths.
+    /// When this returns true the generic ForgeORM runtime pipeline is bypassed for any ADO.NET provider.
+    /// </summary>
+    bool TryExecuteFirstOrDefaultAsync<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters,
+        DbTransaction? transaction,
+        CommandType commandType,
+        int? timeoutSeconds,
+        CancellationToken cancellationToken,
+        out ValueTask<T?> result)
+    {
+        result = default;
+        return false;
+    }
+
+    /// <summary>Executes a generated provider-neutral list query for any ADO.NET provider.</summary>
+    bool TryExecuteQueryAsync<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters,
+        DbTransaction? transaction,
+        CommandType commandType,
+        int? timeoutSeconds,
+        CancellationToken cancellationToken,
+        out ValueTask<IReadOnlyList<T>> result)
+    {
+        result = default;
+        return false;
+    }
+
+    /// <summary>Executes a generated provider-neutral scalar query for any ADO.NET provider.</summary>
+    bool TryExecuteScalarAsync<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters,
+        DbTransaction? transaction,
+        CommandType commandType,
+        int? timeoutSeconds,
+        CancellationToken cancellationToken,
+        out ValueTask<T?> result)
+    {
+        result = default;
+        return false;
+    }
+
+    /// <summary>Executes a generated provider-neutral non-query command for any ADO.NET provider.</summary>
+    bool TryExecuteNonQueryAsync(
+        DbConnection connection,
+        string sql,
+        object? parameters,
+        DbTransaction? transaction,
+        CommandType commandType,
+        int? timeoutSeconds,
+        CancellationToken cancellationToken,
+        out ValueTask<int> result)
+    {
+        result = default;
+        return false;
+    }
+
+    /// <summary>
+    /// Compatibility SQL Server executor retained for older generated providers.
+    /// New generated providers should implement provider-neutral methods above.
     /// </summary>
     bool TryExecuteSqlServerFirstOrDefaultAsync<T>(
         string connectionString,
@@ -196,7 +260,87 @@ public static class ForgeSourceGeneratedRegistry
         return provider is not null;
     }
 
-    /// <summary>Attempts to execute a full source-generated SQL Server first-row query.</summary>
+    /// <summary>Attempts to execute a full source-generated provider-neutral first-row query.</summary>
+    public static bool TryExecuteFirstOrDefaultAsync<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters,
+        DbTransaction? transaction,
+        CommandType commandType,
+        int? timeoutSeconds,
+        CancellationToken cancellationToken,
+        out ValueTask<T?> result)
+    {
+        if (CompilationMode == ForgeOrmCompilationMode.RuntimeEmit || !TryGetProvider(typeof(T), out var provider))
+        {
+            result = default;
+            return false;
+        }
+
+        return provider.TryExecuteFirstOrDefaultAsync(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out result);
+    }
+
+    /// <summary>Attempts to execute a full source-generated provider-neutral list query.</summary>
+    public static bool TryExecuteQueryAsync<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters,
+        DbTransaction? transaction,
+        CommandType commandType,
+        int? timeoutSeconds,
+        CancellationToken cancellationToken,
+        out ValueTask<IReadOnlyList<T>> result)
+    {
+        if (CompilationMode == ForgeOrmCompilationMode.RuntimeEmit || !TryGetProvider(typeof(T), out var provider))
+        {
+            result = default;
+            return false;
+        }
+
+        return provider.TryExecuteQueryAsync(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out result);
+    }
+
+    /// <summary>Attempts to execute a full source-generated provider-neutral scalar query.</summary>
+    public static bool TryExecuteScalarAsync<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters,
+        DbTransaction? transaction,
+        CommandType commandType,
+        int? timeoutSeconds,
+        CancellationToken cancellationToken,
+        out ValueTask<T?> result)
+    {
+        if (CompilationMode == ForgeOrmCompilationMode.RuntimeEmit || !TryGetProvider(typeof(T), out var provider))
+        {
+            result = default;
+            return false;
+        }
+
+        return provider.TryExecuteScalarAsync(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out result);
+    }
+
+    /// <summary>Attempts to execute a full source-generated provider-neutral non-query command.</summary>
+    public static bool TryExecuteNonQueryAsync<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters,
+        DbTransaction? transaction,
+        CommandType commandType,
+        int? timeoutSeconds,
+        CancellationToken cancellationToken,
+        out ValueTask<int> result)
+    {
+        if (CompilationMode == ForgeOrmCompilationMode.RuntimeEmit || !TryGetProvider(typeof(T), out var provider))
+        {
+            result = default;
+            return false;
+        }
+
+        return provider.TryExecuteNonQueryAsync(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out result);
+    }
+
+    /// <summary>Attempts to execute a full source-generated SQL Server first-row query with older generated providers.</summary>
     public static bool TryExecuteSqlServerFirstOrDefaultAsync<T>(
         string connectionString,
         string sql,

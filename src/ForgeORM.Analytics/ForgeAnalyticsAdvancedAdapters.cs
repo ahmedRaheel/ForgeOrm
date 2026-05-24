@@ -54,11 +54,11 @@ public static class ForgeAdvancedFrameExtensions
     /// <param name="path">The path value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the WriteParquetAsync operation.</returns>
-    public static Task WriteParquetAsync(this ForgeDataFrame frame, string path, CancellationToken cancellationToken = default)
+    public static ValueTask WriteParquetAsync(this ForgeDataFrame frame, string path, CancellationToken cancellationToken = default)
     {
         // Hook point for a future optional ForgeORM.Parquet package. Kept here as an adapter contract, not a hard dependency.
         File.WriteAllText(path + ".schema.txt", string.Join(Environment.NewLine, frame.Columns));
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>

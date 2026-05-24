@@ -16,7 +16,7 @@ public static class ForgeRelationshipSplitQueryExtensions
 public sealed class ForgeRelationshipSplitQuery<TParent>
 {
     private readonly IForgeDb _db;
-    private readonly List<Func<IReadOnlyList<TParent>, CancellationToken, Task>> _loaders = [];
+    private readonly List<Func<IReadOnlyList<TParent>, CancellationToken, ValueTask>> _loaders = [];
 
     /// <summary>
     /// Executes the ForgeRelationshipSplitQuery operation.
@@ -168,7 +168,7 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ToListAsync operation.</returns>
-    public async Task<IReadOnlyList<TParent>> ToListAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
+    public async ValueTask<IReadOnlyList<TParent>> ToListAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
     {
         var parents = (await _db.QueryAsync<TParent>(parentSql, parameters, cancellationToken: cancellationToken)).ToList();
         foreach (var loader in _loaders) await loader(parents, cancellationToken);

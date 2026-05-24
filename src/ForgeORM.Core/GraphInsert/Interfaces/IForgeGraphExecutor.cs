@@ -7,19 +7,19 @@ namespace ForgeORM.Core.GraphInsert.Interfaces
     {
         ForgeDatabaseProvider Provider { get; }
 
-        Task InsertGraphAsync<T>(
+        ValueTask InsertGraphAsync<T>(
             T entity,
             ForgeGraphOptions options,
             CancellationToken cancellationToken = default)
             where T : class;
 
-        Task UpdateGraphAsync<T>(
+        ValueTask UpdateGraphAsync<T>(
             T entity,
             ForgeGraphOptions options,
             CancellationToken cancellationToken = default)
             where T : class;
 
-        Task DeleteGraphAsync<T>(
+        ValueTask DeleteGraphAsync<T>(
             T entity,
             ForgeGraphOptions options,
             CancellationToken cancellationToken = default)

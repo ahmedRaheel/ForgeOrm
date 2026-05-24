@@ -19,9 +19,7 @@ public partial class ForgeDb
             return ForgeSqlServerProviderDirectHotPath.GetById<T>(_connectionString, metadata, id);
 
         var c = Provider.BuildGetById(metadata, id);
-        using var connection = CreateConnection();
-        connection.Open();
-        return ForgeAdo.QueryFirstOrDefaultAsync<T>(connection, c.CommandText, c.Parameters).GetAwaiter().GetResult();
+        return ForgeFrameworkExecutionPolicy.FirstOrDefault<T, ForgeIdParameter<object?>>(Provider, _connectionString, c.CommandText, ForgeIdParameter<object?>.Create(id), timeoutSeconds: null);
     }
     /// <summary>
     /// Executes the T operation.
@@ -30,16 +28,14 @@ public partial class ForgeDb
     /// <param name="id">The id value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public async Task<T?> GetByIdAsync<T>(object id, CancellationToken cancellationToken = default)
+    public async ValueTask<T?> GetByIdAsync<T>(object id, CancellationToken cancellationToken = default)
     {
         var metadata = _metadata.Resolve<T>();
         if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
             return await ForgeSqlServerProviderDirectHotPath.GetByIdAsync<T>(_connectionString, metadata, id, cancellationToken).ConfigureAwait(false);
 
         var c = Provider.BuildGetById(metadata, id);
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        return await ForgeAdo.QueryFirstOrDefaultAsync<T>(connection, c.CommandText, c.Parameters, timeoutSeconds: null, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return await ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T, ForgeIdParameter<object?>>(Provider, _connectionString, c.CommandText, ForgeIdParameter<object?>.Create(id), timeoutSeconds: null, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Gets one row by the configured key without boxing the key value at the public API.</summary>
@@ -50,22 +46,18 @@ public partial class ForgeDb
             return ForgeSqlServerProviderDirectHotPath.GetById<T>(_connectionString, metadata, id!);
 
         var c = Provider.BuildGetById(metadata, id!);
-        using var connection = CreateConnection();
-        connection.Open();
-        return ForgeAdo.QueryFirstOrDefaultAsync<T>(connection, c.CommandText, c.Parameters).GetAwaiter().GetResult();
+        return ForgeFrameworkExecutionPolicy.FirstOrDefault<T, ForgeIdParameter<TKey>>(Provider, _connectionString, c.CommandText, ForgeIdParameter<TKey>.Create(id), timeoutSeconds: null);
     }
 
     /// <summary>Gets one row by the configured key without boxing the key value at the public API.</summary>
-    public async Task<T?> GetByIdAsync<T, TKey>(TKey id, CancellationToken cancellationToken = default)
+    public async ValueTask<T?> GetByIdAsync<T, TKey>(TKey id, CancellationToken cancellationToken = default)
     {
         var metadata = _metadata.Resolve<T>();
         if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
             return await ForgeSqlServerProviderDirectHotPath.GetByIdAsync<T>(_connectionString, metadata, id!, cancellationToken).ConfigureAwait(false);
 
         var c = Provider.BuildGetById(metadata, id!);
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        return await ForgeAdo.QueryFirstOrDefaultAsync<T>(connection, c.CommandText, c.Parameters, timeoutSeconds: null, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return await ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T, ForgeIdParameter<TKey>>(Provider, _connectionString, c.CommandText, ForgeIdParameter<TKey>.Create(id), timeoutSeconds: null, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -82,7 +74,7 @@ public partial class ForgeDb
     /// <param name="code">The code value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task<T?> GetByCodeAsync<T>(string code, CancellationToken cancellationToken = default) { var c = Provider.BuildGetByCode(_metadata.Resolve<T>(), code); return QuerySingleOrDefaultAsync<T>(c.CommandText, c.Parameters, cancellationToken: cancellationToken); }
+    public ValueTask<T?> GetByCodeAsync<T>(string code, CancellationToken cancellationToken = default) { var c = Provider.BuildGetByCode(_metadata.Resolve<T>(), code); return QuerySingleOrDefaultAsync<T>(c.CommandText, c.Parameters, cancellationToken: cancellationToken); }
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -96,7 +88,7 @@ public partial class ForgeDb
     /// <param name="ids">The ids value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task<IReadOnlyList<T>> GetByIdsAsync<T>(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default) { if (ids.Count == 0) return Task.FromResult<IReadOnlyList<T>>([]); var c = Provider.BuildGetByIds(_metadata.Resolve<T>(), ids); return QueryAsync<T>(c.CommandText, c.Parameters, cancellationToken: cancellationToken); }
+    public ValueTask<IReadOnlyList<T>> GetByIdsAsync<T>(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default) { if (ids.Count == 0) return ValueTask.FromResult<IReadOnlyList<T>>([]); var c = Provider.BuildGetByIds(_metadata.Resolve<T>(), ids); return QueryAsync<T>(c.CommandText, c.Parameters, cancellationToken: cancellationToken); }
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -111,7 +103,7 @@ public partial class ForgeDb
     /// <param name="entity">The entity value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task<int> InsertAsync<T>(T entity, CancellationToken cancellationToken = default) => InsertCompiledAsync(entity, cancellationToken);
+    public ValueTask<int> InsertAsync<T>(T entity, CancellationToken cancellationToken = default) => InsertCompiledAsync(entity, cancellationToken);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -126,7 +118,7 @@ public partial class ForgeDb
     /// <param name="entity">The entity value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task<int> UpdateAsync<T>(T entity, CancellationToken cancellationToken = default) { var c = Provider.BuildUpdate(_metadata.Resolve<T>(), entity!); return ExecuteAsync(c.CommandText, c.Parameters, cancellationToken: cancellationToken); }
+    public ValueTask<int> UpdateAsync<T>(T entity, CancellationToken cancellationToken = default) { var c = Provider.BuildUpdate(_metadata.Resolve<T>(), entity!); return ExecuteAsync(c.CommandText, c.Parameters, cancellationToken: cancellationToken); }
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -141,7 +133,7 @@ public partial class ForgeDb
     /// <param name="id">The id value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task<int> DeleteAsync<T>(object id, CancellationToken cancellationToken = default) { var c = Provider.BuildDelete(_metadata.Resolve<T>(), id); return ExecuteAsync(c.CommandText, c.Parameters, cancellationToken: cancellationToken); }
+    public ValueTask<int> DeleteAsync<T>(object id, CancellationToken cancellationToken = default) { var c = Provider.BuildDelete(_metadata.Resolve<T>(), id); return ExecuteAsync(c.CommandText, c.Parameters, cancellationToken: cancellationToken); }
 
     /// <summary>
     /// Executes the T operation.
@@ -165,7 +157,7 @@ public partial class ForgeDb
     /// <param name="request">The request value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public async Task<ForgePagedResult<T>> PageAsync<T>(ForgePageRequest request, CancellationToken cancellationToken = default)
+    public async ValueTask<ForgePagedResult<T>> PageAsync<T>(ForgePageRequest request, CancellationToken cancellationToken = default)
     {
         var count = Provider.BuildCount(request.Sql, request.Parameters);
         var total = await ExecuteScalarAsync<int>(count.CommandText, count.Parameters, cancellationToken: cancellationToken);
@@ -224,7 +216,7 @@ public partial class ForgeDb
     /// <param name="rows">The rows value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task BulkInsertAsync<T>(IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default) => BulkInsertAsync(_metadata.Resolve<T>().TableName, rows, cancellationToken);
+    public ValueTask BulkInsertAsync<T>(IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default) => BulkInsertAsync(_metadata.Resolve<T>().TableName, rows, cancellationToken);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -233,7 +225,7 @@ public partial class ForgeDb
     /// <param name="rows">The rows value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public async Task BulkInsertAsync<T>(string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default)
+    public async ValueTask BulkInsertAsync<T>(string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default)
     {
         if (rows.Count == 0) return;
         await using var c = CreateConnection();
@@ -266,7 +258,7 @@ public partial class ForgeDb
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task BulkUpdateAsync<T>(IReadOnlyCollection<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default) => BulkUpdateAsync(_metadata.Resolve<T>().TableName, rows, keyColumn, cancellationToken);
+    public ValueTask BulkUpdateAsync<T>(IReadOnlyCollection<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default) => BulkUpdateAsync(_metadata.Resolve<T>().TableName, rows, keyColumn, cancellationToken);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -276,7 +268,7 @@ public partial class ForgeDb
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public async Task BulkUpdateAsync<T>(string tableName, IReadOnlyCollection<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default)
+    public async ValueTask BulkUpdateAsync<T>(string tableName, IReadOnlyCollection<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default)
     {
         if (rows.Count == 0) return;
         await using var c = CreateConnection();
@@ -305,7 +297,7 @@ public partial class ForgeDb
     /// <param name="ids">The ids value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task BulkDeleteAsync<T>(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default) { var m = _metadata.Resolve<T>(); return BulkDeleteAsync(m.TableName, ids, m.KeyColumn, cancellationToken); }
+    public ValueTask<int> BulkDeleteAsync<T>(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default) { var m = _metadata.Resolve<T>(); return BulkDeleteAsync(m.TableName, ids, m.KeyColumn, cancellationToken); }
     /// <summary>
     /// Executes the BulkDeleteAsync operation.
     /// </summary>
@@ -314,9 +306,8 @@ public partial class ForgeDb
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the BulkDeleteAsync operation.</returns>
-    public Task BulkDeleteAsync(string tableName, IReadOnlyCollection<int> ids, string keyColumn = "Id", CancellationToken cancellationToken = default)
-    {
-        if (ids.Count == 0) return Task.CompletedTask;
+    public ValueTask<int> BulkDeleteAsync(string tableName, IReadOnlyCollection<int> ids, string keyColumn = "Id", CancellationToken cancellationToken = default)
+    {        
         var cmd = Provider.BuildBulkDelete(tableName, keyColumn, ids);
         return ExecuteAsync(cmd.CommandText, cmd.Parameters, cancellationToken: cancellationToken);
     }
@@ -337,7 +328,7 @@ public partial class ForgeDb
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public async Task BulkMergeAsync<T>(IReadOnlyCollection<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default)
+    public async ValueTask BulkMergeAsync<T>(IReadOnlyCollection<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default)
     {
         if (rows.Count == 0) return;
         var table = _metadata.Resolve<T>().TableName;
@@ -362,7 +353,7 @@ public partial class ForgeDb
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the BeginTransactionAsync operation.</returns>
-    public async Task<IForgeTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<IForgeTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
     {
         var c = CreateConnection();
         await c.OpenAsync(cancellationToken);

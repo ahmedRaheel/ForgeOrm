@@ -69,7 +69,7 @@ public partial class ForgeDb
     /// Executes a query behind a named semaphore to protect the database under high concurrency.
     /// Use this for expensive reports, exports, and dashboard queries.
     /// </summary>
-    public async Task<IReadOnlyList<T>> QueryThrottledAsync<T>(
+    public async ValueTask<IReadOnlyList<T>> QueryThrottledAsync<T>(
         string throttleName,
         int maxConcurrency,
         string sql,
@@ -119,7 +119,7 @@ public partial class ForgeDb
     /// <summary>
     /// Executes a keyset/seek page for large tables. This avoids high OFFSET cost on millions of rows.
     /// </summary>
-    public Task<IReadOnlyList<T>> QueryKeysetPageAsync<T, TKey>(
+    public ValueTask<IReadOnlyList<T>> QueryKeysetPageAsync<T, TKey>(
         string tableName,
         string keyColumn,
         TKey? afterKey,
@@ -189,11 +189,11 @@ ORDER BY {keyColumn} {direction}
     /// <summary>
     /// Processes a large table in keyset batches without loading all rows in memory.
     /// </summary>
-    public async Task<int> ProcessKeysetBatchesAsync<T, TKey>(
+    public async ValueTask<int> ProcessKeysetBatchesAsync<T, TKey>(
         string tableName,
         string keyColumn,
         Func<T, TKey> keySelector,
-        Func<IReadOnlyList<T>, CancellationToken, Task> processBatch,
+        Func<IReadOnlyList<T>, CancellationToken, ValueTask> processBatch,
         int batchSize = 1000,
         string? whereSql = null,
         object? parameters = null,

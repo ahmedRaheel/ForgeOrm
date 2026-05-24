@@ -27,11 +27,17 @@ internal static class ForgeSqlServerProviderDirectHotPath
     public static T? GetById<T>(string connectionString, ForgeEntityMetadata metadata, object id)
         => ForgeSqlServerDirectGetByIdExecutor<T>.Execute(connectionString, metadata, id);
 
-    public static Task<T?> GetByIdAsync<T>(string connectionString, ForgeEntityMetadata metadata, object id, CancellationToken cancellationToken)
+    public static ValueTask<T?> GetByIdAsync<T>(string connectionString, ForgeEntityMetadata metadata, object id, CancellationToken cancellationToken)
         => ForgeSqlServerDirectGetByIdExecutor<T>.ExecuteAsync(connectionString, metadata, id, cancellationToken);
 
-    public static async Task<T?> QueryFirstOrDefaultAsync<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
+    public static async ValueTask<T?> QueryFirstOrDefaultAsync<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
     {
+        if (ForgeSourceGeneratedRegistry.TryExecuteSqlServerFirstOrDefaultAsync<T>(
+                connectionString, sql, parameters, timeoutSeconds, cancellationToken, out var generated))
+        {
+            return await generated.ConfigureAwait(false);
+        }
+
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
@@ -50,7 +56,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
         return reader.Read() ? materializer(reader) : default;
     }
 
-    public static async Task<IReadOnlyList<T>> QueryAsync<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
+    public static async ValueTask<IReadOnlyList<T>> QueryAsync<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
@@ -85,7 +91,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
         return command.ExecuteNonQuery();
     }
 
-    public static async Task<int> ExecuteAsync(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
+    public static async ValueTask<int> ExecuteAsync(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
@@ -102,7 +108,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
         return ForgeScalarConverter.To<T>(value);
     }
 
-    public static async Task<T?> ExecuteScalarAsync<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
+    public static async ValueTask<T?> ExecuteScalarAsync<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
@@ -111,7 +117,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
         return ForgeScalarConverter.To<T>(value);
     }
 
-    public static async Task<IReadOnlyList<Dictionary<string, object?>>> QueryDictionaryAsync(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
+    public static async ValueTask<IReadOnlyList<Dictionary<string, object?>>> QueryDictionaryAsync(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
@@ -162,7 +168,6 @@ internal static class ForgeSqlServerProviderDirectHotPath
 
         var key = new SqlQueryPlanKey(sql, parameters?.GetType());
         var plan = QueryPlans.GetOrAdd(key, static k => new SqlQueryPlan(k.Sql, SqlParameterTokenCache.GetOrAdd(k.Sql, ExtractParameterNames)));
-        _ = ForgePreparedCommandPool.GetOrAdd(plan.Sql, plan.ParameterNames, parameters?.GetType(), timeoutSeconds);
         var command = connection.CreateCommand();
         command.CommandText = plan.Sql;
         command.CommandType = CommandType.Text;
@@ -374,7 +379,9 @@ internal static class ForgeSqlServerProviderDirectHotPath
         else parameter = command.Parameters.Add(parameterName, SqlDbType.NVarChar);
 
         if (actualType.IsEnum)
-            parameter.Value = value is null ? DBNull.Value : value.ToString();
+            parameter.Value = value is null
+                ? DBNull.Value
+                : Convert.ChangeType(value, Enum.GetUnderlyingType(actualType), System.Globalization.CultureInfo.InvariantCulture);
         else if (value is DateOnly d)
             parameter.Value = d.ToDateTime(TimeOnly.MinValue);
         else if (value is TimeOnly t)

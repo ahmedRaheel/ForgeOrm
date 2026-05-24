@@ -3,7 +3,7 @@ using System.Diagnostics;
 
 namespace ForgeORM.Core;
 
-public sealed record ForgeQueryMetric(
+public sealed record ForgeQueryMetricV2(
     string SqlHash,
     string? QueryTag,
     TimeSpan Duration,
@@ -24,8 +24,8 @@ public static class ForgeQueryMonitor
 
     public static void Record(string sql, string? tag, Stopwatch stopwatch, int? rows, bool success, Exception? error = null)
     {
-        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(sql)))[..16];
-        _metrics.Enqueue(new ForgeQueryMetric(hash, tag, stopwatch.Elapsed, rows, success, error?.GetType().Name + ": " + error?.Message, DateTimeOffset.UtcNow));
+        var hash = ForgeFastHash.FingerprintSql(sql);
+        //_metrics.Enqueue(new ForgeQueryMetric(hash, tag, stopwatch.Elapsed, rows, success, error?.GetType().Name + ": " + error?.Message, DateTimeOffset.UtcNow));
         while (_metrics.Count > MaxMetrics && _metrics.TryDequeue(out _)) { }
     }
 }

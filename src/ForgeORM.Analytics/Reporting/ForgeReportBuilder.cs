@@ -297,25 +297,25 @@ public sealed class ForgeReportBuilder<T>
     /// Executes the report and returns dynamic dictionary rows. Use this for pivots, unpivots,
     /// windows, aggregates, and reports that do not map to an entity.
     /// </summary>
-    public Task<IReadOnlyList<Dictionary<string, object?>>> ToListAsync(CancellationToken cancellationToken = default)
+    public ValueTask<IReadOnlyList<Dictionary<string, object?>>> ToListAsync(CancellationToken cancellationToken = default)
         => _db.QueryDictionaryAsync(ToSql(), _definition.Parameters, cancellationToken: cancellationToken);
 
-    public Task<IReadOnlyList<Dictionary<string, object?>>> ToDictionaryProjectionAsync(CancellationToken cancellationToken = default)
+    public ValueTask<IReadOnlyList<Dictionary<string, object?>>> ToDictionaryProjectionAsync(CancellationToken cancellationToken = default)
         => ToListAsync(cancellationToken);
 
-    public Task<IReadOnlyList<Dictionary<string, object?>>> ToDictionaryListAsync(CancellationToken cancellationToken = default)
+    public ValueTask<IReadOnlyList<Dictionary<string, object?>>> ToDictionaryListAsync(CancellationToken cancellationToken = default)
         => ToListAsync(cancellationToken);
 
-    public Task<IReadOnlyList<TResult>> ToListAsync<TResult>(CancellationToken cancellationToken = default)
+    public ValueTask<IReadOnlyList<TResult>> ToListAsync<TResult>(CancellationToken cancellationToken = default)
         => _db.QueryAsync<TResult>(ToSql(), _definition.Parameters, cancellationToken: cancellationToken);
 
-    public async Task<byte[]> ExportCsvAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<byte[]> ExportCsvAsync(CancellationToken cancellationToken = default)
     {
         var rows = await ToListAsync(cancellationToken);
         return ForgeReportExport.ToCsvBytes(rows);
     }
 
-    public async Task<byte[]> ExportExcelAsync(string worksheetName = "Report", CancellationToken cancellationToken = default)
+    public async ValueTask<byte[]> ExportExcelAsync(string worksheetName = "Report", CancellationToken cancellationToken = default)
     {
         var rows = await ToListAsync(cancellationToken);
         return ForgeReportExport.ToExcelXmlBytes(rows, worksheetName);

@@ -17,7 +17,7 @@ public sealed record ForgeSyncResult(int Inserted, int Updated, int Deleted, int
 
 public static class ForgeBulkSyncExtensions
 {
-    public static async Task<ForgeSyncResult> SyncAsync<TEntity, TKey>(
+    public static async ValueTask<ForgeSyncResult> SyncAsync<TEntity, TKey>(
         this ForgeDb db,
         IReadOnlyList<TEntity> rows,
         Expression<Func<TEntity, TKey>> key,

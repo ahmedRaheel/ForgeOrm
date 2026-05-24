@@ -18,7 +18,7 @@ public static class ForgeRelationshipSplitQueryExtensions
 public sealed class ForgeRelationshipSplitQuery<TParent>
 {
     private readonly IForgeDb _db;
-    private readonly List<Func<IReadOnlyList<TParent>, CancellationToken, Task>> _loaders = [];
+    private readonly List<Func<IReadOnlyList<TParent>, CancellationToken, ValueTask>> _loaders = [];
     private string? _parentSql;
     private object? _parentParameters;
 
@@ -376,7 +376,7 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the AnyAsync operation.</returns>
-    public async Task<bool> AnyAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
+    public async ValueTask<bool> AnyAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
         => await _db.ExecuteScalarAsync<int>($"SELECT CASE WHEN EXISTS ({parentSql}) THEN 1 ELSE 0 END", parameters, cancellationToken: cancellationToken) > 0;
 
     /// <summary>
@@ -395,7 +395,7 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the FirstOrDefaultAsync operation.</returns>
-    public async Task<TParent?> FirstOrDefaultAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
+    public async ValueTask<TParent?> FirstOrDefaultAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
         => (await ToListAsync(parentSql, parameters, cancellationToken)).FirstOrDefault();
 
     /// <summary>
@@ -403,7 +403,7 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     /// </summary>
     /// <param name="cancellationToken">The cancellation token for the async operation.</param>
     /// <returns>The loaded parent rows with configured children attached.</returns>
-    public Task<IReadOnlyList<TParent>> ToListAsync(CancellationToken cancellationToken = default)
+    public ValueTask<IReadOnlyList<TParent>> ToListAsync(CancellationToken cancellationToken = default)
         => ToListAsync(_parentSql ?? $"SELECT * FROM {ResolveTableName(typeof(TParent))}", _parentParameters, cancellationToken);
 
     /// <summary>
@@ -413,7 +413,7 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     /// <param name="projection">The projection function applied after child rows are loaded.</param>
     /// <param name="cancellationToken">The cancellation token for the async operation.</param>
     /// <returns>The projected result rows.</returns>
-    public async Task<IReadOnlyList<TResult>> ToListAsync<TResult>(Func<TParent, TResult> projection, CancellationToken cancellationToken = default)
+    public async ValueTask<IReadOnlyList<TResult>> ToListAsync<TResult>(Func<TParent, TResult> projection, CancellationToken cancellationToken = default)
     {
         var parents = await ToListAsync(cancellationToken);
         return parents.Select(projection).ToList();
@@ -424,7 +424,7 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     /// </summary>
     /// <param name="cancellationToken">The cancellation token for the async operation.</param>
     /// <returns>The first loaded parent row, or null when no row exists.</returns>
-    public async Task<TParent?> FirstOrDefaultAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<TParent?> FirstOrDefaultAsync(CancellationToken cancellationToken = default)
         => (await ToListAsync(cancellationToken)).FirstOrDefault();
 
     /// <summary>
@@ -434,7 +434,7 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     /// <param name="projection">The projection function applied after child rows are loaded.</param>
     /// <param name="cancellationToken">The cancellation token for the async operation.</param>
     /// <returns>The projected first row, or default when no row exists.</returns>
-    public async Task<TResult?> FirstOrDefaultAsync<TResult>(Func<TParent, TResult> projection, CancellationToken cancellationToken = default)
+    public async ValueTask<TResult?> FirstOrDefaultAsync<TResult>(Func<TParent, TResult> projection, CancellationToken cancellationToken = default)
     {
         var parent = await FirstOrDefaultAsync(cancellationToken);
         return parent is null ? default : projection(parent);
@@ -455,7 +455,7 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ToListAsync operation.</returns>
-    public async Task<IReadOnlyList<TParent>> ToListAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
+    public async ValueTask<IReadOnlyList<TParent>> ToListAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
     {
         var parents = (await _db.QueryAsync<TParent>(parentSql, parameters, cancellationToken: cancellationToken)).ToList();
         foreach (var loader in _loaders) await loader(parents, cancellationToken);

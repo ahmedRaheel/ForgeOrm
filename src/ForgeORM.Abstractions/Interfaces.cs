@@ -58,7 +58,7 @@ public interface IForgeBulkConditionOperations
     /// <param name="ids">The key values to match.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The entities whose key values match the supplied ids.</returns>
-    Task<IReadOnlyList<T>> GetByIdsAsync<T, TKey>(IEnumerable<TKey> ids, CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<T>> GetByIdsAsync<T, TKey>(IEnumerable<TKey> ids, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets multiple entities asynchronously by a key column selected with an expression.
@@ -69,7 +69,7 @@ public interface IForgeBulkConditionOperations
     /// <param name="ids">The key values to match.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The entities whose selected key values match the supplied ids.</returns>
-    Task<IReadOnlyList<T>> GetByIdsAsync<T, TKey>(Expression<Func<T, TKey>> keySelector, IEnumerable<TKey> ids, CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<T>> GetByIdsAsync<T, TKey>(Expression<Func<T, TKey>> keySelector, IEnumerable<TKey> ids, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets multiple entities asynchronously by an explicit SQL key column.
@@ -80,7 +80,7 @@ public interface IForgeBulkConditionOperations
     /// <param name="ids">The key values to match.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The entities whose SQL key column values match the supplied ids.</returns>
-    Task<IReadOnlyList<T>> GetByIdsSqlAsync<T, TKey>(string keyColumn, IEnumerable<TKey> ids, CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<T>> GetByIdsSqlAsync<T, TKey>(string keyColumn, IEnumerable<TKey> ids, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes multiple entities by their configured key column.
@@ -119,7 +119,7 @@ public interface IForgeBulkConditionOperations
     /// <param name="ids">The key values to delete.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of deleted rows.</returns>
-    Task<int> DeleteByIdsAsync<T, TKey>(IEnumerable<TKey> ids, CancellationToken cancellationToken = default);
+    ValueTask<int> DeleteByIdsAsync<T, TKey>(IEnumerable<TKey> ids, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes multiple entities asynchronously by a key column selected with an expression.
@@ -130,7 +130,7 @@ public interface IForgeBulkConditionOperations
     /// <param name="ids">The key values to delete.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of deleted rows.</returns>
-    Task<int> DeleteByIdsAsync<T, TKey>(Expression<Func<T, TKey>> keySelector, IEnumerable<TKey> ids, CancellationToken cancellationToken = default);
+    ValueTask<int> DeleteByIdsAsync<T, TKey>(Expression<Func<T, TKey>> keySelector, IEnumerable<TKey> ids, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes multiple entities asynchronously by an explicit SQL key column.
@@ -141,7 +141,7 @@ public interface IForgeBulkConditionOperations
     /// <param name="ids">The key values to delete.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of deleted rows.</returns>
-    Task<int> DeleteByIdsSqlAsync<T, TKey>(string keyColumn, IEnumerable<TKey> ids, CancellationToken cancellationToken = default);
+    ValueTask<int> DeleteByIdsSqlAsync<T, TKey>(string keyColumn, IEnumerable<TKey> ids, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates multiple entities by their configured key column.
@@ -184,7 +184,7 @@ public interface IForgeBulkConditionOperations
     /// <param name="values">An object containing the columns and values to update.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of updated rows.</returns>
-    Task<int> UpdateByIdsAsync<T, TKey>(IEnumerable<TKey> ids, object values, CancellationToken cancellationToken = default);
+    ValueTask<int> UpdateByIdsAsync<T, TKey>(IEnumerable<TKey> ids, object values, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates multiple entities asynchronously by a key column selected with an expression.
@@ -196,7 +196,7 @@ public interface IForgeBulkConditionOperations
     /// <param name="values">An object containing the columns and values to update.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of updated rows.</returns>
-    Task<int> UpdateByIdsAsync<T, TKey>(Expression<Func<T, TKey>> keySelector, IEnumerable<TKey> ids, object values, CancellationToken cancellationToken = default);
+    ValueTask<int> UpdateByIdsAsync<T, TKey>(Expression<Func<T, TKey>> keySelector, IEnumerable<TKey> ids, object values, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates multiple entities asynchronously by an explicit SQL key column.
@@ -208,7 +208,7 @@ public interface IForgeBulkConditionOperations
     /// <param name="values">An object containing the columns and values to update.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of updated rows.</returns>
-    Task<int> UpdateByIdsSqlAsync<T, TKey>(string keyColumn, IEnumerable<TKey> ids, object values, CancellationToken cancellationToken = default);
+    ValueTask<int> UpdateByIdsSqlAsync<T, TKey>(string keyColumn, IEnumerable<TKey> ids, object values, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes entities that match an expression condition.
@@ -234,7 +234,7 @@ public interface IForgeBulkConditionOperations
     /// <param name="predicate">The expression condition used to select rows for deletion.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of deleted rows.</returns>
-    Task<int> DeleteByConditionAsync<T>(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default);
+    ValueTask<int> DeleteByConditionAsync<T>(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes entities asynchronously that match a SQL condition.
@@ -244,7 +244,7 @@ public interface IForgeBulkConditionOperations
     /// <param name="parameters">The SQL condition parameters.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of deleted rows.</returns>
-    Task<int> DeleteByConditionSqlAsync<T>(string sqlCondition, object? parameters = null, CancellationToken cancellationToken = default);
+    ValueTask<int> DeleteByConditionSqlAsync<T>(string sqlCondition, object? parameters = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates entities that match an expression condition.
@@ -273,7 +273,7 @@ public interface IForgeBulkConditionOperations
     /// <param name="predicate">The expression condition used to select rows for update.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of updated rows.</returns>
-    Task<int> UpdateByConditionAsync<T>(object values, Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default);
+    ValueTask<int> UpdateByConditionAsync<T>(object values, Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates entities asynchronously that match a SQL condition.
@@ -284,7 +284,7 @@ public interface IForgeBulkConditionOperations
     /// <param name="parameters">The SQL condition parameters.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of updated rows.</returns>
-    Task<int> UpdateByConditionSqlAsync<T>(object values, string sqlCondition, object? parameters = null, CancellationToken cancellationToken = default);
+    ValueTask<int> UpdateByConditionSqlAsync<T>(object values, string sqlCondition, object? parameters = null, CancellationToken cancellationToken = default);
 }
 
 public interface IForgeRawSql
@@ -315,7 +315,7 @@ public interface IForgeRawSql
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -334,7 +334,7 @@ public interface IForgeRawSql
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<T> QueryFirstAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
+    ValueTask<T> QueryFirstAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -353,7 +353,7 @@ public interface IForgeRawSql
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
+    ValueTask<T?> QueryFirstOrDefaultAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -372,7 +372,7 @@ public interface IForgeRawSql
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<T> QuerySingleAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
+    ValueTask<T> QuerySingleAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -391,7 +391,7 @@ public interface IForgeRawSql
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<T?> QuerySingleOrDefaultAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
+    ValueTask<T?> QuerySingleOrDefaultAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the Execute operation.
     /// </summary>
@@ -408,7 +408,7 @@ public interface IForgeRawSql
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ExecuteAsync operation.</returns>
-    Task<int> ExecuteAsync(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
+    ValueTask<int> ExecuteAsync(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -427,7 +427,7 @@ public interface IForgeRawSql
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<T?> ExecuteScalarAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
+    ValueTask<T?> ExecuteScalarAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the QueryMultiple operation.
     /// </summary>
@@ -444,7 +444,7 @@ public interface IForgeRawSql
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the QueryMultipleAsync operation.</returns>
-    Task<IForgeGridReader> QueryMultipleAsync(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
+    ValueTask<IForgeGridReader> QueryMultipleAsync(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
 }
 
 public interface IForgeStoredProcedures
@@ -475,7 +475,7 @@ public interface IForgeStoredProcedures
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<IReadOnlyList<T>> QueryProcedureAsync<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<T>> QueryProcedureAsync<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -494,7 +494,7 @@ public interface IForgeStoredProcedures
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<T?> QueryProcedureSingleOrDefaultAsync<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
+    ValueTask<T?> QueryProcedureSingleOrDefaultAsync<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the ExecuteProcedure operation.
     /// </summary>
@@ -511,7 +511,7 @@ public interface IForgeStoredProcedures
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ExecuteProcedureAsync operation.</returns>
-    Task<int> ExecuteProcedureAsync(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
+    ValueTask<int> ExecuteProcedureAsync(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -530,7 +530,7 @@ public interface IForgeStoredProcedures
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<T?> ExecuteProcedureScalarAsync<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
+    ValueTask<T?> ExecuteProcedureScalarAsync<T>(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the QueryProcedureMultiple operation.
     /// </summary>
@@ -547,7 +547,7 @@ public interface IForgeStoredProcedures
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the QueryProcedureMultipleAsync operation.</returns>
-    Task<IForgeGridReader> QueryProcedureMultipleAsync(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
+    ValueTask<IForgeGridReader> QueryProcedureMultipleAsync(string procedureName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
 }
 
 public interface IForgeDatabaseFunctions
@@ -578,7 +578,7 @@ public interface IForgeDatabaseFunctions
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<T?> ExecuteFunctionAsync<T>(string functionName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
+    ValueTask<T?> ExecuteFunctionAsync<T>(string functionName, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -597,7 +597,7 @@ public interface IForgeDatabaseFunctions
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<IReadOnlyList<T>> QueryFunctionAsync<T>(string functionSql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<T>> QueryFunctionAsync<T>(string functionSql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
 }
 
 public interface IForgeRepository
@@ -622,7 +622,7 @@ public interface IForgeRepository
     /// <param name="id">The id value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<T?> GetByIdAsync<T>(object id, CancellationToken cancellationToken = default);
+    ValueTask<T?> GetByIdAsync<T>(object id, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -637,7 +637,7 @@ public interface IForgeRepository
     /// <param name="code">The code value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<T?> GetByCodeAsync<T>(string code, CancellationToken cancellationToken = default);
+    ValueTask<T?> GetByCodeAsync<T>(string code, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -652,7 +652,7 @@ public interface IForgeRepository
     /// <param name="ids">The ids value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<IReadOnlyList<T>> GetByIdsAsync<T>(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<T>> GetByIdsAsync<T>(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -667,7 +667,7 @@ public interface IForgeRepository
     /// <param name="entity">The entity value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<int> InsertAsync<T>(T entity, CancellationToken cancellationToken = default);
+    ValueTask<int> InsertAsync<T>(T entity, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Inserts multiple independent entities in a single transactional operation.
@@ -677,7 +677,7 @@ public interface IForgeRepository
     /// <param name="entities">The entities to insert.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of inserted rows.</returns>
-    Task<int> InsertManyAsync<T>(IEnumerable<T> entities, CancellationToken cancellationToken = default);
+    ValueTask<int> InsertManyAsync<T>(IEnumerable<T> entities, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Inserts an aggregate root and every public child collection automatically in one transaction.
@@ -688,7 +688,7 @@ public interface IForgeRepository
     /// <param name="entity">The parent entity containing child collection properties.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The same entity instance after key propagation.</returns>
-    Task<T> InsertGraphAsync<T>(T entity, CancellationToken cancellationToken = default);
+    ValueTask<T> InsertGraphAsync<T>(T entity, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates an aggregate root and synchronizes its child collections in one transaction.
@@ -699,7 +699,7 @@ public interface IForgeRepository
     /// <param name="deleteMissingChildren">When true, child rows not present in the supplied graph are deleted.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of affected rows.</returns>
-    Task<int> UpdateGraphAsync<T>(T entity, bool deleteMissingChildren = false, CancellationToken cancellationToken = default);
+    ValueTask<int> UpdateGraphAsync<T>(T entity, bool deleteMissingChildren = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Loads a parent row and selected child collections into a single aggregate object.
@@ -710,7 +710,7 @@ public interface IForgeRepository
     /// <param name="includes">Collection property names to load.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The parent with requested child collections, or null when the parent is not found.</returns>
-    Task<T?> GetGraphAsync<T>(object id, IEnumerable<string>? includes = null, CancellationToken cancellationToken = default);
+    ValueTask<T?> GetGraphAsync<T>(object id, IEnumerable<string>? includes = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes a parent row and its child rows in one transaction.
@@ -720,7 +720,7 @@ public interface IForgeRepository
     /// <param name="id">The parent primary-key value.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of affected rows.</returns>
-    Task<int> DeleteGraphAsync<T>(object id, CancellationToken cancellationToken = default);
+    ValueTask<int> DeleteGraphAsync<T>(object id, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -735,7 +735,7 @@ public interface IForgeRepository
     /// <param name="entity">The entity value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<int> UpdateAsync<T>(T entity, CancellationToken cancellationToken = default);
+    ValueTask<int> UpdateAsync<T>(T entity, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -750,7 +750,7 @@ public interface IForgeRepository
     /// <param name="id">The id value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<int> DeleteAsync<T>(object id, CancellationToken cancellationToken = default);
+    ValueTask<int> DeleteAsync<T>(object id, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -765,7 +765,7 @@ public interface IForgeRepository
     /// <param name="request">The request value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<ForgePagedResult<T>> PageAsync<T>(ForgePageRequest request, CancellationToken cancellationToken = default);
+    ValueTask<ForgePagedResult<T>> PageAsync<T>(ForgePageRequest request, CancellationToken cancellationToken = default);
 }
 
 public interface IForgeQueryableFactory
@@ -905,7 +905,7 @@ public interface IForgeQuery<T> : IForgeExecutableQuery
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the AnyAsync operation.</returns>
-    Task<bool> AnyAsync(CancellationToken cancellationToken = default);
+    ValueTask<bool> AnyAsync(CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the ToList operation.
     /// </summary>
@@ -916,13 +916,13 @@ public interface IForgeQuery<T> : IForgeExecutableQuery
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ToListAsync operation.</returns>
-    Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Streams rows with DbDataReader sequential access and MSIL materialization.</summary>
     IAsyncEnumerable<T> StreamAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Processes rows in fixed-size batches without requiring callers to load the whole result set.</summary>
-    Task ProcessInBatchesAsync(int batchSize, Func<IReadOnlyList<T>, Task> processor, CancellationToken cancellationToken = default);
+    ValueTask ProcessInBatchesAsync(int batchSize, Func<IReadOnlyList<T>, ValueTask> processor, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the FirstOrDefault operation.
     /// </summary>
@@ -933,7 +933,7 @@ public interface IForgeQuery<T> : IForgeExecutableQuery
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the FirstOrDefaultAsync operation.</returns>
-    Task<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default);
+    ValueTask<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the Count operation.
     /// </summary>
@@ -944,7 +944,7 @@ public interface IForgeQuery<T> : IForgeExecutableQuery
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the CountAsync operation.</returns>
-    Task<int> CountAsync(CancellationToken cancellationToken = default);
+    ValueTask<int> CountAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Executes SUM for the selected numeric column.
@@ -952,7 +952,7 @@ public interface IForgeQuery<T> : IForgeExecutableQuery
     /// <param name="selector">Column selector used for SUM.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The aggregate result.</returns>
-    Task<decimal> SumAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default);
+    ValueTask<decimal> SumAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Executes AVG for the selected numeric column.
@@ -960,7 +960,7 @@ public interface IForgeQuery<T> : IForgeExecutableQuery
     /// <param name="selector">Column selector used for AVG.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The aggregate result.</returns>
-    Task<decimal> AverageAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default);
+    ValueTask<decimal> AverageAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Executes MIN for the selected numeric column.
@@ -968,7 +968,7 @@ public interface IForgeQuery<T> : IForgeExecutableQuery
     /// <param name="selector">Column selector used for MIN.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The aggregate result.</returns>
-    Task<decimal> MinAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default);
+    ValueTask<decimal> MinAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Executes MAX for the selected numeric column.
@@ -976,7 +976,7 @@ public interface IForgeQuery<T> : IForgeExecutableQuery
     /// <param name="selector">Column selector used for MAX.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The aggregate result.</returns>
-    Task<decimal> MaxAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default);
+    ValueTask<decimal> MaxAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Executes expression-based paging using the current query filters and ordering.
@@ -986,7 +986,7 @@ public interface IForgeQuery<T> : IForgeExecutableQuery
     /// <param name="pageSize">Page size.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The paged result.</returns>
-    Task<ForgePagedResult<T>> PageAsync(int page, int pageSize, CancellationToken cancellationToken = default);
+    ValueTask<ForgePagedResult<T>> PageAsync(int page, int pageSize, CancellationToken cancellationToken = default);
 }
 
 public interface IForgeSplitQueryFactory
@@ -1127,7 +1127,7 @@ public interface IForgeSplitQuery<TParent>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the AnyAsync operation.</returns>
-    Task<bool> AnyAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default);
+    ValueTask<bool> AnyAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the FirstOrDefault operation.
     /// </summary>
@@ -1142,7 +1142,7 @@ public interface IForgeSplitQuery<TParent>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the FirstOrDefaultAsync operation.</returns>
-    Task<TParent?> FirstOrDefaultAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default);
+    ValueTask<TParent?> FirstOrDefaultAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the ToList operation.
     /// </summary>
@@ -1157,7 +1157,7 @@ public interface IForgeSplitQuery<TParent>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ToListAsync operation.</returns>
-    Task<IReadOnlyList<TParent>> ToListAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<TParent>> ToListAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default);
 }
 
 public interface IForgeBulkOperations
@@ -1190,7 +1190,7 @@ public interface IForgeBulkOperations
     /// <param name="rows">The rows value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task BulkInsertAsync<T>(IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default);
+    ValueTask BulkInsertAsync<T>(IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -1199,7 +1199,7 @@ public interface IForgeBulkOperations
     /// <param name="rows">The rows value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task BulkInsertAsync<T>(string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default);
+    ValueTask BulkInsertAsync<T>(string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -1225,7 +1225,7 @@ public interface IForgeBulkOperations
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task BulkUpdateAsync<T>(IReadOnlyCollection<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default);
+    ValueTask BulkUpdateAsync<T>(IReadOnlyCollection<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -1235,7 +1235,7 @@ public interface IForgeBulkOperations
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task BulkUpdateAsync<T>(string tableName, IReadOnlyCollection<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default);
+    ValueTask BulkUpdateAsync<T>(string tableName, IReadOnlyCollection<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -1257,7 +1257,7 @@ public interface IForgeBulkOperations
     /// <param name="ids">The ids value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task BulkDeleteAsync<T>(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default);
+    ValueTask BulkDeleteAsync<T>(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the BulkDeleteAsync operation.
     /// </summary>
@@ -1266,7 +1266,7 @@ public interface IForgeBulkOperations
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the BulkDeleteAsync operation.</returns>
-    Task BulkDeleteAsync(string tableName, IReadOnlyCollection<int> ids, string keyColumn = "Id", CancellationToken cancellationToken = default);
+    ValueTask BulkDeleteAsync(string tableName, IReadOnlyCollection<int> ids, string keyColumn = "Id", CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -1283,7 +1283,7 @@ public interface IForgeBulkOperations
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task BulkMergeAsync<T>(IReadOnlyCollection<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default);
+    ValueTask BulkMergeAsync<T>(IReadOnlyCollection<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default);
 }
 
 public interface IForgeTransactionManager
@@ -1302,7 +1302,7 @@ public interface IForgeTransactionManager
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the BeginTransactionAsync operation.</returns>
-    Task<IForgeTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
+    ValueTask<IForgeTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
 }
 
 public interface IForgeTransaction : IDisposable, IAsyncDisposable
@@ -1333,7 +1333,7 @@ public interface IForgeTransaction : IDisposable, IAsyncDisposable
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the Execute operation.
     /// </summary>
@@ -1350,7 +1350,7 @@ public interface IForgeTransaction : IDisposable, IAsyncDisposable
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ExecuteAsync operation.</returns>
-    Task<int> ExecuteAsync(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
+    ValueTask<int> ExecuteAsync(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -1369,7 +1369,7 @@ public interface IForgeTransaction : IDisposable, IAsyncDisposable
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<T?> ExecuteScalarAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
+    ValueTask<T?> ExecuteScalarAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the Commit operation.
     /// </summary>
@@ -1379,7 +1379,7 @@ public interface IForgeTransaction : IDisposable, IAsyncDisposable
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the CommitAsync operation.</returns>
-    Task CommitAsync(CancellationToken cancellationToken = default);
+    ValueTask CommitAsync(CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the Rollback operation.
     /// </summary>
@@ -1389,7 +1389,7 @@ public interface IForgeTransaction : IDisposable, IAsyncDisposable
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the RollbackAsync operation.</returns>
-    Task RollbackAsync(CancellationToken cancellationToken = default);
+    ValueTask RollbackAsync(CancellationToken cancellationToken = default);
 }
 
 public interface IForgeGridReader : IDisposable
@@ -1410,7 +1410,7 @@ public interface IForgeGridReader : IDisposable
     /// </summary>
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <returns>The result of the T operation.</returns>
-    Task<IReadOnlyList<T>> ReadAsync<T>();
+    ValueTask<IReadOnlyList<T>> ReadAsync<T>();
 }
 
 public interface IForgeDiagnostics
@@ -1585,7 +1585,7 @@ public interface IForgeDatabaseProvider
     /// <param name="rows">The rows value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default);
+    ValueTask BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -1596,7 +1596,7 @@ public interface IForgeDatabaseProvider
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default);
+    ValueTask BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -1607,5 +1607,5 @@ public interface IForgeDatabaseProvider
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default);
+    ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default);
 }

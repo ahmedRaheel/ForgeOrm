@@ -42,7 +42,7 @@ public static class GraphPersistenceEndpoints
         return app;
     }
 
-    private static async Task<IResult> InsertSingleProductEntityAsync(
+    private static async ValueTask<IResult> InsertSingleProductEntityAsync(
         ProductCreateRequest request,
         ForgeDbContext db,
         CancellationToken ct)
@@ -60,7 +60,7 @@ public static class GraphPersistenceEndpoints
         return Results.Ok(new { Inserted = affected, product.Code, product.Name, product.Price });
     }
 
-    private static async Task<IResult> InsertProductDtoAsync(
+    private static async ValueTask<IResult> InsertProductDtoAsync(
         ProductCreateRequest request,
         ForgeDbContext db,
         CancellationToken ct)
@@ -69,7 +69,7 @@ public static class GraphPersistenceEndpoints
         return Results.Ok(new { Inserted = affected, request.Code, request.Name, request.Price });
     }
 
-    private static async Task<IResult> InsertManyProductsAsync(
+    private static async ValueTask<IResult> InsertManyProductsAsync(
         List<ProductCreateRequest> rows,
         ForgeDbContext db,
         CancellationToken ct)
@@ -87,7 +87,7 @@ public static class GraphPersistenceEndpoints
         return Results.Ok(new { Inserted = affected, Rows = products.Count });
     }
 
-    private static async Task<IResult> InsertOrderEntityAutoGraphAsync(
+    private static async ValueTask<IResult> InsertOrderEntityAutoGraphAsync(
         Order order,
         ForgeDbContext db,
         CancellationToken ct)
@@ -105,7 +105,7 @@ public static class GraphPersistenceEndpoints
         });
     }
 
-    private static async Task<IResult> InsertOrderDtoAutoAsync(
+    private static async ValueTask<IResult> InsertOrderDtoAutoAsync(
         CreateOrderRequest request,
         ForgeDbContext db,
         CancellationToken ct)
@@ -137,7 +137,7 @@ public static class GraphPersistenceEndpoints
         });
     }
 
-    private static async Task<IResult> InsertOrderDtoUsingTvpAsync(
+    private static async ValueTask<IResult> InsertOrderDtoUsingTvpAsync(
         CreateOrderRequest request,
         ForgeDbContext db,
         CancellationToken ct)
@@ -173,7 +173,7 @@ public static class GraphPersistenceEndpoints
         });
     }
 
-    private static async Task<IResult> InsertOrderDtoUsingOpenJsonAsync(
+    private static async ValueTask<IResult> InsertOrderDtoUsingOpenJsonAsync(
         CreateOrderRequest request,
         ForgeDbContext db,
         CancellationToken ct)
@@ -207,7 +207,7 @@ public static class GraphPersistenceEndpoints
         });
     }
 
-    private static async Task<IResult> InsertOrderEntityExpressionAsync(
+    private static async ValueTask<IResult> InsertOrderEntityExpressionAsync(
         Order order,
         ForgeDbContext db,
         CancellationToken ct)
@@ -231,7 +231,7 @@ public static class GraphPersistenceEndpoints
         });
     }
 
-    private static async Task<IResult> InsertOrderDtoUsingFactoryAsync(
+    private static async ValueTask<IResult> InsertOrderDtoUsingFactoryAsync(
         CreateOrderRequest request,
         ForgeDbContext db,
         CancellationToken ct)
@@ -272,7 +272,7 @@ public static class GraphPersistenceEndpoints
         });
     }
 
-    private static async Task<IResult> InsertOrderParentOnlyUsingOptionsAsync(
+    private static async ValueTask<IResult> InsertOrderParentOnlyUsingOptionsAsync(
         CreateOrderRequest request,
         ForgeDbContext db,
         CancellationToken ct)
@@ -300,7 +300,7 @@ public static class GraphPersistenceEndpoints
         });
     }
 
-    private static async Task<IResult> UpdateSingleOrderParentAsync(
+    private static async ValueTask<IResult> UpdateSingleOrderParentAsync(
         Order order,
         ForgeDbContext db,
         CancellationToken ct)
@@ -311,7 +311,7 @@ public static class GraphPersistenceEndpoints
         return Results.Ok(new { Updated = affected, order.Id, Mode = "Single parent update" });
     }
 
-    private static async Task<IResult> UpdateOrderGraphDefaultAsync(
+    private static async ValueTask<IResult> UpdateOrderGraphDefaultAsync(
         Order order,
         ForgeDbContext db,
         CancellationToken ct)
@@ -322,7 +322,7 @@ public static class GraphPersistenceEndpoints
         return Results.Ok(new { Updated = affected, order.Id, Children = order.Items.Count, Mode = "Graph update" });
     }
 
-    private static async Task<IResult> UpdateOrderGraphDeleteMissingAsync(
+    private static async ValueTask<IResult> UpdateOrderGraphDeleteMissingAsync(
         Order order,
         ForgeDbContext db,
         CancellationToken ct)
@@ -333,7 +333,7 @@ public static class GraphPersistenceEndpoints
         return Results.Ok(new { Updated = affected, order.Id, Children = order.Items.Count, Mode = "Graph update delete missing children" });
     }
 
-    private static async Task<IResult> UpdateOrderGraphInsertUpdateAsync(
+    private static async ValueTask<IResult> UpdateOrderGraphInsertUpdateAsync(
         Order order,
         ForgeDbContext db,
         CancellationToken ct)
@@ -353,7 +353,7 @@ public static class GraphPersistenceEndpoints
         return Results.Ok(new { Updated = affected, order.Id, Children = order.Items.Count, Mode = "Insert/update children" });
     }
 
-    private static async Task<IResult> UpdateOrderGraphInsertUpdateDeleteMissingAsync(
+    private static async ValueTask<IResult> UpdateOrderGraphInsertUpdateDeleteMissingAsync(
         Order order,
         ForgeDbContext db,
         CancellationToken ct)
@@ -373,7 +373,7 @@ public static class GraphPersistenceEndpoints
         return Results.Ok(new { Updated = affected, order.Id, Children = order.Items.Count, Mode = "Insert/update/delete missing children" });
     }
 
-    private static async Task<IResult> UpdateProductsByConditionAsync(
+    private static async ValueTask<IResult> UpdateProductsByConditionAsync(
         decimal maxPrice,
         decimal newPrice,
         ForgeDbContext db,
@@ -387,7 +387,7 @@ public static class GraphPersistenceEndpoints
         return Results.Ok(new { Updated = affected, maxPrice, newPrice });
     }
 
-    private static async Task<IResult> UpdateProductsByConditionSqlAsync(
+    private static async ValueTask<IResult> UpdateProductsByConditionSqlAsync(
         decimal minPrice,
         decimal newPrice,
         ForgeDbContext db,
@@ -402,7 +402,7 @@ public static class GraphPersistenceEndpoints
         return Results.Ok(new { Updated = affected, minPrice, newPrice });
     }
 
-    private static async Task<IResult> DeleteOrderParentOnlyAsync(
+    private static async ValueTask<IResult> DeleteOrderParentOnlyAsync(
         int id,
         ForgeDbContext db,
         CancellationToken ct)
@@ -419,7 +419,7 @@ public static class GraphPersistenceEndpoints
         return Results.Ok(new { Deleted = affected, Id = id, Mode = "Parent only hard delete" });
     }
 
-    private static async Task<IResult> DeleteOrderGraphHardAsync(
+    private static async ValueTask<IResult> DeleteOrderGraphHardAsync(
         int id,
         ForgeDbContext db,
         CancellationToken ct)
@@ -436,7 +436,7 @@ public static class GraphPersistenceEndpoints
         return Results.Ok(new { Deleted = affected, Id = id, Mode = "Graph hard delete" });
     }
 
-    private static async Task<IResult> DeleteOrderGraphHardByEntityAsync(
+    private static async ValueTask<IResult> DeleteOrderGraphHardByEntityAsync(
         Order order,
         ForgeDbContext db,
         CancellationToken ct)
@@ -453,7 +453,7 @@ public static class GraphPersistenceEndpoints
         return Results.Ok(new { Deleted = affected, order.Id, Mode = "Graph hard delete by entity" });
     }
 
-    private static async Task<IResult> DeleteOrderGraphSoftAsync(
+    private static async ValueTask<IResult> DeleteOrderGraphSoftAsync(
         int id,
         ForgeDbContext db,
         CancellationToken ct)
@@ -471,7 +471,7 @@ public static class GraphPersistenceEndpoints
         return Results.Ok(new { Deleted = affected, Id = id, Mode = "Graph soft delete" });
     }
 
-    private static async Task<IResult> DeleteOrderGraphSoftByEntityAsync(
+    private static async ValueTask<IResult> DeleteOrderGraphSoftByEntityAsync(
         Order order,
         ForgeDbContext db,
         CancellationToken ct)
@@ -489,7 +489,7 @@ public static class GraphPersistenceEndpoints
         return Results.Ok(new { Deleted = affected, order.Id, Mode = "Graph soft delete by entity" });
     }
 
-    private static async Task<IResult> DeleteProductsByConditionAsync(
+    private static async ValueTask<IResult> DeleteProductsByConditionAsync(
         decimal maxPrice,
         ForgeDbContext db,
         CancellationToken ct)

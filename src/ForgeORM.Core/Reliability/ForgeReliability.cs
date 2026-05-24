@@ -36,8 +36,8 @@ public sealed class ForgeCircuitBreaker
 
 public static class ForgeReliabilityExecutor
 {
-    public static async Task<T> ExecuteAsync<T>(
-        Func<CancellationToken, Task<T>> operation,
+    public static async ValueTask<T> ExecuteAsync<T>(
+        Func<CancellationToken, ValueTask<T>> operation,
         ForgeRetryPolicy? retryPolicy = null,
         ForgeCircuitBreaker? circuitBreaker = null,
         CancellationToken cancellationToken = default)

@@ -12,7 +12,7 @@ public static class CacheSecurityTelemetryEndpoints
         {
             var value = await cache.GetOrCreateAsync(
                 "demo:products",
-                _ => Task.FromResult(new { CachedAtUtc = DateTimeOffset.UtcNow, Source = "ForgeORM cache" }),
+                _ => ValueTask.FromResult(new { CachedAtUtc = DateTimeOffset.UtcNow, Source = "ForgeORM cache" }),
                 TimeSpan.FromMinutes(5));
 
             return Results.Ok(value);

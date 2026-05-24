@@ -147,18 +147,18 @@ public sealed class InMemoryForgeCacheProvider : IForgeCacheProvider
     /// <param name="key">The key value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
+    public ValueTask<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
     {
         if (!_cache.TryGetValue(key, out var item))
-            return Task.FromResult(default(T));
+            return ValueTask.FromResult(default(T));
 
         if (item.ExpiresAt <= DateTimeOffset.UtcNow)
         {
             _cache.TryRemove(key, out _);
-            return Task.FromResult(default(T));
+            return ValueTask.FromResult(default(T));
         }
 
-        return Task.FromResult((T?)item.Value);
+        return ValueTask.FromResult((T?)item.Value);
     }
 
     /// <summary>
@@ -170,10 +170,10 @@ public sealed class InMemoryForgeCacheProvider : IForgeCacheProvider
     /// <param name="ttl">The ttl value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task SetAsync<T>(string key, T value, TimeSpan ttl, CancellationToken cancellationToken = default)
+    public ValueTask SetAsync<T>(string key, T value, TimeSpan ttl, CancellationToken cancellationToken = default)
     {
         _cache[key] = new CacheItem(value, DateTimeOffset.UtcNow.Add(ttl));
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>
@@ -182,10 +182,10 @@ public sealed class InMemoryForgeCacheProvider : IForgeCacheProvider
     /// <param name="key">The key value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the RemoveAsync operation.</returns>
-    public Task RemoveAsync(string key, CancellationToken cancellationToken = default)
+    public ValueTask RemoveAsync(string key, CancellationToken cancellationToken = default)
     {
         _cache.TryRemove(key, out _);
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 }
 
@@ -199,10 +199,10 @@ public sealed class InMemoryForgeOutboxStore : IForgeOutboxStore
     /// <param name="message">The message value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the EnqueueAsync operation.</returns>
-    public Task EnqueueAsync(AbstractionOutboxMessage message, CancellationToken cancellationToken = default)
+    public ValueTask EnqueueAsync(AbstractionOutboxMessage message, CancellationToken cancellationToken = default)
     {
         _messages[message.Id] = message;
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>
@@ -211,7 +211,7 @@ public sealed class InMemoryForgeOutboxStore : IForgeOutboxStore
     /// <param name="take">The take value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the GetPendingAsync operation.</returns>
-    public Task<IReadOnlyList<AbstractionOutboxMessage>> GetPendingAsync(int take = 100, CancellationToken cancellationToken = default)
+    public ValueTask<IReadOnlyList<AbstractionOutboxMessage>> GetPendingAsync(int take = 100, CancellationToken cancellationToken = default)
     {
         IReadOnlyList<AbstractionOutboxMessage> pending = _messages.Values
             .Where(x => x.ProcessedAt is null)
@@ -219,7 +219,7 @@ public sealed class InMemoryForgeOutboxStore : IForgeOutboxStore
             .Take(take)
             .ToList();
 
-        return Task.FromResult(pending);
+        return ValueTask.FromResult(pending);
     }
 
     /// <summary>
@@ -228,12 +228,12 @@ public sealed class InMemoryForgeOutboxStore : IForgeOutboxStore
     /// <param name="id">The id value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the MarkProcessedAsync operation.</returns>
-    public Task MarkProcessedAsync(Guid id, CancellationToken cancellationToken = default)
+    public ValueTask MarkProcessedAsync(Guid id, CancellationToken cancellationToken = default)
     {
         if (_messages.TryGetValue(id, out var message))
             _messages[id] = message with { ProcessedAt = DateTimeOffset.UtcNow };
 
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>
@@ -244,7 +244,7 @@ public sealed class InMemoryForgeOutboxStore : IForgeOutboxStore
     /// <param name="tenantId">The tenantId value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task EnqueueDomainEventAsync<T>(T @event, string? tenantId = null, CancellationToken cancellationToken = default)
+    public ValueTask EnqueueDomainEventAsync<T>(T @event, string? tenantId = null, CancellationToken cancellationToken = default)
     {
         var message = new AbstractionOutboxMessage(
             Guid.NewGuid(),

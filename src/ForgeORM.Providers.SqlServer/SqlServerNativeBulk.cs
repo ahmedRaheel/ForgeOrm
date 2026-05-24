@@ -7,7 +7,7 @@ namespace ForgeORM.Providers.SqlServer;
 
 internal static class SqlServerNativeBulk
 {
-    public static async Task BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default)
+    public static async ValueTask BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default)
     {
         if (rows.Count == 0)
             return;

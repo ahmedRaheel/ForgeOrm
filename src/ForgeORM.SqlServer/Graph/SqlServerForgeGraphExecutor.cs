@@ -17,7 +17,7 @@ public sealed class SqlServerForgeGraphExecutor : IForgeGraphExecutor
 
     public ForgeDatabaseProvider Provider => ForgeDatabaseProvider.SqlServer;
 
-    public Task InsertGraphAsync<T>(
+    public ValueTask InsertGraphAsync<T>(
         T entity,
         ForgeGraphOptions options,
         CancellationToken cancellationToken = default)
@@ -38,41 +38,41 @@ public sealed class SqlServerForgeGraphExecutor : IForgeGraphExecutor
         };
     }
 
-    public Task UpdateGraphAsync<T>(
+    public ValueTask UpdateGraphAsync<T>(
         T entity,
         ForgeGraphOptions options,
         CancellationToken cancellationToken = default)
         where T : class
     {
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    public Task DeleteGraphAsync<T>(
+    public ValueTask DeleteGraphAsync<T>(
         T entity,
         ForgeGraphOptions options,
         CancellationToken cancellationToken = default)
         where T : class
     {
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    private Task InsertUsingOpenJsonAsync<T>(T entity, CancellationToken cancellationToken)
+    private ValueTask InsertUsingOpenJsonAsync<T>(T entity, CancellationToken cancellationToken)
     {
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    private Task InsertUsingTvpAsync<T>(T entity, CancellationToken cancellationToken)
+    private ValueTask InsertUsingTvpAsync<T>(T entity, CancellationToken cancellationToken)
     {
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    private Task InsertUsingBulkCopyAsync<T>(T entity, CancellationToken cancellationToken)
+    private ValueTask InsertUsingBulkCopyAsync<T>(T entity, CancellationToken cancellationToken)
     {
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    private Task InsertRowByRowAsync<T>(T entity, CancellationToken cancellationToken)
+    private ValueTask InsertRowByRowAsync<T>(T entity, CancellationToken cancellationToken)
     {
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 }

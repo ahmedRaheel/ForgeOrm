@@ -10,7 +10,7 @@ public sealed class ForgeAiAssistant : IForgeAiQueryClient, IForgeApiGenerator, 
     /// <param name="request">The request value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the GenerateSqlAsync operation.</returns>
-    public Task<ForgeAiQueryResult> GenerateSqlAsync(ForgeAiQueryRequest request, CancellationToken cancellationToken = default)
+    public ValueTask<ForgeAiQueryResult> GenerateSqlAsync(ForgeAiQueryRequest request, CancellationToken cancellationToken = default)
     {
         var entity = string.IsNullOrWhiteSpace(request.EntityName) ? "Records" : request.EntityName;
         var table = string.IsNullOrWhiteSpace(request.Schema) ? entity : $"{request.Schema}.{entity}";
@@ -38,7 +38,7 @@ public sealed class ForgeAiAssistant : IForgeAiQueryClient, IForgeApiGenerator, 
             ? new[] { $"CREATE INDEX IX_{entity}_IsActive ON {table}(IsActive);" }
             : Array.Empty<string>();
 
-        return Task.FromResult(new ForgeAiQueryResult(
+        return ValueTask.FromResult(new ForgeAiQueryResult(
             sql,
             $"Generated a deterministic starter query for prompt: {prompt}",
             warnings,
@@ -98,13 +98,13 @@ public sealed class ForgeAiAssistant : IForgeAiQueryClient, IForgeApiGenerator, 
     /// <param name="request">The request value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ScaffoldAsync operation.</returns>
-    public Task<IReadOnlyList<ForgeGeneratedFile>> ScaffoldAsync(ForgeScaffoldRequest request, CancellationToken cancellationToken = default)
+    public ValueTask<IReadOnlyList<ForgeGeneratedFile>> ScaffoldAsync(ForgeScaffoldRequest request, CancellationToken cancellationToken = default)
     {
         IReadOnlyList<ForgeGeneratedFile> files =
         [
             new("README.scaffold.md", $"Scaffold request accepted for provider {request.Provider}. Add provider metadata reader to generate entities.")
         ];
 
-        return Task.FromResult(files);
+        return ValueTask.FromResult(files);
     }
 }

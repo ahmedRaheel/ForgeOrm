@@ -12,7 +12,7 @@ public partial class ForgeDb
     /// <summary>
     /// Executes SQL and returns a JSON-friendly projection.
     /// </summary>
-    public async Task<ForgeJsonProjection> QueryJsonProjectionAsync(
+    public async ValueTask<ForgeJsonProjection> QueryJsonProjectionAsync(
         string sql,
         object? parameters = null,
         string? name = null,
@@ -35,7 +35,7 @@ public partial class ForgeDb
     /// <summary>
     /// Executes SQL and returns a JSON string.
     /// </summary>
-    public async Task<string> QueryJsonAsync(
+    public async ValueTask<string> QueryJsonAsync(
         string sql,
         object? parameters = null,
         CancellationToken cancellationToken = default)
@@ -51,7 +51,7 @@ public partial class ForgeDb
     /// <summary>
     /// Executes SQL and returns a DataFrame-friendly tabular result.
     /// </summary>
-    public async Task<ForgeTabularResult> QueryDataFrameAsync(
+    public async ValueTask<ForgeTabularResult> QueryDataFrameAsync(
         string sql,
         object? parameters = null,
         string? name = null,
@@ -76,7 +76,7 @@ public partial class ForgeDb
     /// <summary>
     /// Executes SQL and returns CSV text.
     /// </summary>
-    public async Task<string> QueryCsvAsync(
+    public async ValueTask<string> QueryCsvAsync(
         string sql,
         object? parameters = null,
         CancellationToken cancellationToken = default)

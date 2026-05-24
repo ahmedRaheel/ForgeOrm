@@ -37,9 +37,9 @@ public sealed class ForgeSchemaManager : IForgeSchemaManager
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task<ForgeSchemaDiff> GenerateDiffAsync<T>(CancellationToken cancellationToken = default)
+    public ValueTask<ForgeSchemaDiff> GenerateDiffAsync<T>(CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(GenerateDiff<T>());
+        return ValueTask.FromResult(GenerateDiff<T>());
     }
 
     /// <summary>
@@ -63,9 +63,9 @@ public sealed class ForgeSchemaManager : IForgeSchemaManager
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task<ForgeSchemaVerificationResult> VerifySchemaAsync<T>(CancellationToken cancellationToken = default)
+    public ValueTask<ForgeSchemaVerificationResult> VerifySchemaAsync<T>(CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(VerifySchema<T>());
+        return ValueTask.FromResult(VerifySchema<T>());
     }
 
     /// <summary>
@@ -84,8 +84,8 @@ public sealed class ForgeSchemaManager : IForgeSchemaManager
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task<string> SyncSchemaAsync<T>(CancellationToken cancellationToken = default)
+    public ValueTask<string> SyncSchemaAsync<T>(CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(SyncSchema<T>());
+        return ValueTask.FromResult(SyncSchema<T>());
     }
 }

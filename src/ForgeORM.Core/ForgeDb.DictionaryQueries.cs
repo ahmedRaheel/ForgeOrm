@@ -11,22 +11,12 @@ public partial class ForgeDb
     /// This is the correct materialization path for dynamic reports, pivots, unpivots,
     /// analytics projections, and SQL that does not map to a static entity type.
     /// </summary>
-    public async Task<IReadOnlyList<Dictionary<string, object?>>> QueryDictionaryAsync(
+    public async ValueTask<IReadOnlyList<Dictionary<string, object?>>> QueryDictionaryAsync(
         string sql,
         object? parameters = null,
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-        {
-            return await ForgeSqlServerProviderDirectHotPath.QueryDictionaryAsync(
-                _connectionString,
-                sql,
-                parameters,
-                timeoutSeconds,
-                cancellationToken).ConfigureAwait(false);
-        }
-
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 

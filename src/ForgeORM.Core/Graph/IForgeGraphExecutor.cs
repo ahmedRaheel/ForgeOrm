@@ -13,7 +13,7 @@ public interface IForgeGraphExecutor
     /// <summary>
     /// Inserts an entity graph and returns execution statistics.
     /// </summary>
-    Task<ForgeGraphResult> InsertGraphAsync<T>(
+    ValueTask<ForgeGraphResult> InsertGraphAsync<T>(
         T entity,
         ForgeGraphOptions options,
         CancellationToken cancellationToken = default)
@@ -22,7 +22,7 @@ public interface IForgeGraphExecutor
     /// <summary>
     /// Updates an entity graph and returns execution statistics.
     /// </summary>
-    Task<ForgeGraphResult> UpdateGraphAsync<T>(
+    ValueTask<ForgeGraphResult> UpdateGraphAsync<T>(
         T entity,
         ForgeGraphOptions options,
         CancellationToken cancellationToken = default)
@@ -31,7 +31,7 @@ public interface IForgeGraphExecutor
     /// <summary>
     /// Deletes an entity graph and returns execution statistics.
     /// </summary>
-    Task<ForgeGraphResult> DeleteGraphAsync<T>(
+    ValueTask<ForgeGraphResult> DeleteGraphAsync<T>(
         T entity,
         ForgeGraphOptions options,
         CancellationToken cancellationToken = default)

@@ -71,11 +71,11 @@ public partial class ForgeDb
     /// <param name="ids">The key values to match.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The entities whose key values match the supplied <paramref name="ids"/>.</returns>
-    public Task<IReadOnlyList<T>> GetByIdsAsync<T, TKey>(IEnumerable<TKey> ids, CancellationToken cancellationToken = default)
+    public ValueTask<IReadOnlyList<T>> GetByIdsAsync<T, TKey>(IEnumerable<TKey> ids, CancellationToken cancellationToken = default)
     {
         var idList = NormalizeIds(ids);
         if (idList.Count == 0)
-            return Task.FromResult<IReadOnlyList<T>>([]);
+            return ValueTask.FromResult<IReadOnlyList<T>>([]);
 
         var metadata = _metadata.Resolve<T>();
         var sql = $"SELECT * FROM {metadata.TableName} WHERE {metadata.KeyColumn} IN @Ids";
@@ -91,11 +91,11 @@ public partial class ForgeDb
     /// <param name="ids">The key values to match.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The entities whose selected key values match the supplied <paramref name="ids"/>.</returns>
-    public Task<IReadOnlyList<T>> GetByIdsAsync<T, TKey>(Expression<Func<T, TKey>> keySelector, IEnumerable<TKey> ids, CancellationToken cancellationToken = default)
+    public ValueTask<IReadOnlyList<T>> GetByIdsAsync<T, TKey>(Expression<Func<T, TKey>> keySelector, IEnumerable<TKey> ids, CancellationToken cancellationToken = default)
     {
         var idList = NormalizeIds(ids);
         if (idList.Count == 0)
-            return Task.FromResult<IReadOnlyList<T>>([]);
+            return ValueTask.FromResult<IReadOnlyList<T>>([]);
 
         var metadata = _metadata.Resolve<T>();
         var keyColumn = ResolveColumnName(metadata, GetMemberName(keySelector));
@@ -112,11 +112,11 @@ public partial class ForgeDb
     /// <param name="ids">The key values to match.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The entities whose SQL key column values match the supplied <paramref name="ids"/>.</returns>
-    public Task<IReadOnlyList<T>> GetByIdsSqlAsync<T, TKey>(string keyColumn, IEnumerable<TKey> ids, CancellationToken cancellationToken = default)
+    public ValueTask<IReadOnlyList<T>> GetByIdsSqlAsync<T, TKey>(string keyColumn, IEnumerable<TKey> ids, CancellationToken cancellationToken = default)
     {
         var idList = NormalizeIds(ids);
         if (idList.Count == 0)
-            return Task.FromResult<IReadOnlyList<T>>([]);
+            return ValueTask.FromResult<IReadOnlyList<T>>([]);
 
         var metadata = _metadata.Resolve<T>();
         var sql = $"SELECT * FROM {metadata.TableName} WHERE {keyColumn} IN @Ids";
@@ -185,11 +185,11 @@ public partial class ForgeDb
     /// <param name="ids">The key values to delete.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of deleted rows.</returns>
-    public Task<int> DeleteByIdsAsync<T, TKey>(IEnumerable<TKey> ids, CancellationToken cancellationToken = default)
+    public ValueTask<int> DeleteByIdsAsync<T, TKey>(IEnumerable<TKey> ids, CancellationToken cancellationToken = default)
     {
         var idList = NormalizeIds(ids);
         if (idList.Count == 0)
-            return Task.FromResult(0);
+            return ValueTask.FromResult(0);
 
         var metadata = _metadata.Resolve<T>();
         return ExecuteAsync($"DELETE FROM {metadata.TableName} WHERE {metadata.KeyColumn} IN @Ids", new Dictionary<string, object?> { ["Ids"] = idList }, cancellationToken: cancellationToken);
@@ -204,11 +204,11 @@ public partial class ForgeDb
     /// <param name="ids">The key values to delete.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of deleted rows.</returns>
-    public Task<int> DeleteByIdsAsync<T, TKey>(Expression<Func<T, TKey>> keySelector, IEnumerable<TKey> ids, CancellationToken cancellationToken = default)
+    public ValueTask<int> DeleteByIdsAsync<T, TKey>(Expression<Func<T, TKey>> keySelector, IEnumerable<TKey> ids, CancellationToken cancellationToken = default)
     {
         var idList = NormalizeIds(ids);
         if (idList.Count == 0)
-            return Task.FromResult(0);
+            return ValueTask.FromResult(0);
 
         var metadata = _metadata.Resolve<T>();
         var keyColumn = ResolveColumnName(metadata, GetMemberName(keySelector));
@@ -224,11 +224,11 @@ public partial class ForgeDb
     /// <param name="ids">The key values to delete.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of deleted rows.</returns>
-    public Task<int> DeleteByIdsSqlAsync<T, TKey>(string keyColumn, IEnumerable<TKey> ids, CancellationToken cancellationToken = default)
+    public ValueTask<int> DeleteByIdsSqlAsync<T, TKey>(string keyColumn, IEnumerable<TKey> ids, CancellationToken cancellationToken = default)
     {
         var idList = NormalizeIds(ids);
         if (idList.Count == 0)
-            return Task.FromResult(0);
+            return ValueTask.FromResult(0);
 
         var metadata = _metadata.Resolve<T>();
         return ExecuteAsync($"DELETE FROM {metadata.TableName} WHERE {keyColumn} IN @Ids", new Dictionary<string, object?> { ["Ids"] = idList }, cancellationToken: cancellationToken);
@@ -306,11 +306,11 @@ public partial class ForgeDb
     /// <param name="values">An object containing the columns and values to update.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of updated rows.</returns>
-    public Task<int> UpdateByIdsAsync<T, TKey>(IEnumerable<TKey> ids, object values, CancellationToken cancellationToken = default)
+    public ValueTask<int> UpdateByIdsAsync<T, TKey>(IEnumerable<TKey> ids, object values, CancellationToken cancellationToken = default)
     {
         var idList = NormalizeIds(ids);
         if (idList.Count == 0)
-            return Task.FromResult(0);
+            return ValueTask.FromResult(0);
 
         var metadata = _metadata.Resolve<T>();
         var update = BuildUpdateSet(metadata, values);
@@ -328,11 +328,11 @@ public partial class ForgeDb
     /// <param name="values">An object containing the columns and values to update.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of updated rows.</returns>
-    public Task<int> UpdateByIdsAsync<T, TKey>(Expression<Func<T, TKey>> keySelector, IEnumerable<TKey> ids, object values, CancellationToken cancellationToken = default)
+    public ValueTask<int> UpdateByIdsAsync<T, TKey>(Expression<Func<T, TKey>> keySelector, IEnumerable<TKey> ids, object values, CancellationToken cancellationToken = default)
     {
         var idList = NormalizeIds(ids);
         if (idList.Count == 0)
-            return Task.FromResult(0);
+            return ValueTask.FromResult(0);
 
         var metadata = _metadata.Resolve<T>();
         var keyColumn = ResolveColumnName(metadata, GetMemberName(keySelector));
@@ -351,11 +351,11 @@ public partial class ForgeDb
     /// <param name="values">An object containing the columns and values to update.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of updated rows.</returns>
-    public Task<int> UpdateByIdsSqlAsync<T, TKey>(string keyColumn, IEnumerable<TKey> ids, object values, CancellationToken cancellationToken = default)
+    public ValueTask<int> UpdateByIdsSqlAsync<T, TKey>(string keyColumn, IEnumerable<TKey> ids, object values, CancellationToken cancellationToken = default)
     {
         var idList = NormalizeIds(ids);
         if (idList.Count == 0)
-            return Task.FromResult(0);
+            return ValueTask.FromResult(0);
 
         var metadata = _metadata.Resolve<T>();
         var update = BuildUpdateSet(metadata, values);
@@ -396,7 +396,7 @@ public partial class ForgeDb
     /// <param name="predicate">The expression condition used to select rows for deletion.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of deleted rows.</returns>
-    public Task<int> DeleteByConditionAsync<T>(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
+    public ValueTask<int> DeleteByConditionAsync<T>(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
     {
         var metadata = _metadata.Resolve<T>();
         var condition = ForgeCoreExpressionSql.Translate(predicate, metadata);
@@ -411,7 +411,7 @@ public partial class ForgeDb
     /// <param name="parameters">The SQL condition parameters.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of deleted rows.</returns>
-    public Task<int> DeleteByConditionSqlAsync<T>(string sqlCondition, object? parameters = null, CancellationToken cancellationToken = default)
+    public ValueTask<int> DeleteByConditionSqlAsync<T>(string sqlCondition, object? parameters = null, CancellationToken cancellationToken = default)
     {
         var metadata = _metadata.Resolve<T>();
         return ExecuteAsync($"DELETE FROM {metadata.TableName} WHERE {sqlCondition}", parameters, cancellationToken: cancellationToken);
@@ -457,7 +457,7 @@ public partial class ForgeDb
     /// <param name="predicate">The expression condition used to select rows for update.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of updated rows.</returns>
-    public Task<int> UpdateByConditionAsync<T>(object values, Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
+    public ValueTask<int> UpdateByConditionAsync<T>(object values, Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
     {
         var metadata = _metadata.Resolve<T>();
         var update = BuildUpdateSet(metadata, values);
@@ -475,7 +475,7 @@ public partial class ForgeDb
     /// <param name="parameters">The SQL condition parameters.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of updated rows.</returns>
-    public Task<int> UpdateByConditionSqlAsync<T>(object values, string sqlCondition, object? parameters = null, CancellationToken cancellationToken = default)
+    public ValueTask<int> UpdateByConditionSqlAsync<T>(object values, string sqlCondition, object? parameters = null, CancellationToken cancellationToken = default)
     {
         var metadata = _metadata.Resolve<T>();
         var update = BuildUpdateSet(metadata, values);

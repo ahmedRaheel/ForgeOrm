@@ -44,7 +44,7 @@ public sealed class ForgeDbCteQuery<T>
         return $"WITH {_cteName} AS ({_cteSql}) SELECT * FROM {from}";
     }
 
-    public Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default)
+    public ValueTask<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default)
         => _db.QueryAsync<T>(ToSql(), cancellationToken);
 }
 
@@ -99,7 +99,7 @@ public sealed class ForgeDbTempTableQuery<T>
         return $"SELECT * INTO {_name} FROM ({source}) AS ForgeTempSource";
     }
 
-    public Task<int> CreateAsync(CancellationToken cancellationToken = default)
+    public ValueTask<int> CreateAsync(CancellationToken cancellationToken = default)
         => _db.ExecuteAsync(ToSql(), cancellationToken: cancellationToken);
 }
 

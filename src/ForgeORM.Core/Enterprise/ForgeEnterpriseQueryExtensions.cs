@@ -77,7 +77,7 @@ public sealed class ForgeCompiledQuery<TEntity>
         return this;
     }
 
-    public Task<IReadOnlyList<TEntity>> ExecuteAsync(CancellationToken cancellationToken = default)
+    public ValueTask<IReadOnlyList<TEntity>> ExecuteAsync(CancellationToken cancellationToken = default)
     {
         return _builder.Profile(_name).CacheFor(TimeSpan.FromMinutes(10)).ToListAsync(cancellationToken);
     }

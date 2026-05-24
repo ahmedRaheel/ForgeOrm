@@ -26,7 +26,7 @@ public interface IForgeVectorStore
     /// <param name="document">The document value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the UpsertAsync operation.</returns>
-    Task UpsertAsync(ForgeVectorDocument document, CancellationToken cancellationToken = default);
+    ValueTask UpsertAsync(ForgeVectorDocument document, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the SearchAsync operation.
     /// </summary>
@@ -34,7 +34,7 @@ public interface IForgeVectorStore
     /// <param name="topK">The topK value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the SearchAsync operation.</returns>
-    Task<IReadOnlyList<ForgeVectorSearchResult>> SearchAsync(float[] queryVector, int topK = 5, CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<ForgeVectorSearchResult>> SearchAsync(float[] queryVector, int topK = 5, CancellationToken cancellationToken = default);
 }
 
 public sealed class ForgeInMemoryVectorStore : IForgeVectorStore
@@ -48,14 +48,14 @@ public sealed class ForgeInMemoryVectorStore : IForgeVectorStore
     /// <param name="document">The document value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the UpsertAsync operation.</returns>
-    public Task UpsertAsync(ForgeVectorDocument document, CancellationToken cancellationToken = default)
+    public ValueTask UpsertAsync(ForgeVectorDocument document, CancellationToken cancellationToken = default)
     {
         lock (_gate)
         {
             _documents.RemoveAll(x => x.Id == document.Id);
             _documents.Add(document);
         }
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>
@@ -65,7 +65,7 @@ public sealed class ForgeInMemoryVectorStore : IForgeVectorStore
     /// <param name="topK">The topK value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the SearchAsync operation.</returns>
-    public Task<IReadOnlyList<ForgeVectorSearchResult>> SearchAsync(
+    public ValueTask<IReadOnlyList<ForgeVectorSearchResult>> SearchAsync(
      float[] queryVector,
      int topK = 5,
      CancellationToken cancellationToken = default)
@@ -84,7 +84,7 @@ public sealed class ForgeInMemoryVectorStore : IForgeVectorStore
                 .Take(topK)
                 .ToList();
 
-            return Task.FromResult<IReadOnlyList<ForgeVectorSearchResult>>(result);
+            return ValueTask.FromResult<IReadOnlyList<ForgeVectorSearchResult>>(result);
         }
     }
 }

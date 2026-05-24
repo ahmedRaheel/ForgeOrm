@@ -23,15 +23,7 @@ public partial class ForgeDb
         int? timeoutSeconds = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-        {
-            await foreach (var row in ForgeSqlServerProviderDirectHotPath.StreamAsync<T>(_connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false))
-                yield return row;
-            yield break;
-        }
-
-        await using var connection = CreateConnection();
-        await foreach (var row in ForgePerformancePipeline.StreamAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
+        await foreach (var row in ForgeFrameworkExecutionPolicy.StreamAsync<T>(Provider, _connectionString, sql, parameters, timeoutSeconds, cancellationToken)
             .ConfigureAwait(false))
         {
             yield return row;
@@ -41,44 +33,34 @@ public partial class ForgeDb
     /// <summary>
     /// Executes a SQL query through the centralized Forge performance pipeline.
     /// </summary>
-    public async Task<IReadOnlyList<T>> QueryFastV1Async<T>(
+    public async ValueTask<IReadOnlyList<T>> QueryFastV1Async<T>(
         string sql,
         object? parameters = null,
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-            return await ForgeSqlServerProviderDirectHotPath.QueryAsync<T>(_connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false);
-
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        return await ForgePerformancePipeline.QueryAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
+        return await ForgeFrameworkExecutionPolicy.QueryAsync<T>(Provider, _connectionString, sql, parameters, timeoutSeconds, cancellationToken)
             .ConfigureAwait(false);
     }
 
     /// <summary>
     /// Executes a non-query command through the centralized Forge performance pipeline and cached MSIL parameter binder.
     /// </summary>
-    public async Task<int> ExecuteFastAsync(
+    public async ValueTask<int> ExecuteFastAsync(
         string sql,
         object? parameters = null,
         CommandType commandType = CommandType.Text,
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        if (commandType == CommandType.Text && ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-            return await ForgeSqlServerProviderDirectHotPath.ExecuteAsync(_connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false);
-
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        return await ForgePerformancePipeline.ExecuteAsync(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
+        return await ForgeFrameworkExecutionPolicy.ExecuteAsync(Provider, _connectionString, sql, parameters, commandType, timeoutSeconds, cancellationToken)
             .ConfigureAwait(false);
     }
 
     /// <summary>
     /// Inserts an entity using the cached runtime entity plan and MSIL parameter binder.
     /// </summary>
-    public Task<int> InsertCompiledv1Async<T>(T entity, CancellationToken cancellationToken = default)
+    public ValueTask<int> InsertCompiledv1Async<T>(T entity, CancellationToken cancellationToken = default)
     {
         var plan = ForgeRuntimeEntityMetadataCache.For<T>();
         return ExecuteFastAsync(plan.InsertSql, entity, cancellationToken: cancellationToken);
@@ -87,7 +69,7 @@ public partial class ForgeDb
     /// <summary>
     /// Updates an entity using the cached runtime entity plan and MSIL parameter binder.
     /// </summary>
-    public Task<int> UpdateCompiledAsync<T>(T entity, CancellationToken cancellationToken = default)
+    public ValueTask<int> UpdateCompiledAsync<T>(T entity, CancellationToken cancellationToken = default)
     {
         var plan = ForgeRuntimeEntityMetadataCache.For<T>();
         return ExecuteFastAsync(plan.UpdateSql, entity, cancellationToken: cancellationToken);
@@ -96,7 +78,7 @@ public partial class ForgeDb
     /// <summary>
     /// Deletes an entity by its key using the cached runtime entity plan.
     /// </summary>
-    public Task<int> DeleteCompiledAsync<T>(object id, CancellationToken cancellationToken = default)
+    public ValueTask<int> DeleteCompiledAsync<T>(object id, CancellationToken cancellationToken = default)
     {
         var plan = ForgeRuntimeEntityMetadataCache.For<T>();
         if (plan.Key is null)
@@ -108,16 +90,14 @@ public partial class ForgeDb
     /// <summary>
     /// Reads one entity by key using cached SQL, cached parameters and cached MSIL materialization.
     /// </summary>
-    public async Task<T?> GetByIdCompiledAsync<T>(object id, CancellationToken cancellationToken = default)
+    public async ValueTask<T?> GetByIdCompiledAsync<T>(object id, CancellationToken cancellationToken = default)
     {
         var plan = ForgeRuntimeEntityMetadataCache.For<T>();
         if (plan.Key is null)
             throw new InvalidOperationException($"No key column found for {typeof(T).Name}.");
 
         var sql = $"SELECT {plan.SelectColumnsSql} FROM {plan.TableName} WHERE {plan.Key.ColumnName} = @{plan.Key.PropertyName}";
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        return await ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, sql, new Dictionary<string, object?> { [plan.Key.PropertyName] = id }, cancellationToken: cancellationToken)
+        return await ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T>(Provider, _connectionString, sql, new Dictionary<string, object?> { [plan.Key.PropertyName] = id }, timeoutSeconds: null, cancellationToken)
             .ConfigureAwait(false);
     }
 

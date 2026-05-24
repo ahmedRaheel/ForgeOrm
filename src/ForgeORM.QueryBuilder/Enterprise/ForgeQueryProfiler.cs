@@ -10,7 +10,7 @@ public sealed class ForgeQueryProfiler
     /// <summary>
     /// Profiles an async query operation.
     /// </summary>
-    public async Task<(T Result, ForgeQueryProfile Profile)> ProfileAsync<T>(string name, ForgeSqlQuery query, Func<Task<T>> execute, long rowsReturned = 0)
+    public async ValueTask<(T Result, ForgeQueryProfile Profile)> ProfileAsync<T>(string name, ForgeSqlQuery query, Func<ValueTask<T>> execute, long rowsReturned = 0)
     {
         var stopwatch = Stopwatch.StartNew();
         var result = await execute().ConfigureAwait(false);

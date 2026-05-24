@@ -326,7 +326,7 @@ public sealed class ForgeAnalyticsQuery<T>
     /// <typeparam name="TResult">The type used by the operation.</typeparam>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the TResult operation.</returns>
-    public Task<IReadOnlyList<TResult>> ToListAsync<TResult>(CancellationToken cancellationToken = default)
+    public ValueTask<IReadOnlyList<TResult>> ToListAsync<TResult>(CancellationToken cancellationToken = default)
     {
         var sql = Render().Sql;
         return _db.QueryAsync<TResult>(sql, cancellationToken: cancellationToken);
@@ -336,7 +336,7 @@ public sealed class ForgeAnalyticsQuery<T>
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ToDynamicListAsync operation.</returns>
-    public async Task<IReadOnlyList<IDictionary<string, object?>>> ToDynamicListAsync(
+    public async ValueTask<IReadOnlyList<IDictionary<string, object?>>> ToDynamicListAsync(
         CancellationToken cancellationToken = default)
     {
         var render = Render();
@@ -623,7 +623,7 @@ public sealed class ForgePivotQuery<T>
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ToDynamicSqlServerPivotScriptAsync operation.</returns>
-    public async Task<string> ToDynamicSqlServerPivotScriptAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<string> ToDynamicSqlServerPivotScriptAsync(CancellationToken cancellationToken = default)
     {
         if (_row is null || _column is null || _value is null)
             throw new InvalidOperationException("Rows, Columns and Values are required for pivot.");

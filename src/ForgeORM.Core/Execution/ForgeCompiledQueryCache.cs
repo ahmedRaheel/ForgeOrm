@@ -1,6 +1,4 @@
 using System.Collections.Concurrent;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace ForgeORM.Core;
 
@@ -28,9 +26,7 @@ public static class ForgeCompiledQueryCache
         if (string.IsNullOrWhiteSpace(value))
             return string.Empty;
 
-        var normalized = string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(normalized));
-        return Convert.ToHexString(bytes);
+        return ForgeFastHash.FingerprintSql(value);
     }
 }
 

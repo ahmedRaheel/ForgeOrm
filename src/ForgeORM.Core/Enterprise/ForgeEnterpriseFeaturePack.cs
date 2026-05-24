@@ -193,9 +193,9 @@ public sealed class ForgeShardRouter
 /// </summary>
 public interface IForgeDistributedCache
 {
-    Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default);
-    Task SetAsync<T>(string key, T value, TimeSpan ttl, CancellationToken cancellationToken = default);
-    Task RemoveAsync(string key, CancellationToken cancellationToken = default);
+    ValueTask<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default);
+    ValueTask SetAsync<T>(string key, T value, TimeSpan ttl, CancellationToken cancellationToken = default);
+    ValueTask RemoveAsync(string key, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -206,27 +206,27 @@ public sealed class InMemoryForgeDistributedCache : IForgeDistributedCache
     private sealed record Entry(object? Value, DateTimeOffset ExpiresAtUtc);
     private readonly ConcurrentDictionary<string, Entry> _items = new(StringComparer.OrdinalIgnoreCase);
 
-    public Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
+    public ValueTask<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
     {
         if (!_items.TryGetValue(key, out var entry) || entry.ExpiresAtUtc <= DateTimeOffset.UtcNow)
         {
             _items.TryRemove(key, out _);
-            return Task.FromResult(default(T));
+            return ValueTask.FromResult(default(T));
         }
 
-        return Task.FromResult((T?)entry.Value);
+        return ValueTask.FromResult((T?)entry.Value);
     }
 
-    public Task SetAsync<T>(string key, T value, TimeSpan ttl, CancellationToken cancellationToken = default)
+    public ValueTask SetAsync<T>(string key, T value, TimeSpan ttl, CancellationToken cancellationToken = default)
     {
         _items[key] = new Entry(value, DateTimeOffset.UtcNow.Add(ttl));
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    public Task RemoveAsync(string key, CancellationToken cancellationToken = default)
+    public ValueTask RemoveAsync(string key, CancellationToken cancellationToken = default)
     {
         _items.TryRemove(key, out _);
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 }
 
@@ -320,10 +320,10 @@ public static class ForgeStreamingExtensions
         }
     }
 
-    public static async Task ProcessInBatchesAsync<T>(
+    public static async ValueTask ProcessInBatchesAsync<T>(
         this IAsyncEnumerable<T> rows,
         int batchSize,
-        Func<IReadOnlyList<T>, Task> processor,
+        Func<IReadOnlyList<T>, ValueTask> processor,
         CancellationToken cancellationToken = default)
     {
         var batch = new List<T>(batchSize);

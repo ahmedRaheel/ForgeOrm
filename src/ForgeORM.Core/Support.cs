@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel.DataAnnotations;
 using System.Data;
 using System.Data.Common;
+using ForgeORM.Core.Performance;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -43,7 +44,7 @@ internal sealed class ForgeGridReader : IForgeGridReader
     /// </summary>
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <returns>The result of the T operation.</returns>
-    public async Task<IReadOnlyList<T>> ReadAsync<T>()
+    public async ValueTask<IReadOnlyList<T>> ReadAsync<T>()
     {
         if (_hasConsumedCurrentResult)
             await _reader.NextResultAsync();
@@ -84,6 +85,14 @@ public sealed class ReflectionForgeEntityMetadataResolver : IForgeEntityMetadata
     /// <returns>The result of the Resolve operation.</returns>
     public ForgeEntityMetadata Resolve(Type type)
     {
+        ArgumentNullException.ThrowIfNull(type);
+
+        // Framework-level policy: generated metadata always wins when available, even when
+        // older app code still constructs ReflectionForgeEntityMetadataResolver directly.
+        // Reflection becomes the safe fallback, not a separate runtime framework.
+        if (ForgeSourceGeneratedRegistry.TryGetMetadata(type, out var generated))
+            return generated;
+
         return _cache.GetOrAdd(type, BuildMetadata);
     }
 
@@ -352,7 +361,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the AnyAsync operation.</returns>
-    public async Task<bool> AnyAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<bool> AnyAsync(CancellationToken cancellationToken = default)
         => await _db.ExecuteScalarAsync<int>(BuildAnySql(), BuildParameters(), cancellationToken: cancellationToken) > 0;
 
     /// <summary>
@@ -383,7 +392,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ToListAsync operation.</returns>
-    public async Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default)
     {
         var sql = BuildSql();
         var parameters = BuildParameters();
@@ -428,7 +437,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     }
 
     /// <summary>Processes the current query in batches. This keeps caller code clean for million-record jobs.</summary>
-    public async Task ProcessInBatchesAsync(int batchSize, Func<IReadOnlyList<T>, Task> processor, CancellationToken cancellationToken = default)
+    public async ValueTask ProcessInBatchesAsync(int batchSize, Func<IReadOnlyList<T>, ValueTask> processor, CancellationToken cancellationToken = default)
     {
         if (batchSize <= 0) throw new ArgumentOutOfRangeException(nameof(batchSize));
         if (processor is null) throw new ArgumentNullException(nameof(processor));
@@ -463,7 +472,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the FirstOrDefaultAsync operation.</returns>
-    public async Task<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default)
     {
         var row = await _db.QueryFirstOrDefaultAsync<T>(BuildFirstSql(), BuildParameters(), ExecutionOptions.TimeoutSeconds, cancellationToken);
         if (_includes.Count > 0 && row is not null)
@@ -482,27 +491,27 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the CountAsync operation.</returns>
-    public async Task<int> CountAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<int> CountAsync(CancellationToken cancellationToken = default)
         => await _db.ExecuteScalarAsync<int>(BuildCountSql(), BuildParameters(), cancellationToken: cancellationToken);
 
     /// <summary>Executes SUM for the selected decimal column.</summary>
-    public Task<decimal> SumAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
+    public ValueTask<decimal> SumAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
         => ExecuteDecimalAggregateAsync("SUM", selector, cancellationToken);
 
     /// <summary>Executes AVG for the selected decimal column.</summary>
-    public Task<decimal> AverageAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
+    public ValueTask<decimal> AverageAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
         => ExecuteDecimalAggregateAsync("AVG", selector, cancellationToken);
 
     /// <summary>Executes MIN for the selected decimal column.</summary>
-    public Task<decimal> MinAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
+    public ValueTask<decimal> MinAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
         => ExecuteDecimalAggregateAsync("MIN", selector, cancellationToken);
 
     /// <summary>Executes MAX for the selected decimal column.</summary>
-    public Task<decimal> MaxAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
+    public ValueTask<decimal> MaxAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
         => ExecuteDecimalAggregateAsync("MAX", selector, cancellationToken);
 
     /// <summary>Executes expression-based paging using the current query filters and ordering.</summary>
-    public async Task<ForgePagedResult<T>> PageAsync(int page, int pageSize, CancellationToken cancellationToken = default)
+    public async ValueTask<ForgePagedResult<T>> PageAsync(int page, int pageSize, CancellationToken cancellationToken = default)
     {
         if (page <= 0) throw new ArgumentOutOfRangeException(nameof(page), "Page must be greater than zero.");
         if (pageSize <= 0) throw new ArgumentOutOfRangeException(nameof(pageSize), "Page size must be greater than zero.");
@@ -650,7 +659,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
             extra ?? string.Empty);
     }
 
-    private async Task<decimal> ExecuteDecimalAggregateAsync(
+    private async ValueTask<decimal> ExecuteDecimalAggregateAsync(
         string function,
         Expression<Func<T, decimal>> selector,
         CancellationToken cancellationToken)
@@ -707,7 +716,7 @@ internal sealed class ForgeQuery<T> : IForgeQuery<T>
 
 internal static class ForgeNavigationSupport
 {
-    public static async Task LoadIncludedNavigationsAsync<T>(
+    public static async ValueTask LoadIncludedNavigationsAsync<T>(
         IReadOnlyList<T> rows,
         IForgeDb db,
         string keyColumn,
@@ -754,7 +763,7 @@ internal static class ForgeNavigationSupport
         return type.IsClass && !IsScalarColumnType(type);
     }
 
-    private static async Task LoadCollectionNavigationAsync<T>(
+    private static async ValueTask LoadCollectionNavigationAsync<T>(
         IReadOnlyList<T> parents,
         IForgeDb db,
         string keyColumn,
@@ -794,10 +803,9 @@ internal static class ForgeNavigationSupport
             .First(x => x.GetParameters().Length >= 2)
             .MakeGenericMethod(childType);
 
-        var task = (Task)queryAsync.Invoke(db, new object?[] { sql, new { Ids = ids }, null, cancellationToken })!;
-        await task.ConfigureAwait(false);
-
-        var result = ForgeRuntimeMemberCache.GetTaskResult(task) as System.Collections.IEnumerable;
+        var awaitable = queryAsync.Invoke(db, new object?[] { sql, new { Ids = ids }, null, cancellationToken })!;
+        var result = await ForgeRuntimeMemberCache.AwaitAndGetResultAsync(awaitable).ConfigureAwait(false)
+            as System.Collections.IEnumerable;
         if (result is null)
             return;
 
@@ -818,7 +826,7 @@ internal static class ForgeNavigationSupport
         }
     }
 
-    private static async Task LoadReferenceNavigationAsync<T>(
+    private static async ValueTask LoadReferenceNavigationAsync<T>(
         IReadOnlyList<T> parents,
         IForgeDb db,
         PropertyInfo navigation,
@@ -844,10 +852,8 @@ internal static class ForgeNavigationSupport
                 continue;
 
             var sql = $"SELECT {childColumns} FROM {childTable} WHERE Id = @Id";
-            var task = (Task)queryFirstOrDefaultAsync.Invoke(db, new object?[] { sql, new { Id = fkValue }, null, cancellationToken })!;
-            await task.ConfigureAwait(false);
-
-            var child = ForgeRuntimeMemberCache.GetTaskResult(task);
+            var awaitable = queryFirstOrDefaultAsync.Invoke(db, new object?[] { sql, new { Id = fkValue }, null, cancellationToken })!;
+            var child = await ForgeRuntimeMemberCache.AwaitAndGetResultAsync(awaitable).ConfigureAwait(false);
             ForgeRuntimeAccessorCache.Set(navigation, parent!, child);
         }
     }
@@ -940,7 +946,7 @@ internal static class ForgeExpressionTranslator
 internal sealed class ForgeSplitQuery<TParent> : IForgeSplitQuery<TParent>
 {
     private readonly IForgeDb _db;
-    private readonly List<Func<IReadOnlyList<TParent>, CancellationToken, Task>> _includes = [];
+    private readonly List<Func<IReadOnlyList<TParent>, CancellationToken, ValueTask>> _includes = [];
 
     /// <summary>
     /// Executes the ForgeSplitQuery operation.
@@ -1049,7 +1055,7 @@ internal sealed class ForgeSplitQuery<TParent> : IForgeSplitQuery<TParent>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the AnyAsync operation.</returns>
-    public async Task<bool> AnyAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
+    public async ValueTask<bool> AnyAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
         => await _db.ExecuteScalarAsync<int>($"SELECT CASE WHEN EXISTS ({parentSql}) THEN 1 ELSE 0 END", parameters, cancellationToken: cancellationToken) > 0;
 
     /// <summary>
@@ -1068,7 +1074,7 @@ internal sealed class ForgeSplitQuery<TParent> : IForgeSplitQuery<TParent>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the FirstOrDefaultAsync operation.</returns>
-    public async Task<TParent?> FirstOrDefaultAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
+    public async ValueTask<TParent?> FirstOrDefaultAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
         => (await ToListAsync(parentSql, parameters, cancellationToken)).FirstOrDefault();
 
     /// <summary>
@@ -1087,7 +1093,7 @@ internal sealed class ForgeSplitQuery<TParent> : IForgeSplitQuery<TParent>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ToListAsync operation.</returns>
-    public async Task<IReadOnlyList<TParent>> ToListAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
+    public async ValueTask<IReadOnlyList<TParent>> ToListAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
     {
         var parents = (await _db.QueryAsync<TParent>(parentSql, parameters, cancellationToken: cancellationToken)).ToList();
         foreach (var include in _includes)
@@ -1150,7 +1156,7 @@ internal sealed class ForgeSplitQuery<TParent> : IForgeSplitQuery<TParent>
     }
 }
 
-internal sealed class ForgeTransaction : IForgeTransaction
+public  sealed partial class ForgeTransaction : IForgeTransaction
 {
     private readonly DbConnection _connection;
     private readonly DbTransaction _transaction;
@@ -1172,7 +1178,7 @@ internal sealed class ForgeTransaction : IForgeTransaction
     /// <param name="connection">The connection value.</param>
     /// <param name="ct">The ct value.</param>
     /// <returns>The result of the BeginAsync operation.</returns>
-    public static async Task<ForgeTransaction> BeginAsync(DbConnection connection, CancellationToken ct) => new(connection, await connection.BeginTransactionAsync(ct));
+    public static async ValueTask<ForgeTransaction> BeginAsync(DbConnection connection, CancellationToken ct) => new(connection, await connection.BeginTransactionAsync(ct));
 
     /// <summary>
     /// Executes the T operation.
@@ -1194,8 +1200,8 @@ internal sealed class ForgeTransaction : IForgeTransaction
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken  = default)
-        => ForgeAdo.QueryAsync<T>(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+    public ValueTask<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+        => ForgePerformancePipeline.QueryAsync<T>(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
 
     /// <summary>
     /// Executes the Execute operation.
@@ -1215,7 +1221,7 @@ internal sealed class ForgeTransaction : IForgeTransaction
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ExecuteAsync operation.</returns>
-    public Task<int> ExecuteAsync(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+    public ValueTask<int> ExecuteAsync(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
         => ForgeAdo.ExecuteAsync(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
 
     /// <summary>
@@ -1238,8 +1244,8 @@ internal sealed class ForgeTransaction : IForgeTransaction
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task<T?> ExecuteScalarAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-        => ForgeAdo.ExecuteScalarAsync<T>(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+    public ValueTask<T?> ExecuteScalarAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+        => ForgePerformancePipeline.ExecuteScalarAsync<T>(_connection, sql, parameters, _transaction, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
     /// <summary>
     /// Executes the Commit operation.
     /// </summary>
@@ -1249,7 +1255,8 @@ internal sealed class ForgeTransaction : IForgeTransaction
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the CommitAsync operation.</returns>
-    public Task CommitAsync(CancellationToken cancellationToken = default) => _transaction.CommitAsync(cancellationToken);
+    public ValueTask CommitAsync(CancellationToken cancellationToken = default)
+    => new(_transaction.CommitAsync(cancellationToken));
     /// <summary>
     /// Executes the Rollback operation.
     /// </summary>
@@ -1259,7 +1266,7 @@ internal sealed class ForgeTransaction : IForgeTransaction
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the RollbackAsync operation.</returns>
-    public Task RollbackAsync(CancellationToken cancellationToken = default) => _transaction.RollbackAsync(cancellationToken);
+    public ValueTask RollbackAsync(CancellationToken cancellationToken = default) => new(_transaction.RollbackAsync(cancellationToken));
     /// <summary>
     /// Executes the Dispose operation.
     /// </summary>

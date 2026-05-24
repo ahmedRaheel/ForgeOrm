@@ -11,7 +11,7 @@ public partial class ForgeDb
     /// Updates a graph using enterprise graph options. When ChildSyncMode is InsertUpdateDeleteMissing,
     /// missing child rows are deleted after child synchronization.
     /// </summary>
-    public Task<int> UpdateGraphAsync<T>(
+    public ValueTask<int> UpdateGraphAsync<T>(
         T entity,
         Action<ForgeGraphOptions> configure,
         CancellationToken cancellationToken = default)
@@ -32,7 +32,7 @@ public partial class ForgeDb
     /// Deletes a graph by id using enterprise graph options. Hard delete removes children first.
     /// Soft delete updates the configured soft-delete column on children and parent.
     /// </summary>
-    public async Task<int> DeleteGraphAsync<T>(
+    public async ValueTask<int> DeleteGraphAsync<T>(
         object id,
         Action<ForgeGraphOptions> configure,
         CancellationToken cancellationToken = default)
@@ -59,7 +59,7 @@ public partial class ForgeDb
     /// <summary>
     /// Deletes a graph using the key value from the provided entity instance.
     /// </summary>
-    public Task<int> DeleteGraphAsync<T>(
+    public ValueTask<int> DeleteGraphAsync<T>(
         T entity,
         Action<ForgeGraphOptions> configure,
         CancellationToken cancellationToken = default)
@@ -73,7 +73,7 @@ public partial class ForgeDb
     /// <summary>
     /// Deletes a graph using the key value from the provided entity instance.
     /// </summary>
-    public Task<int> DeleteGraphAsync<T>(
+    public ValueTask<int> DeleteGraphAsync<T>(
         T entity,
         CancellationToken cancellationToken = default)
         where T : class
@@ -83,7 +83,7 @@ public partial class ForgeDb
         return DeleteGraphAsync<T>(id, cancellationToken);
     }
 
-    private async Task<int> DeleteParentOnlyAsync<T>(
+    private async ValueTask<int> DeleteParentOnlyAsync<T>(
         object id,
         CancellationToken cancellationToken = default)
     {
@@ -100,7 +100,7 @@ public partial class ForgeDb
             cancellationToken: cancellationToken);
     }
 
-    private async Task<int> SoftDeleteGraphAsync<T>(
+    private async ValueTask<int> SoftDeleteGraphAsync<T>(
         object id,
         ForgeGraphOptions options,
         CancellationToken cancellationToken = default)

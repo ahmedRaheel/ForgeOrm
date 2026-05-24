@@ -140,9 +140,9 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ExplainAsync operation.</returns>
-    public Task<ForgeExplainResult> ExplainAsync(CancellationToken cancellationToken = default)
+    public ValueTask<ForgeExplainResult> ExplainAsync(CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(Explain());
+        return ValueTask.FromResult(Explain());
     }
 
     /// <summary>
@@ -161,7 +161,7 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
     /// <typeparam name="TShape">The type used by the operation.</typeparam>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the TShape operation.</returns>
-    public Task<IReadOnlyList<TShape>> ToShapeAsync<TShape>(CancellationToken cancellationToken = default)
+    public ValueTask<IReadOnlyList<TShape>> ToShapeAsync<TShape>(CancellationToken cancellationToken = default)
     {
         return ExecuteWithPolicyAsync(() => _db.QueryAsync<TShape>(BuildSql(), BuildParameters(), cancellationToken: cancellationToken));
     }
@@ -178,7 +178,7 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
     /// <typeparam name="TShape">The type used by the operation.</typeparam>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the TShape operation.</returns>
-    public Task<IReadOnlyList<TShape>> MapStaticAsync<TShape>(CancellationToken cancellationToken = default) => ToShapeAsync<TShape>(cancellationToken);
+    public ValueTask<IReadOnlyList<TShape>> MapStaticAsync<TShape>(CancellationToken cancellationToken = default) => ToShapeAsync<TShape>(cancellationToken);
 
     /// <summary>
     /// Executes the IntoJsonDocument operation.
@@ -194,7 +194,7 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the IntoJsonDocumentAsync operation.</returns>
-    public async Task<JsonDocument> IntoJsonDocumentAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<JsonDocument> IntoJsonDocumentAsync(CancellationToken cancellationToken = default)
     {
         return JsonDocument.Parse(await IntoJsonAsync(cancellationToken));
     }
@@ -214,7 +214,7 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the IntoJsonAsync operation.</returns>
-    public async Task<string> IntoJsonAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<string> IntoJsonAsync(CancellationToken cancellationToken = default)
     {
         var rows = await ToListAsync(cancellationToken);
         return JsonSerializer.Serialize(rows);
@@ -258,7 +258,7 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ToListAsync operation.</returns>
-    public async Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default)
     {
         if (_mockRows is not null)
             return _mockRows;
@@ -328,7 +328,7 @@ public sealed class ForgeSmartQuery<T> : IForgeSmartQuery<T>
         }
     }
 
-    private async Task<TResult> ExecuteWithPolicyAsync<TResult>(Func<Task<TResult>> action)
+    private async ValueTask<TResult> ExecuteWithPolicyAsync<TResult>(Func<ValueTask<TResult>> action)
     {
         var retry = _policy?.RetryCount ?? 0;
         var delay = _policy?.RetryDelay ?? TimeSpan.Zero;

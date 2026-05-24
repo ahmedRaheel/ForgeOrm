@@ -5,6 +5,8 @@ using System.Data;
 using System.Data.Common;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
+using ForgeORM.Core.Performance;
 
 namespace ForgeORM.Core;
 
@@ -38,7 +40,7 @@ public static class ForgeAdo
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public static async Task<IReadOnlyList<T>> QueryAsync<T>(
+    public static async ValueTask<IReadOnlyList<T>> QueryAsync<T>(
         DbConnection connection,
         string sql,
         object? parameters = null,
@@ -47,24 +49,8 @@ public static class ForgeAdo
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        var providerName = connection.GetType().FullName ?? connection.GetType().Name;
-        _ = ForgeCompiledQueryCache.GetOrAdd(providerName, typeof(T), sql, parameters?.GetType(), () => new ForgeCompiledQueryPlan(sql, typeof(T), parameters?.GetType(), providerName, ForgeCompiledQueryCache.Fingerprint(sql)));
-        _ = ForgePerformanceCommandPlanCache.GetOrAdd(providerName, sql, commandType, parameters?.GetType());
-
-        await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
-
-        if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
-
-        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
-        var rows = new List<T>(EstimateCapacity(sql));
-
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            rows.Add(materializer(reader));
-
-        return rows;
+        return await ForgePerformancePipeline.QueryAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -79,7 +65,7 @@ public static class ForgeAdo
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public static async Task<T?> QueryFirstOrDefaultAsync<T>(
+    public static async ValueTask<T?> QueryFirstOrDefaultAsync<T>(
         DbConnection connection,
         string sql,
         object? parameters = null,
@@ -88,20 +74,11 @@ public static class ForgeAdo
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
-
-        if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
-        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
-
-        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
-            ? materializer(reader)
-            : default;
+        return await ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken)
+            .ConfigureAwait(false);
     }
 
-    public static async Task<T?> QuerySingleOrDefaultAsync<T>(
+    public static async ValueTask<T?> QuerySingleOrDefaultAsync<T>(
         DbConnection connection,
         string sql,
         object? parameters = null,
@@ -110,23 +87,8 @@ public static class ForgeAdo
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
-
-        if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
-
-        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            return default;
-
-        var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
-        var first = materializer(reader);
-
-        if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            throw new InvalidOperationException("Sequence contains more than one element.");
-
-        return first;
+        return await ForgePerformancePipeline.SingleOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken)
+            .ConfigureAwait(false);
     }
     /// <summary>
     /// Executes the Execute operation.
@@ -151,7 +113,7 @@ public static class ForgeAdo
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ExecuteAsync operation.</returns>
-    public static async Task<int> ExecuteAsync(
+    public static async ValueTask<int> ExecuteAsync(
         DbConnection connection,
         string sql,
         object? parameters = null,
@@ -160,11 +122,8 @@ public static class ForgeAdo
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken);
-
-        await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
-        return await command.ExecuteNonQueryAsync(cancellationToken);
+        return await ForgePerformancePipeline.ExecuteAsync(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken)
+            .ConfigureAwait(false);
     }
     /// <summary>
     /// Executes the T operation.
@@ -192,7 +151,7 @@ public static class ForgeAdo
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public static async Task<T?> ExecuteScalarAsync<T>(
+    public static async ValueTask<T?> ExecuteScalarAsync<T>(
         DbConnection connection,
         string sql,
         object? parameters = null,
@@ -238,6 +197,7 @@ public static class ForgeAdo
         return command;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void BindParameters(DbCommand command, object? parameters)
     {
         if (parameters is null)
@@ -295,6 +255,7 @@ public static class ForgeAdo
     }
 
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void BindScalarParameter(DbCommand command, object value)
     {
         var names = command.CommandType == CommandType.Text && !string.IsNullOrWhiteSpace(command.CommandText)
@@ -316,6 +277,7 @@ public static class ForgeAdo
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsScalarParameterType(Type type)
     {
         type = Nullable.GetUnderlyingType(type) ?? type;
@@ -394,34 +356,70 @@ public static class ForgeAdo
 
     private static string[] ExtractSqlParameterNames(string sql)
     {
-        var matches = Regex.Matches(
-            sql,
-            @"(?<!@)@([A-Za-z_][A-Za-z0-9_]*)",
-            RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-        if (matches.Count == 0)
+        if (string.IsNullOrWhiteSpace(sql))
             return Array.Empty<string>();
 
-        var result = new string[matches.Count];
-        for (var i = 0; i < matches.Count; i++)
-            result[i] = matches[i].Groups[1].Value;
-        return result.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var names = new List<string>(4);
+
+        for (var i = 0; i < sql.Length - 1; i++)
+        {
+            if (sql[i] != '@')
+                continue;
+
+            if (i > 0 && sql[i - 1] == '@')
+                continue;
+
+            var start = i + 1;
+            if (start >= sql.Length || !(char.IsLetter(sql[start]) || sql[start] == '_'))
+                continue;
+
+            var end = start + 1;
+            while (end < sql.Length && (char.IsLetterOrDigit(sql[end]) || sql[end] == '_'))
+                end++;
+
+            var name = sql[start..end];
+            var exists = false;
+            for (var n = 0; n < names.Count; n++)
+            {
+                if (string.Equals(names[n], name, StringComparison.OrdinalIgnoreCase))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+
+            if (!exists)
+                names.Add(name);
+
+            i = end - 1;
+        }
+
+        return names.Count == 0 ? Array.Empty<string>() : names.ToArray();
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool HasParameter(DbCommand command, string name)
     {
-        var expected = "@" + name.TrimStart('@', ':');
+        var normalized = name.TrimStart('@', ':');
 
         foreach (DbParameter parameter in command.Parameters)
         {
-            if (string.Equals(parameter.ParameterName, expected, StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            if (string.Equals(parameter.ParameterName.TrimStart('@', ':'), name, StringComparison.OrdinalIgnoreCase))
+            var current = parameter.ParameterName.TrimStart('@', ':');
+            if (string.Equals(current, normalized, StringComparison.OrdinalIgnoreCase) || IsExpandedParameterName(current, normalized))
                 return true;
         }
 
         return false;
+    }
+
+    private static bool IsExpandedParameterName(string current, string logicalName)
+    {
+        if (!current.StartsWith(logicalName, StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (current.Length == logicalName.Length)
+            return true;
+        var suffixStart = current[logicalName.Length];
+        return char.IsDigit(suffixStart) || suffixStart == '_';
     }
 
     private static void BindSingleOrEnumerable(
@@ -445,12 +443,20 @@ public static class ForgeAdo
         IEnumerable values)
     {
         var cleanName = name.TrimStart('@', ':');
+        RemoveParameterFamily(command, cleanName);
+
         var parameterNames = new List<string>();
         var index = 0;
 
         foreach (var value in values)
         {
-            var parameterName = $"{cleanName}{index++}";
+            string parameterName;
+            do
+            {
+                parameterName = $"{cleanName}{index++}";
+            }
+            while (HasExactParameter(command, parameterName));
+
             parameterNames.Add("@" + parameterName);
             AddParameter(command, parameterName, ForgeValueConverter.ToDatabase(value, value?.GetType()));
         }
@@ -462,36 +468,106 @@ public static class ForgeAdo
         command.CommandText = ReplaceParameterToken(command.CommandText, cleanName, replacement);
     }
 
-    private static string ReplaceParameterToken(string sql, string parameterName, string replacement)
+    private static void RemoveParameterFamily(DbCommand command, string logicalName)
     {
-        sql = sql.Replace("@" + parameterName, replacement, StringComparison.OrdinalIgnoreCase);
-        sql = sql.Replace(":" + parameterName, replacement, StringComparison.OrdinalIgnoreCase);
-        return sql;
+        var normalized = logicalName.TrimStart('@', ':');
+        for (var i = command.Parameters.Count - 1; i >= 0; i--)
+        {
+            if (command.Parameters[i] is not DbParameter parameter)
+                continue;
+
+            var current = parameter.ParameterName.TrimStart('@', ':');
+            if (string.Equals(current, normalized, StringComparison.OrdinalIgnoreCase) || IsExpandedParameterName(current, normalized))
+                command.Parameters.RemoveAt(i);
+        }
     }
 
+    private static bool HasExactParameter(DbCommand command, string name)
+    {
+        var normalized = name.TrimStart('@', ':');
+        foreach (DbParameter parameter in command.Parameters)
+        {
+            if (string.Equals(parameter.ParameterName.TrimStart('@', ':'), normalized, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    private static string ReplaceParameterToken(string sql, string parameterName, string replacement)
+    {
+        return ReplaceToken(ReplaceToken(sql, "@" + parameterName, replacement), ":" + parameterName, replacement);
+    }
+
+    private static string ReplaceToken(string sql, string token, string replacement)
+    {
+        var index = 0;
+        System.Text.StringBuilder? builder = null;
+        var lastCopyIndex = 0;
+
+        while ((index = sql.IndexOf(token, index, StringComparison.OrdinalIgnoreCase)) >= 0)
+        {
+            var end = index + token.Length;
+            if (end < sql.Length && (char.IsLetterOrDigit(sql[end]) || sql[end] == '_'))
+            {
+                index = end;
+                continue;
+            }
+
+            builder ??= new System.Text.StringBuilder(sql.Length + replacement.Length);
+            builder.Append(sql, lastCopyIndex, index - lastCopyIndex);
+            builder.Append(replacement);
+            lastCopyIndex = end;
+            index = end;
+        }
+
+        if (builder is null)
+            return sql;
+
+        builder.Append(sql, lastCopyIndex, sql.Length - lastCopyIndex);
+        return builder.ToString();
+    }
+
+    private static DbParameter? FindExactParameter(DbCommand command, string name)
+    {
+        var normalized = name.TrimStart('@', ':');
+        foreach (DbParameter parameter in command.Parameters)
+        {
+            if (string.Equals(parameter.ParameterName.TrimStart('@', ':'), normalized, StringComparison.OrdinalIgnoreCase))
+                return parameter;
+        }
+        return null;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void AddParameter(DbCommand command, string name, object? value)
     {
         name = name.TrimStart('@', ':');
 
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = "@" + name;
+        var parameter = FindExactParameter(command, name);
+        if (parameter is null)
+        {
+            parameter = command.CreateParameter();
+            parameter.ParameterName = "@" + name;
+            command.Parameters.Add(parameter);
+        }
+
         parameter.Value = NormalizeParameterValue(value) ?? DBNull.Value;
 
         if (value is DateTime)
             parameter.DbType = DbType.DateTime2;
         else if (value is DateTimeOffset)
             parameter.DbType = DbType.DateTimeOffset;
-
-        command.Parameters.Add(parameter);
     }
 
     private static Action<DbCommand, object> BuildParameterWriter(Type type)
     {
         if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
-            && ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider))
-            return provider.GetBinder(type);
+            && ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider)
+            && provider.TryGetBinder(type, out var generatedBinder)
+            && generatedBinder is not null)
+            return generatedBinder;
 
-        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGenerated)
+        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGeneratedStrict)
             throw new InvalidOperationException($"No ForgeORM source-generated parameter binder was registered for {type.FullName}.");
 
         var props = ParameterPropertyCache.GetOrAdd(type, BuildParameterProperties);
@@ -580,15 +656,11 @@ public static class ForgeAdo
 
     private static object? NormalizeParameterValue(object? value)
     {
-        // Default ForgeORM enum parameter behavior is string-name storage because the sample
-        // schema and most human-readable enterprise schemas store enum columns as nvarchar
-        // values such as 'Paid'. Binding the enum as its underlying int causes SQL Server to
-        // attempt nvarchar -> int conversion in predicates and fail before materialization.
-        // Numeric enum storage is still supported through property-level ForgeEnumStorage(Number)
-        // in generated/entity binders where the declaring property is known.
+        // Default ForgeORM enum parameter behavior follows .NET/EF convention: numeric storage.
+        // Materialization is storage-agnostic: int and string database values are both read into enums.
         if (value is Enum enumValue)
         {
-            return enumValue.ToString();
+            return Convert.ChangeType(enumValue, Enum.GetUnderlyingType(enumValue.GetType()), System.Globalization.CultureInfo.InvariantCulture);
         }
 
         if (value is DateTime dateTime)
@@ -624,7 +696,7 @@ public static class ForgeAdo
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the QueryDynamicAsync operation.</returns>
-    public static async Task<IReadOnlyList<IDictionary<string, object?>>> QueryDynamicAsync(
+    public static async ValueTask<IReadOnlyList<IDictionary<string, object?>>> QueryDynamicAsync(
     DbConnection connection,
     string sql,
     object? parameters = null,

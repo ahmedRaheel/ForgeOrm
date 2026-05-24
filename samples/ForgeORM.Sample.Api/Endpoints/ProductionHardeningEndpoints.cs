@@ -55,7 +55,7 @@ public static class ProductionHardeningEndpoints
         group.MapGet("/reliability/retry-success", async (CancellationToken ct) =>
         {
             var result = await ForgeReliabilityExecutor.ExecuteAsync(
-                _ => Task.FromResult("Success through retry pipeline"),
+                _ => ValueTask.FromResult("Success through retry pipeline"),
                 new ForgeRetryPolicy(MaxRetries: 3),
                 new ForgeCircuitBreaker(),
                 ct);

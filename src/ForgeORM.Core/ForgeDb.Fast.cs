@@ -1,35 +1,38 @@
-using System.Collections.Concurrent;
-using System.Data;
-using System.Data.Common;
-using System.Reflection;
 using ForgeORM.Abstractions;
+using ForgeORM.Core.Performance;
 
 namespace ForgeORM.Core;
 
 public partial class ForgeDb
 {
-    private static readonly ConcurrentDictionary<Type, ForgeFindPlan> FindPlanCache = new();
-
     /// <summary>
     /// Fast primary-key lookup path. Bypasses expression translation, include handling, graph logic, and query-state rendering.
     /// This is the path to benchmark against Dapper QueryFirst/QueryFirstOrDefault by primary key.
     /// </summary>
     public T? Find<T>(object id, int? timeoutSeconds = null)
     {
-        using var connection = CreateConnection();
-        connection.Open();
-        return ForgeFastExecutor.QueryFirstById<T>(connection, GetFindPlan(typeof(T)), id, timeoutSeconds);
+        var metadata = _metadata.Resolve<T>();
+
+        if (IsSqlServerProvider())
+            return ForgeSqlServerDirectGetByIdExecutor<T>.Execute(_connectionString, metadata, id);
+
+        var c = Provider.BuildGetById(metadata, id);
+        return ForgeFrameworkExecutionPolicy.FirstOrDefault<T, ForgeIdParameter<object?>>(Provider, _connectionString, c.CommandText, ForgeIdParameter<object?>.Create(id), timeoutSeconds);
     }
 
     /// <summary>
     /// Fast primary-key lookup path. Bypasses expression translation, include handling, graph logic, and query-state rendering.
     /// This is the path to benchmark against Dapper QueryFirst/QueryFirstOrDefault by primary key.
     /// </summary>
-    public async Task<T?> FindAsync<T>(object id, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+    public async ValueTask<T?> FindAsync<T>(object id, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(cancellationToken);
-        return await ForgeFastExecutor.QueryFirstByIdAsync<T>(connection, GetFindPlan(typeof(T)), id, timeoutSeconds, cancellationToken);
+        var metadata = _metadata.Resolve<T>();
+
+        if (IsSqlServerProvider())
+            return await ForgeSqlServerDirectGetByIdExecutor<T>.ExecuteAsync(_connectionString, metadata, id, cancellationToken).ConfigureAwait(false);
+
+        var c = Provider.BuildGetById(metadata, id);
+        return await ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T, ForgeIdParameter<object?>>(Provider, _connectionString, c.CommandText, ForgeIdParameter<object?>.Create(id), timeoutSeconds, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -37,19 +40,15 @@ public partial class ForgeDb
     /// </summary>
     public IReadOnlyList<T> QueryFast<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
-        using var connection = CreateConnection();
-        connection.Open();
-        return ForgeAdo.Query<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds);
+        return ForgeFrameworkExecutionPolicy.Query<T>(Provider, _connectionString, sql, parameters, timeoutSeconds);
     }
 
     /// <summary>
     /// Fast raw SQL list path. Skips expression translation and navigation processing.
     /// </summary>
-    public async Task<IReadOnlyList<T>> QueryFastAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+    public async ValueTask<IReadOnlyList<T>> QueryFastAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(cancellationToken);
-        return await ForgeAdo.QueryAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+        return await ForgeFrameworkExecutionPolicy.QueryAsync<T>(Provider, _connectionString, sql, parameters, timeoutSeconds, cancellationToken);
     }
 
     /// <summary>
@@ -57,89 +56,22 @@ public partial class ForgeDb
     /// </summary>
     public T? QueryFirstFast<T>(string sql, object? parameters = null, int? timeoutSeconds = null)
     {
-        using var connection = CreateConnection();
-        connection.Open();
-        return ForgeAdo.QuerySingleOrDefaultAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds).GetAwaiter().GetResult();
+        return ForgeFrameworkExecutionPolicy.FirstOrDefault<T>(Provider, _connectionString, sql, parameters, timeoutSeconds);
     }
 
     /// <summary>
     /// Fast raw SQL single-row path. Skips expression translation and navigation processing.
     /// </summary>
-    public async Task<T?> QueryFirstFastAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+    public async ValueTask<T?> QueryFirstFastAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(cancellationToken);
-        return await ForgeAdo.QuerySingleOrDefaultAsync<T>(connection, sql, parameters, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken);
+        return await ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T>(Provider, _connectionString, sql, parameters, timeoutSeconds, cancellationToken);
     }
 
-    private ForgeFindPlan GetFindPlan(Type entityType)
+    private bool IsSqlServerProvider()
     {
-        return FindPlanCache.GetOrAdd(entityType, BuildFindPlan);
+        var name = Provider.ProviderName ?? Provider.GetType().FullName ?? string.Empty;
+        return name.Contains("SqlServer", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("SqlClient", StringComparison.OrdinalIgnoreCase);
     }
 
-    private ForgeFindPlan BuildFindPlan(Type entityType)
-    {
-        var meta = _metadata.Resolve(entityType);
-        var columns = meta.Properties
-            .Where(x => !x.IsComputed)
-            .Select(x => x.ColumnName)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        var columnList = columns.Length == 0 ? "*" : string.Join(", ", columns.Select(QuoteIdentifier));
-        var table = QuoteIdentifier(meta.TableName);
-        var key = QuoteIdentifier(meta.KeyColumn);
-
-        var sql = $"SELECT TOP 1 {columnList} FROM {table} WHERE {key} = @Id";
-        return new ForgeFindPlan(sql);
-    }
-
-    private static string QuoteIdentifier(string name)
-    {
-        if (string.IsNullOrWhiteSpace(name))
-            throw new ArgumentException("SQL identifier cannot be empty.", nameof(name));
-
-        if (name.Contains('[') || name.Contains(']'))
-            return name;
-
-        if (name.Contains('.'))
-            return string.Join('.', name.Split('.').Select(QuoteIdentifier));
-
-        return "[" + name + "]";
-    }
-}
-
-internal sealed record ForgeFindPlan(string Sql);
-
-internal static class ForgeFastExecutor
-{
-    public static T? QueryFirstById<T>(DbConnection connection, ForgeFindPlan plan, object id, int? timeoutSeconds = null)
-    {
-        using var command = CreateFindCommand(connection, plan, id, timeoutSeconds);
-        using var reader = command.ExecuteReader(CommandBehavior.SingleRow);
-        return reader.Read() ? ForgeMaterializer.Map<T>(reader) : default;
-    }
-
-    public static async Task<T?> QueryFirstByIdAsync<T>(DbConnection connection, ForgeFindPlan plan, object id, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-    {
-        await using var command = CreateFindCommand(connection, plan, id, timeoutSeconds);
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow, cancellationToken);
-        return await reader.ReadAsync(cancellationToken) ? ForgeMaterializer.Map<T>(reader) : default;
-    }
-
-    private static DbCommand CreateFindCommand(DbConnection connection, ForgeFindPlan plan, object id, int? timeoutSeconds)
-    {
-        var command = connection.CreateCommand();
-        command.CommandText = plan.Sql;
-        command.CommandType = CommandType.Text;
-
-        if (timeoutSeconds.HasValue)
-            command.CommandTimeout = timeoutSeconds.Value;
-
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = "@Id";
-        parameter.Value = ForgeValueConverter.ToDatabase(id, id?.GetType()) ?? DBNull.Value;
-        command.Parameters.Add(parameter);
-        return command;
-    }
 }

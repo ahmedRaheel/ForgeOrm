@@ -1,6 +1,6 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.0.31903.59
+# Visual Studio Version 18
+VisualStudioVersion = 18.6.11806.211 stable
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ForgeORM.Abstractions", "src\ForgeORM.Abstractions\ForgeORM.Abstractions.csproj", "{7C50FAB6-3097-4E96-A6D3-76A8017BA89F}"
 EndProject
@@ -83,6 +83,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ForgeORM.RuntimeEmit", "src\ForgeORM.RuntimeEmit\ForgeORM.RuntimeEmit.csproj", "{A7F15D0F-331D-49E0-89E8-519073C6D001}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ForgeORM.SourceGenerated", "src\ForgeORM.SourceGenerated\ForgeORM.SourceGenerated.csproj", "{B9D92713-992E-4EF8-9AF1-7D7C84257E02}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ForgeORM.SourceGenerators", "src\ForgeORM.SourceGenerators\ForgeORM.SourceGenerators.csproj", "{4DAF4988-71F4-F8C5-D120-4ADA6D70225E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -254,6 +256,10 @@ Global
 		{B9D92713-992E-4EF8-9AF1-7D7C84257E02}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B9D92713-992E-4EF8-9AF1-7D7C84257E02}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B9D92713-992E-4EF8-9AF1-7D7C84257E02}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4DAF4988-71F4-F8C5-D120-4ADA6D70225E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4DAF4988-71F4-F8C5-D120-4ADA6D70225E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4DAF4988-71F4-F8C5-D120-4ADA6D70225E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4DAF4988-71F4-F8C5-D120-4ADA6D70225E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

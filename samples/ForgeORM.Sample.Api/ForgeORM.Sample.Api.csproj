@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <IsPackable>false</IsPackable>
 	  <Nullable>disable</Nullable>
@@ -10,11 +10,12 @@
     <ProjectReference Include="..\..\src\ForgeORM.QueryAst\ForgeORM.QueryAst.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.Core\ForgeORM.Core.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.AspNetCore\ForgeORM.AspNetCore.csproj" />
-    <PackageReference Include="Swashbuckle.AspNetCore"  />
+    <PackageReference Include="Swashbuckle.AspNetCore" />
     <ProjectReference Include="..\..\src\ForgeORM.NextGen\ForgeORM.NextGen.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.QueryBuilder\ForgeORM.QueryBuilder.csproj" />
 <ProjectReference Include="..\..\src\ForgeORM.Intelligence\ForgeORM.Intelligence.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.Caching.Redis\ForgeORM.Caching.Redis.csproj" />
+  
     <ProjectReference Include="..\..\src\ForgeORM.Telemetry\ForgeORM.Telemetry.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.Security\ForgeORM.Security.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.VectorSearch\ForgeORM.VectorSearch.csproj" />
@@ -22,5 +23,7 @@
     <ProjectReference Include="..\..\src\ForgeORM.Analytics\ForgeORM.Analytics.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.DataFrame\ForgeORM.DataFrame.csproj" />
       <ProjectReference Include="..\..\src\ForgeORM.Abstractions\ForgeORM.Abstractions.csproj" />
+  
+   
   </ItemGroup>
 </Project>

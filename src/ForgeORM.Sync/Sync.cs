@@ -22,14 +22,14 @@ public interface IForgeSyncEngine
     /// <param name="remoteChanges">The remoteChanges value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the SynchronizeAsync operation.</returns>
-    Task<ForgeSyncResult> SynchronizeAsync(IReadOnlyList<ForgeSyncChange> localChanges, IReadOnlyList<ForgeSyncChange> remoteChanges, CancellationToken cancellationToken = default);
+    ValueTask<ForgeSyncResult> SynchronizeAsync(IReadOnlyList<ForgeSyncChange> localChanges, IReadOnlyList<ForgeSyncChange> remoteChanges, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the SynchronizeAsync operation.
     /// </summary>
     /// <param name="request">The request value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the SynchronizeAsync operation.</returns>
-    Task<ForgeSyncResult> SynchronizeAsync(SyncRequest request, CancellationToken cancellationToken = default);
+    ValueTask<ForgeSyncResult> SynchronizeAsync(SyncRequest request, CancellationToken cancellationToken = default);
 }
 
 public sealed class ForgeSyncEngine : IForgeSyncEngine
@@ -41,12 +41,12 @@ public sealed class ForgeSyncEngine : IForgeSyncEngine
     /// <param name="remoteChanges">The remoteChanges value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the SynchronizeAsync operation.</returns>
-    public Task<ForgeSyncResult> SynchronizeAsync(IReadOnlyList<ForgeSyncChange> localChanges, IReadOnlyList<ForgeSyncChange> remoteChanges, CancellationToken cancellationToken = default)
+    public ValueTask<ForgeSyncResult> SynchronizeAsync(IReadOnlyList<ForgeSyncChange> localChanges, IReadOnlyList<ForgeSyncChange> remoteChanges, CancellationToken cancellationToken = default)
     {
         var conflicts = localChanges.Join(remoteChanges, l => (l.Entity, l.EntityId), r => (r.Entity, r.EntityId), (l, r) => new ForgeSyncConflict(l, r, "Same entity changed in two places.")).ToList();
         var conflictKeys = conflicts.Select(c => (c.Local.Entity, c.Local.EntityId)).ToHashSet();
         var applied = localChanges.Concat(remoteChanges).Where(x => !conflictKeys.Contains((x.Entity, x.EntityId))).ToList();
-        return Task.FromResult(new ForgeSyncResult(applied, conflicts));
+        return ValueTask.FromResult(new ForgeSyncResult(applied, conflicts));
     }
 
     /// <summary>
@@ -55,7 +55,7 @@ public sealed class ForgeSyncEngine : IForgeSyncEngine
     /// <param name="request">The request value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the SynchronizeAsync operation.</returns>
-    public Task<ForgeSyncResult> SynchronizeAsync(SyncRequest request, CancellationToken cancellationToken = default)
+    public ValueTask<ForgeSyncResult> SynchronizeAsync(SyncRequest request, CancellationToken cancellationToken = default)
     {
         var local = request.Entities
             .SelectMany(entity => entity.LocalChanges.Select((change, index) => new ForgeSyncChange(

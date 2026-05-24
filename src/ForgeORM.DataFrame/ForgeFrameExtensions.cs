@@ -50,7 +50,7 @@ public static class ForgeFrameExtensions
     /// <param name="delimiter">The delimiter value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ReadCsvAsync operation.</returns>
-    public static Task<ForgeDataFrame> ReadCsvAsync(string path, bool hasHeader = true, char delimiter = ',', CancellationToken cancellationToken = default)
+    public static ValueTask<ForgeDataFrame> ReadCsvAsync(string path, bool hasHeader = true, char delimiter = ',', CancellationToken cancellationToken = default)
         => ForgeDataFrame.FromCsvAsync(path, hasHeader, delimiter, cancellationToken);
 
     /// <summary>
@@ -61,7 +61,7 @@ public static class ForgeFrameExtensions
     /// <param name="delimiter">The delimiter value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ReadCsvAsync operation.</returns>
-    public static Task<ForgeDataFrame> ReadCsvAsync(Stream stream, bool hasHeader = true, char delimiter = ',', CancellationToken cancellationToken = default)
+    public static ValueTask<ForgeDataFrame> ReadCsvAsync(Stream stream, bool hasHeader = true, char delimiter = ',', CancellationToken cancellationToken = default)
         => ForgeDataFrame.FromCsvAsync(stream, hasHeader, delimiter, cancellationToken);
 
     /// <summary>
@@ -78,7 +78,7 @@ public static class ForgeFrameExtensions
     /// <param name="path">The path value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ReadJsonAsync operation.</returns>
-    public static Task<ForgeDataFrame> ReadJsonAsync(string path, CancellationToken cancellationToken = default)
+    public static ValueTask<ForgeDataFrame> ReadJsonAsync(string path, CancellationToken cancellationToken = default)
         => ForgeDataFrame.FromJsonAsync(path, cancellationToken);
 
     /// <summary>
@@ -87,7 +87,7 @@ public static class ForgeFrameExtensions
     /// <param name="stream">The stream value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ReadJsonAsync operation.</returns>
-    public static Task<ForgeDataFrame> ReadJsonAsync(Stream stream, CancellationToken cancellationToken = default)
+    public static ValueTask<ForgeDataFrame> ReadJsonAsync(Stream stream, CancellationToken cancellationToken = default)
         => ForgeDataFrame.FromJsonAsync(stream, cancellationToken);
 
     private static IDictionary<string, object?> ToDictionary<T>(T row)
@@ -168,7 +168,7 @@ public sealed class ForgeFrameQuery<T>
     /// <summary>
     /// Sums a numeric column selected by expression. Honors Parallel()/MaxDegreeOfParallelism().
     /// </summary>
-    public async Task<decimal> SumAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
+    public async ValueTask<decimal> SumAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default)
     {
         var frame = await ToFrameAsync(cancellationToken).ConfigureAwait(false);
         var column = ForgeFrameExpressionSql.GetMemberName(selector.Body);
@@ -206,7 +206,7 @@ public sealed class ForgeFrameQuery<T>
     /// <summary>
     /// Sums a nullable numeric column selected by expression. Honors Parallel()/MaxDegreeOfParallelism().
     /// </summary>
-    public async Task<decimal> SumAsync(Expression<Func<T, decimal?>> selector, CancellationToken cancellationToken = default)
+    public async ValueTask<decimal> SumAsync(Expression<Func<T, decimal?>> selector, CancellationToken cancellationToken = default)
     {
         var frame = await ToFrameAsync(cancellationToken).ConfigureAwait(false);
         var column = ForgeFrameExpressionSql.GetMemberName(selector.Body);
@@ -253,7 +253,7 @@ public sealed class ForgeFrameQuery<T>
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ToFrameAsync operation.</returns>
-    public async Task<ForgeDataFrame> ToFrameAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<ForgeDataFrame> ToFrameAsync(CancellationToken cancellationToken = default)
     {
         var sql = BuildSql();
         var rows = await _db.QueryDynamicAsync(sql: sql, parameters: _parameters, cancellationToken: cancellationToken);

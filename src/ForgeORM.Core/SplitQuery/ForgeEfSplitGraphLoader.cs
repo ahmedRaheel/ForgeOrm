@@ -17,7 +17,7 @@ internal static class ForgeEfSplitGraphLoader
         .GetMethods()
         .First(x => x.Name == nameof(IForgeRawSql.QueryAsync) && x.IsGenericMethodDefinition);
 
-    public static async Task LoadIncludedNavigationsAsync<T>(
+    public static async ValueTask LoadIncludedNavigationsAsync<T>(
         IReadOnlyList<T> rows,
         IForgeDb db,
         IReadOnlyList<PropertyInfo> includes,
@@ -48,7 +48,7 @@ internal static class ForgeEfSplitGraphLoader
         }
     }
 
-    private static async Task LoadCollectionNavigationAsync(
+    private static async ValueTask LoadCollectionNavigationAsync(
         IReadOnlyList<object> parents,
         IForgeDb db,
         ForgeEfEntityShape parentShape,
@@ -70,7 +70,7 @@ internal static class ForgeEfSplitGraphLoader
             .ConfigureAwait(false);
     }
 
-    private static async Task LoadOneToManyAsync(
+    private static async ValueTask LoadOneToManyAsync(
         IReadOnlyList<object> parents,
         IForgeDb db,
         ForgeEfEntityShape parentShape,
@@ -116,7 +116,7 @@ internal static class ForgeEfSplitGraphLoader
         }
     }
 
-    private static async Task LoadReferenceNavigationAsync(
+    private static async ValueTask LoadReferenceNavigationAsync(
         IReadOnlyList<object> parents,
         IForgeDb db,
         ForgeEfEntityShape parentShape,
@@ -157,7 +157,7 @@ internal static class ForgeEfSplitGraphLoader
         }
     }
 
-    private static async Task LoadManyToManyByConventionAsync(
+    private static async ValueTask LoadManyToManyByConventionAsync(
         IReadOnlyList<object> parents,
         IForgeDb db,
         ForgeEfEntityShape parentShape,
@@ -219,7 +219,7 @@ internal static class ForgeEfSplitGraphLoader
         return parentShape.EntityType.Name + childShape.EntityType.Name;
     }
 
-    private static async Task<IReadOnlyList<object>> QueryObjectsAsync(
+    private static async ValueTask<IReadOnlyList<object>> QueryObjectsAsync(
         IForgeDb db,
         Type type,
         string sql,
@@ -227,13 +227,12 @@ internal static class ForgeEfSplitGraphLoader
         CancellationToken cancellationToken)
     {
         var method = QueryAsyncMethod.MakeGenericMethod(type);
-        var task = (Task)method.Invoke(db, [sql, parameters, null, cancellationToken])!;
-        await task.ConfigureAwait(false);
-        var result = task.GetType().GetProperty("Result")!.GetValue(task) as IEnumerable;
+        var awaitable = method.Invoke(db, [sql, parameters, null, cancellationToken])!;
+        var result = await ForgeRuntimeMemberCache.AwaitAndGetResultAsync(awaitable).ConfigureAwait(false) as IEnumerable;
         return result?.Cast<object>().ToList() ?? [];
     }
 
-    private static async Task<IReadOnlyList<Dictionary<string, object?>>> QueryDictionaryRowsAsync(
+    private static async ValueTask<IReadOnlyList<Dictionary<string, object?>>> QueryDictionaryRowsAsync(
         IForgeDb db,
         string sql,
         object? parameters,
@@ -246,9 +245,8 @@ internal static class ForgeEfSplitGraphLoader
         if (method is null)
             throw new NotSupportedException("Many-to-many convention loading requires QueryDictionaryAsync on ForgeDb.");
 
-        var task = (Task)method.Invoke(db, [sql, parameters, null, cancellationToken])!;
-        await task.ConfigureAwait(false);
-        return (IReadOnlyList<Dictionary<string, object?>>)task.GetType().GetProperty("Result")!.GetValue(task)!;
+        var awaitable = method.Invoke(db, [sql, parameters, null, cancellationToken])!;
+        return (IReadOnlyList<Dictionary<string, object?>>)await ForgeRuntimeMemberCache.AwaitAndGetResultAsync(awaitable).ConfigureAwait(false)!;
     }
 
     private static void AssignCollection(object parent, PropertyInfo navigation, Type childType, IReadOnlyList<object> values)

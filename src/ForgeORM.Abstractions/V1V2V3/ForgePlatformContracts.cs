@@ -107,21 +107,21 @@ public interface IForgeOutboxStore
     /// <param name="message">The message value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the EnqueueAsync operation.</returns>
-    Task EnqueueAsync(ForgeOutboxMessage message, CancellationToken cancellationToken = default);
+    ValueTask EnqueueAsync(ForgeOutboxMessage message, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the GetPendingAsync operation.
     /// </summary>
     /// <param name="take">The take value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the GetPendingAsync operation.</returns>
-    Task<IReadOnlyList<ForgeOutboxMessage>> GetPendingAsync(int take = 100, CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<ForgeOutboxMessage>> GetPendingAsync(int take = 100, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the MarkProcessedAsync operation.
     /// </summary>
     /// <param name="id">The id value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the MarkProcessedAsync operation.</returns>
-    Task MarkProcessedAsync(Guid id, CancellationToken cancellationToken = default);
+    ValueTask MarkProcessedAsync(Guid id, CancellationToken cancellationToken = default);
 }
 
 public interface IForgeCacheProvider
@@ -140,7 +140,7 @@ public interface IForgeCacheProvider
     /// <param name="key">The key value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default);
+    ValueTask<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -150,14 +150,14 @@ public interface IForgeCacheProvider
     /// <param name="ttl">The ttl value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task SetAsync<T>(string key, T value, TimeSpan ttl, CancellationToken cancellationToken = default);
+    ValueTask SetAsync<T>(string key, T value, TimeSpan ttl, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the RemoveAsync operation.
     /// </summary>
     /// <param name="key">The key value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the RemoveAsync operation.</returns>
-    Task RemoveAsync(string key, CancellationToken cancellationToken = default);
+    ValueTask RemoveAsync(string key, CancellationToken cancellationToken = default);
 }
 
 public sealed record ForgeReportColumn(string Name, string Expression, string? Alias = null);
@@ -218,7 +218,7 @@ public interface IForgeAiQueryClient
     /// <param name="request">The request value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the GenerateSqlAsync operation.</returns>
-    Task<ForgeAiQueryResult> GenerateSqlAsync(ForgeAiQueryRequest request, CancellationToken cancellationToken = default);
+    ValueTask<ForgeAiQueryResult> GenerateSqlAsync(ForgeAiQueryRequest request, CancellationToken cancellationToken = default);
 }
 
 public sealed record ForgeScaffoldRequest(string ConnectionString, string Provider, string Namespace, string OutputPath);
@@ -238,7 +238,7 @@ public interface IForgeSchemaScaffolder
     /// <param name="request">The request value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ScaffoldAsync operation.</returns>
-    Task<IReadOnlyList<ForgeGeneratedFile>> ScaffoldAsync(ForgeScaffoldRequest request, CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<ForgeGeneratedFile>> ScaffoldAsync(ForgeScaffoldRequest request, CancellationToken cancellationToken = default);
 }
 
 public sealed record ForgeApiGenerationRequest(string EntityName, string RoutePrefix, string Namespace);

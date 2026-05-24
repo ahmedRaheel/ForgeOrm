@@ -9,7 +9,7 @@ public partial class ForgeDb
     /// Provider-aware insert batching. SQL Server can be upgraded to SqlBulkCopy, PostgreSQL to COPY,
     /// MySQL to multi-row INSERT, and Oracle to array binding without changing this public API.
     /// </summary>
-    public async Task<int> InsertManyAsync<T>(IEnumerable<T> rows, int batchSize = 1000, CancellationToken cancellationToken = default)
+    public async ValueTask<int> InsertManyAsync<T>(IEnumerable<T> rows, int batchSize = 1000, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(rows);
         var total = 0;
@@ -31,7 +31,7 @@ public partial class ForgeDb
         return total;
     }
 
-    public async Task<int> UpdateManyAsync<T>(IEnumerable<T> rows, int batchSize = 1000, CancellationToken cancellationToken = default)
+    public async ValueTask<int> UpdateManyAsync<T>(IEnumerable<T> rows, int batchSize = 1000, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(rows);
         var total = 0;
@@ -55,7 +55,7 @@ public partial class ForgeDb
         return total;
     }
 
-    public async Task<int> DeleteManyAsync<T>(IEnumerable<object> ids, int batchSize = 1000, CancellationToken cancellationToken = default)
+    public async ValueTask<int> DeleteManyAsync<T>(IEnumerable<object> ids, int batchSize = 1000, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(ids);
         var total = 0;
@@ -79,7 +79,7 @@ public partial class ForgeDb
         return total;
     }
 
-    public async Task<TResult> WithTransactionAsync<TResult>(Func<CancellationToken, Task<TResult>> operation, CancellationToken cancellationToken = default)
+    public async ValueTask<TResult> WithTransactionAsync<TResult>(Func<CancellationToken, ValueTask<TResult>> operation, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(operation);
         await using var connection = CreateConnection();
@@ -97,10 +97,10 @@ public partial class ForgeDb
         }
     }
 
-    public Task WithTransactionAsync(Func<CancellationToken, Task> operation, CancellationToken cancellationToken = default)
-        => WithTransactionAsync(async ct => { await operation(ct).ConfigureAwait(false); return true; }, cancellationToken);
+    public ValueTask<bool> WithTransactionAsync(Func<CancellationToken, ValueTask> operation, CancellationToken cancellationToken = default)
+        =>  WithTransactionAsync(async ct => { await operation(ct).ConfigureAwait(false); return true; }, cancellationToken);
 
-    private async Task<int> InsertBatchInternalAsync<T>(IReadOnlyList<T> batch, CancellationToken cancellationToken)
+    private async ValueTask<int> InsertBatchInternalAsync<T>(IReadOnlyList<T> batch, CancellationToken cancellationToken)
     {
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);

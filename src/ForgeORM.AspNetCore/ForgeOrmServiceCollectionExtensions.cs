@@ -82,7 +82,7 @@ public static class ForgeOrmServiceCollectionExtensions
         ForgeSourceGeneratedRegistry.CompilationMode = options.CompilationMode;
 
         services.AddSingleton(options.Provider);
-        services.AddSingleton<IForgeEntityMetadataResolver, ReflectionForgeEntityMetadataResolver>();
+        services.AddSingleton<IForgeEntityMetadataResolver, HybridForgeEntityMetadataResolver>();
         services.AddSingleton<IForgeQueryAnalyzer, BasicForgeQueryAnalyzer>();
         services.AddSingleton<IForgeSelectQueryBuilder, ForgeORM.QueryBuilder.ForgeDynamicQueryBuilder>();
         services.AddSingleton<ForgeORM.QueryAst.IForgeDynamicQueryBuilder, ForgeORM.QueryAst.ForgeDynamicQueryBuilder>();

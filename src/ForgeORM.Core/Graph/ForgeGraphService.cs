@@ -18,7 +18,7 @@ public sealed class ForgeGraphService
     /// <summary>
     /// Inserts an entity graph using the selected provider.
     /// </summary>
-    public Task<ForgeGraphResult> InsertGraphAsync<T>(
+    public ValueTask<ForgeGraphResult> InsertGraphAsync<T>(
         ForgeDatabaseProvider provider,
         T entity,
         ForgeGraphOptions? options = null,
@@ -31,7 +31,7 @@ public sealed class ForgeGraphService
     /// <summary>
     /// Updates an entity graph using the selected provider.
     /// </summary>
-    public Task<ForgeGraphResult> UpdateGraphAsync<T>(
+    public ValueTask<ForgeGraphResult> UpdateGraphAsync<T>(
         ForgeDatabaseProvider provider,
         T entity,
         ForgeGraphOptions? options = null,
@@ -44,7 +44,7 @@ public sealed class ForgeGraphService
     /// <summary>
     /// Deletes an entity graph using the selected provider.
     /// </summary>
-    public Task<ForgeGraphResult> DeleteGraphAsync<T>(
+    public ValueTask<ForgeGraphResult> DeleteGraphAsync<T>(
         ForgeDatabaseProvider provider,
         T entity,
         ForgeGraphOptions? options = null,

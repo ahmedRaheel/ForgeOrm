@@ -25,7 +25,7 @@ public interface IForgeQueryCache
     /// <param name="key">The key value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default);
+    ValueTask<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -35,14 +35,14 @@ public interface IForgeQueryCache
     /// <param name="ttl">The ttl value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task SetAsync<T>(string key, T value, TimeSpan? ttl = null, CancellationToken cancellationToken = default);
+    ValueTask SetAsync<T>(string key, T value, TimeSpan? ttl = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the RemoveAsync operation.
     /// </summary>
     /// <param name="key">The key value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the RemoveAsync operation.</returns>
-    Task RemoveAsync(string key, CancellationToken cancellationToken = default);
+    ValueTask RemoveAsync(string key, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -52,7 +52,7 @@ public interface IForgeQueryCache
     /// <param name="ttl">The ttl value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<T> GetOrCreateAsync<T>(string key, Func<CancellationToken, Task<T>> factory, TimeSpan? ttl = null, CancellationToken cancellationToken = default);
+    ValueTask<T> GetOrCreateAsync<T>(string key, Func<CancellationToken, ValueTask<T>> factory, TimeSpan? ttl = null, CancellationToken cancellationToken = default);
 }
 
 public sealed class ForgeDistributedQueryCache : IForgeQueryCache
@@ -80,7 +80,7 @@ public sealed class ForgeDistributedQueryCache : IForgeQueryCache
     /// <param name="key">The key value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public async Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
+    public async ValueTask<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
     {
         var json = await _cache.GetStringAsync(BuildKey(key), cancellationToken);
         return string.IsNullOrWhiteSpace(json) ? default : JsonSerializer.Deserialize<T>(json, JsonOptions);
@@ -95,7 +95,7 @@ public sealed class ForgeDistributedQueryCache : IForgeQueryCache
     /// <param name="ttl">The ttl value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public async Task SetAsync<T>(string key, T value, TimeSpan? ttl = null, CancellationToken cancellationToken = default)
+    public async ValueTask SetAsync<T>(string key, T value, TimeSpan? ttl = null, CancellationToken cancellationToken = default)
     {
         var json = JsonSerializer.Serialize(value, JsonOptions);
         await _cache.SetStringAsync(BuildKey(key), json, new DistributedCacheEntryOptions
@@ -110,8 +110,8 @@ public sealed class ForgeDistributedQueryCache : IForgeQueryCache
     /// <param name="key">The key value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the RemoveAsync operation.</returns>
-    public Task RemoveAsync(string key, CancellationToken cancellationToken = default)
-        => _cache.RemoveAsync(BuildKey(key), cancellationToken);
+    public ValueTask RemoveAsync(string key, CancellationToken cancellationToken = default)
+        => new ( _cache.RemoveAsync(BuildKey(key), cancellationToken));
 
     /// <summary>
     /// Executes the T operation.
@@ -122,7 +122,7 @@ public sealed class ForgeDistributedQueryCache : IForgeQueryCache
     /// <param name="ttl">The ttl value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public async Task<T> GetOrCreateAsync<T>(string key, Func<CancellationToken, Task<T>> factory, TimeSpan? ttl = null, CancellationToken cancellationToken = default)
+    public async ValueTask<T> GetOrCreateAsync<T>(string key, Func<CancellationToken, ValueTask<T>> factory, TimeSpan? ttl = null, CancellationToken cancellationToken = default)
     {
         var cached = await GetAsync<T>(key, cancellationToken);
         if (cached is not null) return cached;
@@ -146,17 +146,17 @@ public sealed class ForgeMemoryQueryCache : IForgeQueryCache
     /// <param name="key">The key value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
+    public ValueTask<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
     {
         lock (_gate)
         {
-            if (!_items.TryGetValue(key, out var item)) return Task.FromResult<T?>(default);
+            if (!_items.TryGetValue(key, out var item)) return ValueTask.FromResult<T?>(default);
             if (item.Expiry < DateTimeOffset.UtcNow)
             {
                 _items.Remove(key);
-                return Task.FromResult<T?>(default);
+                return ValueTask.FromResult<T?>(default);
             }
-            return Task.FromResult((T?)item.Value);
+            return ValueTask.FromResult((T?)item.Value);
         }
     }
 
@@ -169,10 +169,10 @@ public sealed class ForgeMemoryQueryCache : IForgeQueryCache
     /// <param name="ttl">The ttl value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task SetAsync<T>(string key, T value, TimeSpan? ttl = null, CancellationToken cancellationToken = default)
+    public ValueTask SetAsync<T>(string key, T value, TimeSpan? ttl = null, CancellationToken cancellationToken = default)
     {
         lock (_gate) _items[key] = (DateTimeOffset.UtcNow.Add(ttl ?? TimeSpan.FromMinutes(10)), value!);
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>
@@ -181,10 +181,10 @@ public sealed class ForgeMemoryQueryCache : IForgeQueryCache
     /// <param name="key">The key value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the RemoveAsync operation.</returns>
-    public Task RemoveAsync(string key, CancellationToken cancellationToken = default)
+    public ValueTask RemoveAsync(string key, CancellationToken cancellationToken = default)
     {
         lock (_gate) _items.Remove(key);
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>
@@ -196,7 +196,7 @@ public sealed class ForgeMemoryQueryCache : IForgeQueryCache
     /// <param name="ttl">The ttl value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public async Task<T> GetOrCreateAsync<T>(string key, Func<CancellationToken, Task<T>> factory, TimeSpan? ttl = null, CancellationToken cancellationToken = default)
+    public async ValueTask<T> GetOrCreateAsync<T>(string key, Func<CancellationToken, ValueTask<T>> factory, TimeSpan? ttl = null, CancellationToken cancellationToken = default)
     {
         var cached = await GetAsync<T>(key, cancellationToken);
         if (cached is not null) return cached;

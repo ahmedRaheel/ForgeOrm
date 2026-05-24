@@ -31,18 +31,18 @@ internal sealed class ForgeIncludableQuery<T, TProperty> : IForgeIncludableQuery
     public IForgeQuery<T> TemporalContainedIn(DateTime fromUtc, DateTime toUtc) => Query.TemporalContainedIn(fromUtc, toUtc);
     public IForgeQuery<T> Include<TNextProperty>(Expression<Func<T, TNextProperty>> navigation) => Query.Include(navigation);
     public bool Any() => Query.Any();
-    public Task<bool> AnyAsync(CancellationToken cancellationToken = default) => Query.AnyAsync(cancellationToken);
+    public ValueTask<bool> AnyAsync(CancellationToken cancellationToken = default) => Query.AnyAsync(cancellationToken);
     public IReadOnlyList<T> ToList() => Query.ToList();
-    public Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default) => Query.ToListAsync(cancellationToken);
+    public ValueTask<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default) => Query.ToListAsync(cancellationToken);
     public IAsyncEnumerable<T> StreamAsync(CancellationToken cancellationToken = default) => Query.StreamAsync(cancellationToken);
-    public Task ProcessInBatchesAsync(int batchSize, Func<IReadOnlyList<T>, Task> processor, CancellationToken cancellationToken = default) => Query.ProcessInBatchesAsync(batchSize, processor, cancellationToken);
+    public ValueTask ProcessInBatchesAsync(int batchSize, Func<IReadOnlyList<T>, ValueTask> processor, CancellationToken cancellationToken = default) => Query.ProcessInBatchesAsync(batchSize, processor, cancellationToken);
     public T? FirstOrDefault() => Query.FirstOrDefault();
-    public Task<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default) => Query.FirstOrDefaultAsync(cancellationToken);
+    public ValueTask<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default) => Query.FirstOrDefaultAsync(cancellationToken);
     public int Count() => Query.Count();
-    public Task<int> CountAsync(CancellationToken cancellationToken = default) => Query.CountAsync(cancellationToken);
-    public Task<decimal> SumAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default) => Query.SumAsync(selector, cancellationToken);
-    public Task<decimal> AverageAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default) => Query.AverageAsync(selector, cancellationToken);
-    public Task<decimal> MinAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default) => Query.MinAsync(selector, cancellationToken);
-    public Task<decimal> MaxAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default) => Query.MaxAsync(selector, cancellationToken);
-    public Task<ForgePagedResult<T>> PageAsync(int page, int pageSize, CancellationToken cancellationToken = default) => Query.PageAsync(page, pageSize, cancellationToken);
+    public ValueTask<int> CountAsync(CancellationToken cancellationToken = default) => Query.CountAsync(cancellationToken);
+    public ValueTask<decimal> SumAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default) => Query.SumAsync(selector, cancellationToken);
+    public ValueTask<decimal> AverageAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default) => Query.AverageAsync(selector, cancellationToken);
+    public ValueTask<decimal> MinAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default) => Query.MinAsync(selector, cancellationToken);
+    public ValueTask<decimal> MaxAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default) => Query.MaxAsync(selector, cancellationToken);
+    public ValueTask<ForgePagedResult<T>> PageAsync(int page, int pageSize, CancellationToken cancellationToken = default) => Query.PageAsync(page, pageSize, cancellationToken);
 }

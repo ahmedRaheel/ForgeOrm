@@ -141,13 +141,13 @@ public static class ForgeSecondLevelCacheExtensions
     /// Warms metadata, generated/runtime readers, generated SQL, and the provider-direct GetById plan for an entity type.
     /// Safe to call on app startup.
     /// </summary>
-    public static Task WarmupAsync<T>(this ForgeDb db, CancellationToken cancellationToken = default)
+    public static ValueTask WarmupAsync<T>(this ForgeDb db, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(db);
         cancellationToken.ThrowIfCancellationRequested();
         _ = ForgeEntityMetadataCache.Get(typeof(T));
         _ = ForgeCompiledIncludePlanCache.GetOrCreate(typeof(T), Array.Empty<PropertyInfo>(), false, false);
         _ = ForgeProjectionReaderCache.GetOrCreate(typeof(T), typeof(T), null);
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 }

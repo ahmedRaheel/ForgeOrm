@@ -10,16 +10,17 @@ using ForgeORM.Core;
 namespace ForgeORM.Core.Performance;
 
 /// <summary>
-/// Dapper-style direct executor used by the framework-level pipeline for simple hot paths.
-/// It is provider-neutral and applies to Query/First/Single/Scalar/Execute without introducing
-/// a separate public framework. It intentionally avoids command plans, enum SQL rewrites,
-/// dictionaries and LINQ when the SQL has a small scalar parameter shape.
+/// Provider-neutral Dapper-style direct executor used by the framework-level pipeline for simple hot paths.
+/// This is not a separate public framework: Query/First/Single/Scalar/Execute all enter through the same
+/// execution policy and this executor is selected internally when the command shape is safe.
 /// </summary>
 internal static class ForgeDirectQueryExecutor
 {
-    private static readonly ConcurrentDictionary<DirectParameterKey, DirectParameterAccessor> ParameterAccessors = new();
+    private static readonly ConcurrentDictionary<Type, DirectParameterAccessor?> ParameterAccessorsByType = new();
+    private static readonly ConcurrentDictionary<string, string> FirstParameterNameBySql = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<DirectReaderKey, object> ReaderCache = new();
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool CanUse(string sql, object? parameters, CommandType commandType)
     {
         if (ForgeEnterpriseRuntime.IsEnabled)
@@ -36,24 +37,7 @@ internal static class ForgeDirectQueryExecutor
             return false;
 
         var type = parameters.GetType();
-        if (IsScalar(type))
-            return true;
-
-        // Fast lane is for one/two scalar anonymous parameters. Complex parameter objects stay on the compiled pipeline.
-        var props = type.GetProperties(BindingFlags.Instance | BindingFlags.Public);
-        var count = 0;
-        for (var i = 0; i < props.Length; i++)
-        {
-            if (props[i].GetIndexParameters().Length != 0 || props[i].GetMethod is null)
-                continue;
-            var pt = Nullable.GetUnderlyingType(props[i].PropertyType) ?? props[i].PropertyType;
-            if (!IsScalar(pt))
-                return false;
-            count++;
-            if (count > 2)
-                return false;
-        }
-        return count <= 2;
+        return IsScalar(type) || GetAccessor(type) is not null;
     }
 
     public static async ValueTask<T?> FirstOrDefaultAsync<T>(
@@ -72,8 +56,7 @@ internal static class ForgeDirectQueryExecutor
         if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             return default;
 
-        var materializer = GetReader<T>(connection, sql, reader);
-        return materializer(reader);
+        return GetReader<T>(connection, sql, reader)(reader);
     }
 
     public static async ValueTask<T?> SingleOrDefaultAsync<T>(
@@ -161,32 +144,51 @@ internal static class ForgeDirectQueryExecutor
         return command;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Bind(DbCommand command, string sql, object? parameters)
     {
         if (parameters is null)
             return;
 
-        var firstName = FirstParameterName(sql);
         var type = parameters.GetType();
         if (IsScalar(type))
         {
-            Add(command, firstName, parameters, type);
+            Add(command, FirstParameterName(sql), parameters, type);
             return;
         }
 
-        var accessor = ParameterAccessors.GetOrAdd(new DirectParameterKey(type, ForgeFastHash.HashSql(sql)), static key => BuildAccessor(key.ParameterType));
+        var accessor = GetAccessor(type);
+        if (accessor is null)
+            throw new InvalidOperationException($"Unsupported fast-path parameter type: {type.FullName}");
+
         accessor.Bind(command, parameters);
     }
 
-    private static DirectParameterAccessor BuildAccessor(Type parameterType)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static DirectParameterAccessor? GetAccessor(Type parameterType)
+        => ParameterAccessorsByType.GetOrAdd(parameterType, static type => BuildAccessor(type));
+
+    private static DirectParameterAccessor? BuildAccessor(Type parameterType)
     {
         var props = parameterType.GetProperties(BindingFlags.Instance | BindingFlags.Public);
         var selected = new List<PropertyInfo>(2);
         for (var i = 0; i < props.Length; i++)
         {
-            if (props[i].GetIndexParameters().Length == 0 && props[i].GetMethod is not null)
-                selected.Add(props[i]);
+            var prop = props[i];
+            if (prop.GetIndexParameters().Length != 0 || prop.GetMethod is null)
+                continue;
+
+            var propertyType = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
+            if (!IsScalar(propertyType))
+                return null;
+
+            selected.Add(prop);
+            if (selected.Count > 2)
+                return null;
         }
+
+        if (selected.Count == 0)
+            return null;
 
         var names = new string[selected.Count];
         var types = new Type[selected.Count];
@@ -197,6 +199,7 @@ internal static class ForgeDirectQueryExecutor
             types[i] = selected[i].PropertyType;
             getters[i] = CompileGetter(parameterType, selected[i]);
         }
+
         return new DirectParameterAccessor(names, types, getters);
     }
 
@@ -228,20 +231,26 @@ internal static class ForgeDirectQueryExecutor
                 ? Convert.ChangeType(value, Enum.GetUnderlyingType(type), CultureInfo.InvariantCulture) ?? DBNull.Value
                 : value;
         }
+
         command.Parameters.Add(p);
     }
 
     private static Func<DbDataReader, T> GetReader<T>(DbConnection connection, string sql, DbDataReader reader)
     {
-        var key = new DirectReaderKey(connection.GetType(), typeof(T), ForgeFastHash.HashSql(sql));
+        var key = new DirectReaderKey(connection.GetType(), typeof(T), sql);
         if (ReaderCache.TryGetValue(key, out var cached))
             return (Func<DbDataReader, T>)cached;
+
         var materializer = ForgeCompiledReaderResolver.GetReader<T>(reader);
         ReaderCache[key] = materializer;
         return materializer;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static string FirstParameterName(string sql)
+        => FirstParameterNameBySql.GetOrAdd(sql, static s => ParseFirstParameterName(s));
+
+    private static string ParseFirstParameterName(string sql)
     {
         for (var i = 0; i < sql.Length - 1; i++)
         {
@@ -297,8 +306,7 @@ internal static class ForgeDirectQueryExecutor
             || type == typeof(TimeSpan) || type == typeof(byte[]);
     }
 
-    private readonly record struct DirectParameterKey(Type ParameterType, ulong SqlHash);
-    private readonly record struct DirectReaderKey(Type ProviderType, Type ResultType, ulong SqlHash);
+    private readonly record struct DirectReaderKey(Type ProviderType, Type ResultType, string Sql);
 
     private sealed class DirectParameterAccessor
     {

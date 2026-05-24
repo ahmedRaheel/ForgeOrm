@@ -142,10 +142,10 @@ public sealed record ForgeParallelQueryOptions(int MaxDegreeOfParallelism = 4, i
 
 public static class ForgeParallelQueryEngine
 {
-    public static async Task<IReadOnlyList<TResult>> ExecuteAsync<T, TResult>(
+    public static async ValueTask<IReadOnlyList<TResult>> ExecuteAsync<T, TResult>(
         IEnumerable<T> source,
         ForgeParallelQueryOptions options,
-        Func<T, CancellationToken, Task<TResult>> worker,
+        Func<T, CancellationToken, ValueTask<TResult>> worker,
         CancellationToken cancellationToken = default)
     {
         using var semaphore = new SemaphoreSlim(options.MaxDegreeOfParallelism);
@@ -205,7 +205,7 @@ public sealed class ForgeDistributedLockManager
 {
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new(StringComparer.OrdinalIgnoreCase);
 
-    public async Task<IDisposable> AcquireAsync(string name, CancellationToken cancellationToken = default)
+    public async ValueTask<IDisposable> AcquireAsync(string name, CancellationToken cancellationToken = default)
     {
         var gate = _locks.GetOrAdd(name, _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(cancellationToken);

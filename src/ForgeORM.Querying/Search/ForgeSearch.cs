@@ -331,7 +331,7 @@ public sealed class ForgeSearch<T>
 
     public string ToSql() => Render().Sql;
 
-    public async Task<IReadOnlyList<T>> ToListAsync(
+    public async ValueTask<IReadOnlyList<T>> ToListAsync(
         CancellationToken cancellationToken = default)
     {
         var query = Render();
@@ -342,7 +342,7 @@ public sealed class ForgeSearch<T>
             cancellationToken: cancellationToken);
     }
 
-    public async Task<IReadOnlyList<Dictionary<string, object?>>> ToDictionaryAsync(
+    public async ValueTask<IReadOnlyList<Dictionary<string, object?>>> ToDictionaryAsync(
         CancellationToken cancellationToken = default)
     {
         var query = Render();
@@ -353,7 +353,7 @@ public sealed class ForgeSearch<T>
             cancellationToken);
     }
 
-    public async Task<ForgePagedResult<T>> ToPagedAsync(
+    public async ValueTask<ForgePagedResult<T>> ToPagedAsync(
         CancellationToken cancellationToken = default)
     {
         var dataQuery = Render();
@@ -493,7 +493,7 @@ public sealed class ForgeProcedureSearch<T>
         return this;
     }
 
-    public Task<IReadOnlyList<T>> ToListAsync(
+    public ValueTask<IReadOnlyList<T>> ToListAsync(
         CancellationToken cancellationToken = default)
     {
         return _db.QueryProcedureAsync<T>(
@@ -502,7 +502,7 @@ public sealed class ForgeProcedureSearch<T>
             cancellationToken: cancellationToken);
     }
 
-    public async Task<ForgePagedResult<T>> ToPagedAsync(
+    public async ValueTask<ForgePagedResult<T>> ToPagedAsync(
         CancellationToken cancellationToken = default)
     {
         var items = await ToListAsync(cancellationToken);

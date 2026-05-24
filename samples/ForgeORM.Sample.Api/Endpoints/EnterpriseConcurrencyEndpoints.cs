@@ -157,7 +157,7 @@ ORDER BY Id DESC
                 processBatch: (batch, token) =>
                 {
                     // Put export, sync, cache warmup or analytics logic here.
-                    return Task.CompletedTask;
+                    return ValueTask.CompletedTask;
                 },
                 batchSize: 1000,
                 whereSql: "Id > @MinId",

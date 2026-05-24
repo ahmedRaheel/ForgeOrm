@@ -74,7 +74,7 @@ public sealed class ForgeTabularResult
 /// </summary>
 public static class ForgeDynamicRowReader
 {
-    public static async Task<IReadOnlyList<Dictionary<string, object?>>> ReadDictionaryAsync(
+    public static async ValueTask<IReadOnlyList<Dictionary<string, object?>>> ReadDictionaryAsync(
         DbCommand command,
         CancellationToken cancellationToken = default)
     {

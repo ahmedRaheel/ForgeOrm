@@ -11,7 +11,7 @@ public partial class ForgeDb
     /// This is the correct materialization path for dynamic reports, pivots, unpivots,
     /// analytics projections, and SQL that does not map to a static entity type.
     /// </summary>
-    public async Task<IReadOnlyList<Dictionary<string, object?>>> QueryDictionaryAsync(
+    public async ValueTask<IReadOnlyList<Dictionary<string, object?>>> QueryDictionaryAsync(
         string sql,
         object? parameters = null,
         int? timeoutSeconds = null,

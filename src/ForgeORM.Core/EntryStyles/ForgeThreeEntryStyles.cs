@@ -53,17 +53,16 @@ public sealed class ForgeRawSqlQuery
 
     public string ToSql() => _sql;
 
-    public Task<IReadOnlyList<T>> ToListAsync<T>(
+    public ValueTask<IReadOnlyList<T>> ToListAsync<T>(
         CancellationToken cancellationToken = default)
     {
         return _db.QueryAsync<T>(
             _sql,
             _parameters,
-            cancellationToken: cancellationToken)
-            .ContinueWith(t => (IReadOnlyList<T>)t.Result.ToList(), cancellationToken);
+            cancellationToken: cancellationToken);            
     }
 
-    public Task<IReadOnlyList<Dictionary<string, object?>>> ToDictionaryAsync(
+    public ValueTask<IReadOnlyList<Dictionary<string, object?>>> ToDictionaryAsync(
         CancellationToken cancellationToken = default)
     {
         return _db.QueryDictionaryAsync(
@@ -72,7 +71,7 @@ public sealed class ForgeRawSqlQuery
             cancellationToken: cancellationToken);
     }
 
-    public Task<ForgeJsonProjection> ToJsonAsync(
+    public ValueTask<ForgeJsonProjection> ToJsonAsync(
         CancellationToken cancellationToken = default)
     {
         return _db.QueryJsonProjectionAsync(
@@ -82,7 +81,7 @@ public sealed class ForgeRawSqlQuery
             cancellationToken);
     }
 
-    public Task<ForgeTabularResult> ToDataFrameAsync(
+    public ValueTask<ForgeTabularResult> ToDataFrameAsync(
         CancellationToken cancellationToken = default)
     {
         return _db.QueryDataFrameAsync(
@@ -92,7 +91,7 @@ public sealed class ForgeRawSqlQuery
             cancellationToken);
     }
 
-    public Task<string> ToCsvAsync(
+    public ValueTask<string> ToCsvAsync(
         CancellationToken cancellationToken = default)
     {
         return _db.QueryCsvAsync(
@@ -220,31 +219,31 @@ public sealed class ForgeExpressionQuery<TEntity>
         return sql;
     }
 
-    public Task<IReadOnlyList<TEntity>> ToListAsync(
+    public ValueTask<IReadOnlyList<TEntity>> ToListAsync(
         CancellationToken cancellationToken = default)
     {
         return _db.Sql(ToSql()).ToListAsync<TEntity>(cancellationToken);
     }
 
-    public Task<IReadOnlyList<Dictionary<string, object?>>> ToDictionaryAsync(
+    public ValueTask<IReadOnlyList<Dictionary<string, object?>>> ToDictionaryAsync(
         CancellationToken cancellationToken = default)
     {
         return _db.Sql(ToSql()).ToDictionaryAsync(cancellationToken);
     }
 
-    public Task<ForgeJsonProjection> ToJsonAsync(
+    public ValueTask<ForgeJsonProjection> ToJsonAsync(
         CancellationToken cancellationToken = default)
     {
         return _db.Sql(ToSql()).Named(typeof(TEntity).Name).ToJsonAsync(cancellationToken);
     }
 
-    public Task<ForgeTabularResult> ToDataFrameAsync(
+    public ValueTask<ForgeTabularResult> ToDataFrameAsync(
         CancellationToken cancellationToken = default)
     {
         return _db.Sql(ToSql()).Named(typeof(TEntity).Name).ToDataFrameAsync(cancellationToken);
     }
 
-    public Task<string> ToCsvAsync(
+    public ValueTask<string> ToCsvAsync(
         CancellationToken cancellationToken = default)
     {
         return _db.Sql(ToSql()).ToCsvAsync(cancellationToken);

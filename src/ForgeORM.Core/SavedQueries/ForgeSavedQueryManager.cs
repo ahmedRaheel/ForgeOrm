@@ -40,7 +40,7 @@ public sealed class ForgeSavedQueryManager
     /// <summary>
     /// Registers or replaces a saved query from the expression query builder.
     /// </summary>
-    public Task Register(
+    public ValueTask Register(
         string name,
         Action<ForgeSavedQueryBuilderRoot> configure,
         string? description = null)
@@ -59,13 +59,13 @@ public sealed class ForgeSavedQueryManager
         configure(root);
         var rendered = root.Render();
         _registry.Register(name, rendered.Sql, rendered.Parameters, description);
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>
     /// Registers or replaces a saved query from the typed expression query builder.
     /// </summary>
-    public Task Register<TEntity>(
+    public ValueTask Register<TEntity>(
         string name,
         Action<ForgeQueryBuilder<TEntity>> configure,
         string? description = null)
@@ -85,7 +85,7 @@ public sealed class ForgeSavedQueryManager
         configure(builder);
         var rendered = builder.Render();
         _registry.Register(name, rendered.Sql, rendered.Parameters, description);
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>
@@ -106,7 +106,7 @@ public sealed class ForgeSavedQueryManager
     /// <summary>
     /// Executes a saved query and materializes typed rows.
     /// </summary>
-    public Task<IReadOnlyList<T>> ExecuteAsync<T>(
+    public ValueTask<IReadOnlyList<T>> ExecuteAsync<T>(
         string name,
         object? parameters = null,
         CancellationToken cancellationToken = default)
@@ -121,7 +121,7 @@ public sealed class ForgeSavedQueryManager
     /// <summary>
     /// Executes a saved query and returns the first row or null.
     /// </summary>
-    public async Task<T?> ExecuteSingleOrDefaultAsync<T>(
+    public async ValueTask<T?> ExecuteSingleOrDefaultAsync<T>(
         string name,
         object? parameters = null,
         CancellationToken cancellationToken = default)

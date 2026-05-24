@@ -19,7 +19,7 @@ public interface IForgeAiMemoryStore
     /// <param name="entry">The entry value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the RememberAsync operation.</returns>
-    Task RememberAsync(ForgeMemoryEntry entry, CancellationToken cancellationToken = default);
+    ValueTask RememberAsync(ForgeMemoryEntry entry, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the RecallAsync operation.
     /// </summary>
@@ -27,7 +27,7 @@ public interface IForgeAiMemoryStore
     /// <param name="query">The query value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the RecallAsync operation.</returns>
-    Task<IReadOnlyList<ForgeMemoryEntry>> RecallAsync(string scope, string? query = null, CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<ForgeMemoryEntry>> RecallAsync(string scope, string? query = null, CancellationToken cancellationToken = default);
 }
 
 public sealed class InMemoryForgeAiMemoryStore : IForgeAiMemoryStore
@@ -39,7 +39,7 @@ public sealed class InMemoryForgeAiMemoryStore : IForgeAiMemoryStore
     /// <param name="entry">The entry value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the RememberAsync operation.</returns>
-    public Task RememberAsync(ForgeMemoryEntry entry, CancellationToken cancellationToken = default) { _entries.Add(entry); return Task.CompletedTask; }
+    public ValueTask RememberAsync(ForgeMemoryEntry entry, CancellationToken cancellationToken = default) { _entries.Add(entry); return ValueTask.CompletedTask; }
     /// <summary>
     /// Executes the RecallAsync operation.
     /// </summary>
@@ -47,8 +47,8 @@ public sealed class InMemoryForgeAiMemoryStore : IForgeAiMemoryStore
     /// <param name="query">The query value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the RecallAsync operation.</returns>
-    public Task<IReadOnlyList<ForgeMemoryEntry>> RecallAsync(string scope, string? query = null, CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyList<ForgeMemoryEntry>>(_entries.Where(x => x.Scope == scope && (string.IsNullOrWhiteSpace(query) || x.Key.Contains(query, StringComparison.OrdinalIgnoreCase) || x.Value.Contains(query, StringComparison.OrdinalIgnoreCase))).OrderByDescending(x => x.CreatedUtc).ToList());
+    public ValueTask<IReadOnlyList<ForgeMemoryEntry>> RecallAsync(string scope, string? query = null, CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult<IReadOnlyList<ForgeMemoryEntry>>(_entries.Where(x => x.Scope == scope && (string.IsNullOrWhiteSpace(query) || x.Key.Contains(query, StringComparison.OrdinalIgnoreCase) || x.Value.Contains(query, StringComparison.OrdinalIgnoreCase))).OrderByDescending(x => x.CreatedUtc).ToList());
 }
 
 public static class ForgeAiMemoryServiceCollectionExtensions

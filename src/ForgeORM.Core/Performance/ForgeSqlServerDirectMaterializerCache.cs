@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Data.Common;
 using System.Reflection;
 using System.Reflection.Emit;
-using System.Text;
 using Microsoft.Data.SqlClient;
 using ForgeORM.Abstractions;
 using ForgeORM.Core;
@@ -36,17 +35,15 @@ internal static class ForgeSqlServerDirectMaterializerCache
 
     private static string CreateKey(Type type, SqlDataReader reader)
     {
-        var builder = new StringBuilder((reader.FieldCount * 32) + 64);
-        builder.Append(type.FullName ?? type.Name);
+        var parts = new string[(reader.FieldCount * 2) + 1];
+        parts[0] = type.FullName ?? type.Name;
+        var index = 1;
         for (var i = 0; i < reader.FieldCount; i++)
         {
-            builder.Append('|');
-            builder.Append(Normalize(reader.GetName(i)));
-            builder.Append('|');
-            var fieldType = reader.GetFieldType(i);
-            builder.Append(fieldType.FullName ?? fieldType.Name);
+            parts[index++] = Normalize(reader.GetName(i));
+            parts[index++] = reader.GetFieldType(i).FullName ?? reader.GetFieldType(i).Name;
         }
-        return builder.ToString();
+        return string.Join('|', parts);
     }
 
     private static Func<SqlDataReader, T> Build<T>(SqlDataReader reader)
@@ -87,21 +84,13 @@ internal static class ForgeSqlServerDirectMaterializerCache
         }
 
         var constructorParameterNames = ctorPlan.ParameterNames;
-        var propertyArray = actualType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-        var properties = new Dictionary<string, PropertyInfo>(propertyArray.Length, StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < propertyArray.Length; i++)
-        {
-            var property = propertyArray[i];
-            if (!property.CanWrite || !Support.IsScalarColumn(property))
-                continue;
-
-            if (constructorParameterNames.Contains(Normalize(property.Name)))
-                continue;
-
-            var column = Normalize(property.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? property.Name);
-            if (!properties.ContainsKey(column))
-                properties[column] = property;
-        }
+        var properties = actualType
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanWrite && Support.IsScalarColumn(p))
+            .Where(p => !constructorParameterNames.Contains(Normalize(p.Name)))
+            .Select(p => new { Property = p, Column = Normalize(p.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? p.Name) })
+            .GroupBy(x => x.Column, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Property, StringComparer.OrdinalIgnoreCase);
 
         var isDbNull = typeof(SqlDataReader).GetMethod(nameof(SqlDataReader.IsDBNull), new[] { typeof(int) })!;
 
@@ -186,12 +175,12 @@ internal static class ForgeSqlServerDirectMaterializerCache
 
     private static ConstructorPlan CreateConstructorPlan(Type type, SqlDataReader reader)
     {
-        var columns = new Dictionary<string, int>(reader.FieldCount, StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < reader.FieldCount; i++)
-            columns[Normalize(reader.GetName(i))] = i;
+        var columns = Enumerable.Range(0, reader.FieldCount)
+            .ToDictionary(i => Normalize(reader.GetName(i)), i => i, StringComparer.OrdinalIgnoreCase);
 
-        var constructors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
-        Array.Sort(constructors, static (left, right) => right.GetParameters().Length.CompareTo(left.GetParameters().Length));
+        var constructors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+            .OrderByDescending(c => c.GetParameters().Length)
+            .ToArray();
 
         foreach (var ctor in constructors)
         {
@@ -221,12 +210,7 @@ internal static class ForgeSqlServerDirectMaterializerCache
             }
 
             if (ok)
-            {
-                var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                for (var i = 0; i < parameters.Length; i++)
-                    names.Add(Normalize(parameters[i].Name ?? string.Empty));
-                return new ConstructorPlan(ctor, bindings, names);
-            }
+                return new ConstructorPlan(ctor, bindings, parameters.Select(p => Normalize(p.Name ?? string.Empty)).ToHashSet(StringComparer.OrdinalIgnoreCase));
         }
 
         return new ConstructorPlan(null, Array.Empty<ConstructorParameterBinding>(), new HashSet<string>(StringComparer.OrdinalIgnoreCase));

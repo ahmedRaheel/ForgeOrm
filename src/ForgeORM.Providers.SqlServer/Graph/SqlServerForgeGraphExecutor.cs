@@ -25,7 +25,7 @@ public sealed class SqlServerForgeGraphExecutor : IForgeGraphExecutor
     public ForgeDatabaseProvider Provider => ForgeDatabaseProvider.SqlServer;
 
     /// <inheritdoc />
-    public async Task<ForgeGraphResult> InsertGraphAsync<T>(T entity, ForgeGraphOptions options, CancellationToken cancellationToken = default)
+    public async ValueTask<ForgeGraphResult> InsertGraphAsync<T>(T entity, ForgeGraphOptions options, CancellationToken cancellationToken = default)
         where T : class
     {
         var result = new ForgeGraphResultBuilder();
@@ -44,7 +44,7 @@ public sealed class SqlServerForgeGraphExecutor : IForgeGraphExecutor
     }
 
     /// <inheritdoc />
-    public async Task<ForgeGraphResult> UpdateGraphAsync<T>(T entity, ForgeGraphOptions options, CancellationToken cancellationToken = default)
+    public async ValueTask<ForgeGraphResult> UpdateGraphAsync<T>(T entity, ForgeGraphOptions options, CancellationToken cancellationToken = default)
         where T : class
     {
         var result = new ForgeGraphResultBuilder();
@@ -62,7 +62,7 @@ public sealed class SqlServerForgeGraphExecutor : IForgeGraphExecutor
     }
 
     /// <inheritdoc />
-    public async Task<ForgeGraphResult> DeleteGraphAsync<T>(T entity, ForgeGraphOptions options, CancellationToken cancellationToken = default)
+    public async ValueTask<ForgeGraphResult> DeleteGraphAsync<T>(T entity, ForgeGraphOptions options, CancellationToken cancellationToken = default)
         where T : class
     {
         var result = new ForgeGraphResultBuilder();
@@ -99,30 +99,30 @@ public sealed class SqlServerForgeGraphExecutor : IForgeGraphExecutor
         }
     }
 
-    private static Task ExecuteInsertNodeAsync(ForgeGraphNode node, ForgeBulkStrategy strategy, CancellationToken cancellationToken)
+    private static ValueTask ExecuteInsertNodeAsync(ForgeGraphNode node, ForgeBulkStrategy strategy, CancellationToken cancellationToken)
     {
         // SQL Server implementation hook:
         // OpenJson: INSERT ... SELECT FROM OPENJSON(@json) WITH (...)
         // TVP: INSERT ... SELECT FROM @TableType
         // SqlBulkCopy: bulk copy rows into target or staging table
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    private static Task ExecuteMergeNodeAsync(ForgeGraphNode node, ForgeBulkStrategy strategy, ForgeGraphOptions options, CancellationToken cancellationToken)
+    private static ValueTask ExecuteMergeNodeAsync(ForgeGraphNode node, ForgeBulkStrategy strategy, ForgeGraphOptions options, CancellationToken cancellationToken)
     {
         // SQL Server implementation hook:
         // MERGE target USING source
         // WHEN MATCHED UPDATE
         // WHEN NOT MATCHED INSERT
         // WHEN NOT MATCHED BY SOURCE DELETE when options.ChildSyncMode requires it
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    private static Task ExecuteDeleteNodeAsync(ForgeGraphNode node, ForgeBulkStrategy strategy, ForgeGraphOptions options, CancellationToken cancellationToken)
+    private static ValueTask ExecuteDeleteNodeAsync(ForgeGraphNode node, ForgeBulkStrategy strategy, ForgeGraphOptions options, CancellationToken cancellationToken)
     {
         // SQL Server implementation hook:
         // SoftDelete: UPDATE target SET IsDeleted = 1, DeletedAt = SYSUTCDATETIME()
         // HardDelete: DELETE FROM target WHERE Id IN (...)
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 }

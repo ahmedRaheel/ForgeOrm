@@ -123,7 +123,7 @@ public static class ForgeEasyQueryExtensions
     /// <param name="db">The ForgeORM database session.</param>
     /// <param name="cancellationToken">The cancellation token for the async operation.</param>
     /// <returns>The result rows.</returns>
-    public static Task<IReadOnlyList<TResult>> ToListAsync<TSource, TResult>(
+    public static ValueTask<IReadOnlyList<TResult>> ToListAsync<TSource, TResult>(
         this IForgeAstSelectBuilder<TSource> builder,
         IForgeDb db,
         CancellationToken cancellationToken = default)
@@ -141,7 +141,7 @@ public static class ForgeEasyQueryExtensions
     /// <param name="db">The ForgeORM database session.</param>
     /// <param name="cancellationToken">The cancellation token for the async operation.</param>
     /// <returns>The first result row, or null when no row exists.</returns>
-    public static Task<TResult?> FirstOrDefaultAsync<TSource, TResult>(
+    public static ValueTask<TResult?> FirstOrDefaultAsync<TSource, TResult>(
         this IForgeAstSelectBuilder<TSource> builder,
         IForgeDb db,
         CancellationToken cancellationToken = default)
@@ -158,7 +158,7 @@ public static class ForgeEasyQueryExtensions
     /// <param name="db">The ForgeORM database session.</param>
     /// <param name="cancellationToken">The cancellation token for the async operation.</param>
     /// <returns>True when at least one row exists; otherwise false.</returns>
-    public static async Task<bool> AnyAsync<TSource>(
+    public static async ValueTask<bool> AnyAsync<TSource>(
         this IForgeAstSelectBuilder<TSource> builder,
         IForgeDb db,
         CancellationToken cancellationToken = default)
@@ -176,7 +176,7 @@ public static class ForgeEasyQueryExtensions
     /// <param name="db">The ForgeORM database session.</param>
     /// <param name="cancellationToken">The cancellation token for the async operation.</param>
     /// <returns>The number of matching rows.</returns>
-    public static async Task<int> CountAsync<TSource>(
+    public static async ValueTask<int> CountAsync<TSource>(
         this IForgeAstSelectBuilder<TSource> builder,
         IForgeDb db,
         CancellationToken cancellationToken = default)

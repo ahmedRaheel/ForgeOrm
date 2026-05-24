@@ -189,7 +189,7 @@ public interface IForgeAiSemanticQueryService
     /// <param name="text">The text value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the SearchKnowledgeAsync operation.</returns>
-    Task<IReadOnlyList<ForgeVectorSearchResult>> SearchKnowledgeAsync(string text, CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<ForgeVectorSearchResult>> SearchKnowledgeAsync(string text, CancellationToken cancellationToken = default);
 }
 
 public sealed class ForgeAiSemanticQueryService : IForgeAiSemanticQueryService
@@ -208,7 +208,7 @@ public sealed class ForgeAiSemanticQueryService : IForgeAiSemanticQueryService
     /// <param name="text">The text value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the SearchKnowledgeAsync operation.</returns>
-    public Task<IReadOnlyList<ForgeVectorSearchResult>> SearchKnowledgeAsync(string text, CancellationToken cancellationToken = default)
+    public ValueTask<IReadOnlyList<ForgeVectorSearchResult>> SearchKnowledgeAsync(string text, CancellationToken cancellationToken = default)
     {
         var vector = LocalEmbedding(text, 64);
         return _store.SearchAsync(vector, 5, cancellationToken);

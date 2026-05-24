@@ -40,7 +40,7 @@ public static class ForgeAdo
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public static async Task<IReadOnlyList<T>> QueryAsync<T>(
+    public static async ValueTask<IReadOnlyList<T>> QueryAsync<T>(
         DbConnection connection,
         string sql,
         object? parameters = null,
@@ -65,7 +65,7 @@ public static class ForgeAdo
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public static async Task<T?> QueryFirstOrDefaultAsync<T>(
+    public static async ValueTask<T?> QueryFirstOrDefaultAsync<T>(
         DbConnection connection,
         string sql,
         object? parameters = null,
@@ -78,7 +78,7 @@ public static class ForgeAdo
             .ConfigureAwait(false);
     }
 
-    public static async Task<T?> QuerySingleOrDefaultAsync<T>(
+    public static async ValueTask<T?> QuerySingleOrDefaultAsync<T>(
         DbConnection connection,
         string sql,
         object? parameters = null,
@@ -113,7 +113,7 @@ public static class ForgeAdo
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ExecuteAsync operation.</returns>
-    public static async Task<int> ExecuteAsync(
+    public static async ValueTask<int> ExecuteAsync(
         DbConnection connection,
         string sql,
         object? parameters = null,
@@ -151,7 +151,7 @@ public static class ForgeAdo
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public static async Task<T?> ExecuteScalarAsync<T>(
+    public static async ValueTask<T?> ExecuteScalarAsync<T>(
         DbConnection connection,
         string sql,
         object? parameters = null,
@@ -696,7 +696,7 @@ public static class ForgeAdo
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the QueryDynamicAsync operation.</returns>
-    public static async Task<IReadOnlyList<IDictionary<string, object?>>> QueryDynamicAsync(
+    public static async ValueTask<IReadOnlyList<IDictionary<string, object?>>> QueryDynamicAsync(
     DbConnection connection,
     string sql,
     object? parameters = null,

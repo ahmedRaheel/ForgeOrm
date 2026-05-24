@@ -5,7 +5,7 @@ namespace ForgeORM.QueryBuilder.Enterprise;
 /// </summary>
 public interface IForgeEnterpriseQueryCache
 {
-    Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default);
-    Task SetAsync<T>(string key, T value, ForgeQueryCacheOptions options, CancellationToken cancellationToken = default);
-    Task RemoveRegionAsync(string region, CancellationToken cancellationToken = default);
+    ValueTask<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default);
+    ValueTask SetAsync<T>(string key, T value, ForgeQueryCacheOptions options, CancellationToken cancellationToken = default);
+    ValueTask RemoveRegionAsync(string region, CancellationToken cancellationToken = default);
 }

@@ -109,7 +109,7 @@ public static class NextGenDetailedSampleEndpoints
             var result = await ForgeParallelQueryEngine.ExecuteAsync(
                 rows,
                 new ForgeParallelQueryOptions(MaxDegreeOfParallelism: 4),
-                (x, _) => Task.FromResult(new { Id = x, Value = x * x }),
+                (x, _) => ValueTask.FromResult(new { Id = x, Value = x * x }),
                 ct);
 
             return Results.Ok(new

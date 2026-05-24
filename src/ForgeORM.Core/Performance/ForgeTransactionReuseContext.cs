@@ -24,7 +24,7 @@ public sealed class ForgeTransactionReuseContext : IAsyncDisposable
 
     public static ForgeTransactionReuseContext? Current => CurrentSlot.Value;
 
-    public static async Task<ForgeTransactionReuseContext> BeginAsync(DbConnection connection, CancellationToken cancellationToken = default)
+    public static async ValueTask<ForgeTransactionReuseContext> BeginAsync(DbConnection connection, CancellationToken cancellationToken = default)
     {
         if (connection.State != System.Data.ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
@@ -33,11 +33,11 @@ public sealed class ForgeTransactionReuseContext : IAsyncDisposable
         return new ForgeTransactionReuseContext(connection, tx);
     }
 
-    public Task CommitAsync(CancellationToken cancellationToken = default)
-        => Transaction.CommitAsync(cancellationToken);
+    public ValueTask CommitAsync(CancellationToken cancellationToken = default)
+        => new( Transaction.CommitAsync(cancellationToken));
 
-    public Task RollbackAsync(CancellationToken cancellationToken = default)
-        => Transaction.RollbackAsync(cancellationToken);
+    public ValueTask RollbackAsync(CancellationToken cancellationToken = default)
+        => new(Transaction.RollbackAsync(cancellationToken));
 
     public async ValueTask DisposeAsync()
     {

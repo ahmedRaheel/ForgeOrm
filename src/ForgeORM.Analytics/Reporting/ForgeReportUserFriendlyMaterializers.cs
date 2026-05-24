@@ -12,7 +12,7 @@ public static class ForgeReportUserFriendlyMaterializers
     /// <summary>
     /// Renders report SQL and executes it as dynamic dictionary rows.
     /// </summary>
-    public static async Task<IReadOnlyList<Dictionary<string, object?>>> ToDictionaryAsync<TReport>(
+    public static async ValueTask<IReadOnlyList<Dictionary<string, object?>>> ToDictionaryAsync<TReport>(
         this TReport report,
         CancellationToken cancellationToken = default)
         where TReport : class
@@ -33,7 +33,7 @@ public static class ForgeReportUserFriendlyMaterializers
     /// <summary>
     /// Renders report SQL, executes it and returns JSON-friendly rows with metadata.
     /// </summary>
-    public static async Task<ForgeJsonProjection> ToJsonAsync<TReport>(
+    public static async ValueTask<ForgeJsonProjection> ToJsonAsync<TReport>(
         this TReport report,
         CancellationToken cancellationToken = default)
         where TReport : class
@@ -58,7 +58,7 @@ public static class ForgeReportUserFriendlyMaterializers
     /// <summary>
     /// Renders report SQL, executes it and returns a DataFrame-friendly table.
     /// </summary>
-    public static async Task<ForgeTabularResult> ToDataFrameAsync<TReport>(
+    public static async ValueTask<ForgeTabularResult> ToDataFrameAsync<TReport>(
         this TReport report,
         CancellationToken cancellationToken = default)
         where TReport : class
@@ -83,7 +83,7 @@ public static class ForgeReportUserFriendlyMaterializers
     /// <summary>
     /// Renders report SQL, executes it and returns CSV text.
     /// </summary>
-    public static async Task<string> ToCsvAsync<TReport>(
+    public static async ValueTask<string> ToCsvAsync<TReport>(
         this TReport report,
         CancellationToken cancellationToken = default)
         where TReport : class
@@ -96,7 +96,7 @@ public static class ForgeReportUserFriendlyMaterializers
     /// Renders report SQL, executes it and maps fixed-shape results to DTOs.
     /// Use this only when columns match the DTO. Dynamic pivots should use ToDictionaryAsync / ToJsonAsync.
     /// </summary>
-    public static async Task<IReadOnlyList<TDto>> ToDtoListAsync<TReport, TDto>(
+    public static async ValueTask<IReadOnlyList<TDto>> ToDtoListAsync<TReport, TDto>(
         this TReport report,
         CancellationToken cancellationToken = default)
         where TReport : class

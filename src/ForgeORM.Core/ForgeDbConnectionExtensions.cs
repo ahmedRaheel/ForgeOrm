@@ -42,7 +42,7 @@ public static class ForgeDbConnectionExtensions
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public static async Task<IReadOnlyList<T>> QueryAsync<T>(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+    public static async ValueTask<IReadOnlyList<T>> QueryAsync<T>(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         await EnsureOpenAsync(connection, cancellationToken);
         return await ForgePerformancePipeline.QueryAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken);
@@ -78,7 +78,7 @@ public static class ForgeDbConnectionExtensions
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public static async Task<T?> QueryFirstOrDefaultAsync<T>(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+    public static async ValueTask<T?> QueryFirstOrDefaultAsync<T>(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         await EnsureOpenAsync(connection, cancellationToken);
         return await ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken);
@@ -110,7 +110,7 @@ public static class ForgeDbConnectionExtensions
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public static async Task<T> QuerySingleAsync<T>(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+    public static async ValueTask<T> QuerySingleAsync<T>(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
         => await QuerySingleOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken).ConfigureAwait(false) ?? throw new InvalidOperationException("Sequence contains no elements.");
 
     /// <summary>
@@ -143,7 +143,7 @@ public static class ForgeDbConnectionExtensions
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public static async Task<T?> QuerySingleOrDefaultAsync<T>(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+    public static async ValueTask<T?> QuerySingleOrDefaultAsync<T>(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         await EnsureOpenAsync(connection, cancellationToken);
         return await ForgePerformancePipeline.SingleOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken);
@@ -177,7 +177,7 @@ public static class ForgeDbConnectionExtensions
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ExecuteAsync operation.</returns>
-    public static async Task<int> ExecuteAsync(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+    public static async ValueTask<int> ExecuteAsync(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         await EnsureOpenAsync(connection, cancellationToken);
         return await ForgePerformancePipeline.ExecuteAsync(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken);
@@ -213,7 +213,7 @@ public static class ForgeDbConnectionExtensions
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public static async Task<T?> ExecuteScalarAsync<T>(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+    public static async ValueTask<T?> ExecuteScalarAsync<T>(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         await EnsureOpenAsync(connection, cancellationToken);
         return await ForgePerformancePipeline.ExecuteScalarAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken);
@@ -245,7 +245,7 @@ public static class ForgeDbConnectionExtensions
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the QueryMultipleAsync operation.</returns>
-    public static async Task<IForgeGridReader> QueryMultipleAsync(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+    public static async ValueTask<IForgeGridReader> QueryMultipleAsync(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         await EnsureOpenAsync(connection, cancellationToken);
         var command = ForgeAdo.CreateCommand(connection, sql, parameters, transaction, timeoutSeconds: timeoutSeconds);
@@ -257,7 +257,7 @@ public static class ForgeDbConnectionExtensions
         if (connection.State != ConnectionState.Open) connection.Open();
     }
 
-    private static async Task EnsureOpenAsync(DbConnection connection, CancellationToken cancellationToken)
+    private static async ValueTask EnsureOpenAsync(DbConnection connection, CancellationToken cancellationToken)
     {
         if (connection.State != ConnectionState.Open) await connection.OpenAsync(cancellationToken);
     }

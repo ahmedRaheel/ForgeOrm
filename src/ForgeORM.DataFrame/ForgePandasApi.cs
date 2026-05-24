@@ -65,7 +65,7 @@ public static class ForgePandas
     /// <summary>
     /// Reads a CSV file into a dataframe asynchronously.
     /// </summary>
-    public static Task<ForgeDataFrame> ReadCsvAsync(string path, bool hasHeader = true, char delimiter = ',', CancellationToken cancellationToken = default)
+    public static ValueTask<ForgeDataFrame> ReadCsvAsync(string path, bool hasHeader = true, char delimiter = ',', CancellationToken cancellationToken = default)
         => ForgeDataFrame.FromCsvAsync(path, hasHeader, delimiter, cancellationToken);
 
     /// <summary>
@@ -262,8 +262,8 @@ public static class ForgePandasExtensions
         => File.WriteAllText(path, frame.ToCsvText(delimiter, includeHeader), Encoding.UTF8);
 
     /// <summary>Writes the dataframe as CSV asynchronously.</summary>
-    public static Task ToCsvAsync(this ForgeDataFrame frame, string path, char delimiter = ',', bool includeHeader = true, CancellationToken cancellationToken = default)
-        => File.WriteAllTextAsync(path, frame.ToCsvText(delimiter, includeHeader), Encoding.UTF8, cancellationToken);
+    public static ValueTask ToCsvAsync(this ForgeDataFrame frame, string path, char delimiter = ',', bool includeHeader = true, CancellationToken cancellationToken = default)
+        => new (File.WriteAllTextAsync(path, frame.ToCsvText(delimiter, includeHeader), Encoding.UTF8, cancellationToken));
 
     /// <summary>Returns the dataframe as CSV text.</summary>
     public static string ToCsvText(this ForgeDataFrame frame, char delimiter = ',', bool includeHeader = true)

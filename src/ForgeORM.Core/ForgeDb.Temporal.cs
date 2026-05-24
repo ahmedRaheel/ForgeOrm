@@ -8,7 +8,7 @@ namespace ForgeORM.Core;
 /// </summary>
 public partial class ForgeDb
 {
-    public Task<IReadOnlyList<T>> TemporalAllAsync<T>(
+    public ValueTask<IReadOnlyList<T>> TemporalAllAsync<T>(
         string? whereSql = null,
         object? parameters = null,
         CancellationToken cancellationToken = default)
@@ -17,7 +17,7 @@ public partial class ForgeDb
         return QueryAsync<T>(sql, parameters, cancellationToken: cancellationToken);
     }
 
-    public Task<IReadOnlyList<T>> TemporalAsOfAsync<T>(
+    public ValueTask<IReadOnlyList<T>> TemporalAsOfAsync<T>(
         DateTime asOfUtc,
         string? whereSql = null,
         object? parameters = null,
@@ -31,7 +31,7 @@ public partial class ForgeDb
         return QueryAsync<T>(sql, merged, cancellationToken: cancellationToken);
     }
 
-    public Task<IReadOnlyList<T>> TemporalBetweenAsync<T>(
+    public ValueTask<IReadOnlyList<T>> TemporalBetweenAsync<T>(
         DateTime fromUtc,
         DateTime toUtc,
         string? whereSql = null,
@@ -47,7 +47,7 @@ public partial class ForgeDb
         return QueryAsync<T>(sql, merged, cancellationToken: cancellationToken);
     }
 
-    public Task<IReadOnlyList<T>> TemporalContainedInAsync<T>(
+    public ValueTask<IReadOnlyList<T>> TemporalContainedInAsync<T>(
         DateTime fromUtc,
         DateTime toUtc,
         string? whereSql = null,
@@ -63,7 +63,7 @@ public partial class ForgeDb
         return QueryAsync<T>(sql, merged, cancellationToken: cancellationToken);
     }
 
-    public Task<T?> TemporalAsOfByIdAsync<T>(
+    public ValueTask<T?> TemporalAsOfByIdAsync<T>(
         object id,
         DateTime asOfUtc,
         CancellationToken cancellationToken = default)

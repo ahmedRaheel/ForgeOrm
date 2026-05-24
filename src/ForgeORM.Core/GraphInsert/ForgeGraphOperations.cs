@@ -15,7 +15,7 @@ public partial class ForgeDb
     /// <param name="entities">The entities to insert.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of inserted rows.</returns>
-    public async Task<int> InsertManyAsync<T>(IEnumerable<T> entities, CancellationToken cancellationToken = default)
+    public async ValueTask<int> InsertManyAsync<T>(IEnumerable<T> entities, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(entities);
         var rows = entities.Where(x => x is not null).ToList();
@@ -59,7 +59,7 @@ public partial class ForgeDb
     /// <param name="entity">The aggregate root containing child collection properties.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The same entity instance after key propagation.</returns>
-    public async Task<T> InsertGraphAsync<T>(T entity, CancellationToken cancellationToken = default)
+    public async ValueTask<T> InsertGraphAsync<T>(T entity, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(entity);
         await using var connection = CreateConnection();
@@ -87,7 +87,7 @@ public partial class ForgeDb
     /// <param name="deleteMissingChildren">True deletes existing child rows missing from the supplied graph.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of affected rows.</returns>
-    public async Task<int> UpdateGraphAsync<T>(T entity, bool deleteMissingChildren = false, CancellationToken cancellationToken = default)
+    public async ValueTask<int> UpdateGraphAsync<T>(T entity, bool deleteMissingChildren = false, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(entity);
         await using var connection = CreateConnection();
@@ -115,7 +115,7 @@ public partial class ForgeDb
     /// <param name="includes">Collection property names to load. When null, all public collection properties are loaded.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The aggregate root, or null when the parent does not exist.</returns>
-    public async Task<T?> GetGraphAsync<T>(object id, IEnumerable<string>? includes = null, CancellationToken cancellationToken = default)
+    public async ValueTask<T?> GetGraphAsync<T>(object id, IEnumerable<string>? includes = null, CancellationToken cancellationToken = default)
     {
         var parent = await GetByIdAsync<T>(id, cancellationToken);
         if (parent is null) return default;
@@ -151,7 +151,7 @@ public partial class ForgeDb
     /// <param name="id">The aggregate root primary-key value.</param>
     /// <param name="cancellationToken">The token used to cancel the operation.</param>
     /// <returns>The number of affected rows.</returns>
-    public async Task<int> DeleteGraphAsync<T>(object id, CancellationToken cancellationToken = default)
+    public async ValueTask<int> DeleteGraphAsync<T>(object id, CancellationToken cancellationToken = default)
     {
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken);
@@ -193,7 +193,7 @@ public partial class ForgeDb
         }
     }
 
-    private async Task InsertGraphNodeAsync(DbConnection connection, DbTransaction transaction, object entity, object? parentKeyValue, Type? parentType, CancellationToken cancellationToken)
+    private async ValueTask InsertGraphNodeAsync(DbConnection connection, DbTransaction transaction, object entity, object? parentKeyValue, Type? parentType, CancellationToken cancellationToken)
     {
         var entityType = entity.GetType();
         var shape = ForgeEntityShape.For(entityType);
@@ -221,7 +221,7 @@ public partial class ForgeDb
         }
     }
 
-    private async Task<int> UpdateGraphNodeAsync(DbConnection connection, DbTransaction transaction, object entity, bool deleteMissingChildren, CancellationToken cancellationToken)
+    private async ValueTask<int> UpdateGraphNodeAsync(DbConnection connection, DbTransaction transaction, object entity, bool deleteMissingChildren, CancellationToken cancellationToken)
     {
         var entityType = entity.GetType();
         var shape = ForgeEntityShape.For(entityType);
@@ -271,7 +271,7 @@ public partial class ForgeDb
         return affected;
     }
 
-    private async Task<int> InsertSingleNodeAsync(DbConnection connection, DbTransaction transaction, object entity, ForgeEntityShape shape, CancellationToken cancellationToken)
+    private async ValueTask<int> InsertSingleNodeAsync(DbConnection connection, DbTransaction transaction, object entity, ForgeEntityShape shape, CancellationToken cancellationToken)
     {
         var key = shape.KeyProperty;
         if (key is not null)
@@ -299,7 +299,7 @@ public partial class ForgeDb
         return await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private async Task<int> ExecuteSingleUpdateAsync(DbConnection connection, DbTransaction transaction, object entity, CancellationToken cancellationToken)
+    private async ValueTask<int> ExecuteSingleUpdateAsync(DbConnection connection, DbTransaction transaction, object entity, CancellationToken cancellationToken)
     {
         var entityType = entity.GetType();
         var shape = ForgeEntityShape.For(entityType);
@@ -312,7 +312,7 @@ public partial class ForgeDb
         return await ForgeAdo.ExecuteAsync(connection, sql, parameters, transaction, cancellationToken: cancellationToken);
     }
 
-    private async Task<IReadOnlyList<object>> QueryDynamicListAsync(Type type, string sql, object? parameters, CancellationToken cancellationToken)
+    private async ValueTask<IReadOnlyList<object>> QueryDynamicListAsync(Type type, string sql, object? parameters, CancellationToken cancellationToken)
     {
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken);

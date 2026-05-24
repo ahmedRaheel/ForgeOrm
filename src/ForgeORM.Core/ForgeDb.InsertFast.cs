@@ -16,7 +16,7 @@ public partial class ForgeDb
         return InsertCompiledAsync(entity).GetAwaiter().GetResult();
     }
 
-    private async Task<int> InsertCompiledAsync<T>(
+    private async ValueTask<int> InsertCompiledAsync<T>(
         T entity,
         CancellationToken cancellationToken = default)
     {

@@ -20,7 +20,7 @@ public sealed class MySqlForgeGraphExecutor : IForgeGraphExecutor
 
     public ForgeDatabaseProvider Provider => ForgeDatabaseProvider.MySql;
 
-    public async Task<ForgeGraphResult> InsertGraphAsync<T>(T entity, ForgeGraphOptions options, CancellationToken cancellationToken = default) where T : class
+    public async ValueTask<ForgeGraphResult> InsertGraphAsync<T>(T entity, ForgeGraphOptions options, CancellationToken cancellationToken = default) where T : class
     {
         var result = new ForgeGraphResultBuilder();
         var plan = ForgeGraphPlanBuilder.Build(entity, ForgeGraphOperation.Insert, options);
@@ -35,7 +35,7 @@ public sealed class MySqlForgeGraphExecutor : IForgeGraphExecutor
         return result.Build();
     }
 
-    public async Task<ForgeGraphResult> UpdateGraphAsync<T>(T entity, ForgeGraphOptions options, CancellationToken cancellationToken = default) where T : class
+    public async ValueTask<ForgeGraphResult> UpdateGraphAsync<T>(T entity, ForgeGraphOptions options, CancellationToken cancellationToken = default) where T : class
     {
         var result = new ForgeGraphResultBuilder();
         var plan = ForgeGraphPlanBuilder.Build(entity, ForgeGraphOperation.Update, options);
@@ -49,7 +49,7 @@ public sealed class MySqlForgeGraphExecutor : IForgeGraphExecutor
         return result.Build();
     }
 
-    public async Task<ForgeGraphResult> DeleteGraphAsync<T>(T entity, ForgeGraphOptions options, CancellationToken cancellationToken = default) where T : class
+    public async ValueTask<ForgeGraphResult> DeleteGraphAsync<T>(T entity, ForgeGraphOptions options, CancellationToken cancellationToken = default) where T : class
     {
         var result = new ForgeGraphResultBuilder();
         var plan = ForgeGraphPlanBuilder.Build(entity, ForgeGraphOperation.Delete, options);
@@ -82,9 +82,9 @@ public sealed class MySqlForgeGraphExecutor : IForgeGraphExecutor
         }
     }
 
-    private static Task ExecuteNodeAsync(ForgeGraphNode node, ForgeBulkStrategy strategy, ForgeGraphOptions options, CancellationToken cancellationToken)
+    private static ValueTask ExecuteNodeAsync(ForgeGraphNode node, ForgeBulkStrategy strategy, ForgeGraphOptions options, CancellationToken cancellationToken)
     {
         // MySQL hook: multi-row INSERT, temporary table, ON DUPLICATE KEY UPDATE, DELETE missing children.
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 }

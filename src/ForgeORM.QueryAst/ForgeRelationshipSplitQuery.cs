@@ -18,7 +18,7 @@ public static class ForgeRelationshipSplitQueryExtensions
 public sealed class ForgeRelationshipSplitQuery<TParent>
 {
     private readonly IForgeDb _db;
-    private readonly List<Func<IReadOnlyList<TParent>, CancellationToken, Task>> _loaders = [];
+    private readonly List<Func<IReadOnlyList<TParent>, CancellationToken, ValueTask>> _loaders = [];
     private string? _parentSql;
     private object? _parentParameters;
 
@@ -174,17 +174,11 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     {
         _loaders.Add(async (parents, ct) =>
         {
-            var keys = BuildDistinctKeys(parents, parentKey);
+            var keys = parents.Select(parentKey).Distinct().ToList();
             if (keys.Count == 0) return;
 
             var children = await _db.QueryAsync<TChild>(childSqlFactory(keys), new { Ids = keys, ParentIds = keys }, cancellationToken: ct);
-            var lookup = new Dictionary<TKey, TChild?>(children.Count);
-            foreach (var child in children)
-            {
-                var key = childForeignKey(child);
-                if (!lookup.ContainsKey(key))
-                    lookup[key] = child;
-            }
+            var lookup = children.GroupBy(childForeignKey).ToDictionary(x => x.Key, x => x.FirstOrDefault());
 
             foreach (var parent in parents)
             {
@@ -214,11 +208,11 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     {
         _loaders.Add(async (parents, ct) =>
         {
-            var keys = BuildDistinctKeys(parents, parentKey);
+            var keys = parents.Select(parentKey).Distinct().ToList();
             if (keys.Count == 0) return;
 
             var children = await _db.QueryAsync<TChild>(childSqlFactory(keys), new { Ids = keys, ParentIds = keys }, cancellationToken: ct);
-            var lookup = BuildListLookup(children, childForeignKey);
+            var lookup = children.GroupBy(childForeignKey).ToDictionary(x => x.Key, x => (IReadOnlyList<TChild>)x.ToList());
 
             foreach (var parent in parents)
             {
@@ -253,14 +247,7 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
 
         _loaders.Add(async (parents, ct) =>
         {
-            var keys = new List<object?>(parents.Count);
-            var seen = new HashSet<object?>();
-            foreach (var parent in parents)
-            {
-                var key = parentKeyProperty.GetValue(parent);
-                if (key is not null && seen.Add(key))
-                    keys.Add(key);
-            }
+            var keys = parents.Select(x => parentKeyProperty.GetValue(x)).Where(x => x is not null).Distinct().ToList();
             if (keys.Count == 0) return;
 
             var sql = $"SELECT * FROM {childTable} WHERE {childForeignKey} IN @ParentIds";
@@ -268,17 +255,7 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
                 sql += " AND " + childWhereSql;
 
             var children = await _db.QueryAsync<TChild>(sql, new { Ids = keys, ParentIds = keys }, cancellationToken: ct);
-            var lookup = new Dictionary<object?, List<TChild>>(children.Count);
-            foreach (var child in children)
-            {
-                var key = childForeignKeyProperty.GetValue(child);
-                if (!lookup.TryGetValue(key, out var list))
-                {
-                    list = new List<TChild>();
-                    lookup[key] = list;
-                }
-                list.Add(child);
-            }
+            var lookup = children.GroupBy(x => childForeignKeyProperty.GetValue(x)).ToDictionary(x => x.Key, x => (IReadOnlyList<TChild>)x.ToList());
 
             foreach (var parent in parents)
             {
@@ -353,11 +330,11 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     {
         _loaders.Add(async (parents, ct) =>
         {
-            var parentKeys = BuildDistinctKeys(parents, parentKey);
+            var parentKeys = parents.Select(parentKey).Distinct().ToList();
             if (parentKeys.Count == 0) return;
 
             var joins = await _db.QueryAsync<TJoin>(joinSqlFactory(parentKeys), new { Ids = parentKeys, ParentIds = parentKeys }, cancellationToken: ct);
-            var childKeys = BuildDistinctKeys(joins, joinChildKey);
+            var childKeys = joins.Select(joinChildKey).Distinct().ToList();
 
             if (childKeys.Count == 0)
             {
@@ -366,25 +343,8 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
             }
 
             var children = await _db.QueryAsync<TChild>(childSqlFactory(childKeys), new { Ids = childKeys, ChildIds = childKeys }, cancellationToken: ct);
-            var childLookup = new Dictionary<TChildKey, TChild>(children.Count);
-            foreach (var child in children)
-            {
-                var key = childKey(child);
-                if (!childLookup.ContainsKey(key))
-                    childLookup[key] = child;
-            }
-
-            var joinLookup = new Dictionary<TParentKey, List<TChildKey>>(joins.Count);
-            foreach (var join in joins)
-            {
-                var pkey = joinParentKey(join);
-                if (!joinLookup.TryGetValue(pkey, out var list))
-                {
-                    list = new List<TChildKey>();
-                    joinLookup[pkey] = list;
-                }
-                list.Add(joinChildKey(join));
-            }
+            var childLookup = children.ToDictionary(childKey);
+            var joinLookup = joins.GroupBy(joinParentKey).ToDictionary(x => x.Key, x => x.Select(joinChildKey).ToList());
 
             foreach (var parent in parents)
             {
@@ -394,48 +354,10 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
                     assign(parent, []);
                     continue;
                 }
-
-                var related = new List<TChild>(relatedKeys.Count);
-                for (var i = 0; i < relatedKeys.Count; i++)
-                {
-                    if (childLookup.TryGetValue(relatedKeys[i], out var child))
-                        related.Add(child);
-                }
-                assign(parent, related);
+                assign(parent, relatedKeys.Where(childLookup.ContainsKey).Select(x => childLookup[x]).ToList());
             }
         });
         return this;
-    }
-
-    private static List<TKey> BuildDistinctKeys<TItem, TKey>(IReadOnlyList<TItem> items, Func<TItem, TKey> keySelector)
-        where TKey : notnull
-    {
-        var result = new List<TKey>(items.Count);
-        var seen = new HashSet<TKey>();
-        foreach (var item in items)
-        {
-            var key = keySelector(item);
-            if (seen.Add(key))
-                result.Add(key);
-        }
-        return result;
-    }
-
-    private static Dictionary<TKey, List<TItem>> BuildListLookup<TItem, TKey>(IReadOnlyList<TItem> items, Func<TItem, TKey> keySelector)
-        where TKey : notnull
-    {
-        var lookup = new Dictionary<TKey, List<TItem>>(items.Count);
-        foreach (var item in items)
-        {
-            var key = keySelector(item);
-            if (!lookup.TryGetValue(key, out var list))
-            {
-                list = new List<TItem>();
-                lookup[key] = list;
-            }
-            list.Add(item);
-        }
-        return lookup;
     }
 
     /// <summary>
@@ -454,7 +376,7 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the AnyAsync operation.</returns>
-    public async Task<bool> AnyAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
+    public async ValueTask<bool> AnyAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
         => await _db.ExecuteScalarAsync<int>($"SELECT CASE WHEN EXISTS ({parentSql}) THEN 1 ELSE 0 END", parameters, cancellationToken: cancellationToken) > 0;
 
     /// <summary>
@@ -473,7 +395,7 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the FirstOrDefaultAsync operation.</returns>
-    public async Task<TParent?> FirstOrDefaultAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
+    public async ValueTask<TParent?> FirstOrDefaultAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
         => (await ToListAsync(parentSql, parameters, cancellationToken)).FirstOrDefault();
 
     /// <summary>
@@ -481,7 +403,7 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     /// </summary>
     /// <param name="cancellationToken">The cancellation token for the async operation.</param>
     /// <returns>The loaded parent rows with configured children attached.</returns>
-    public Task<IReadOnlyList<TParent>> ToListAsync(CancellationToken cancellationToken = default)
+    public ValueTask<IReadOnlyList<TParent>> ToListAsync(CancellationToken cancellationToken = default)
         => ToListAsync(_parentSql ?? $"SELECT * FROM {ResolveTableName(typeof(TParent))}", _parentParameters, cancellationToken);
 
     /// <summary>
@@ -491,13 +413,10 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     /// <param name="projection">The projection function applied after child rows are loaded.</param>
     /// <param name="cancellationToken">The cancellation token for the async operation.</param>
     /// <returns>The projected result rows.</returns>
-    public async Task<IReadOnlyList<TResult>> ToListAsync<TResult>(Func<TParent, TResult> projection, CancellationToken cancellationToken = default)
+    public async ValueTask<IReadOnlyList<TResult>> ToListAsync<TResult>(Func<TParent, TResult> projection, CancellationToken cancellationToken = default)
     {
         var parents = await ToListAsync(cancellationToken);
-        var results = new List<TResult>(parents.Count);
-        foreach (var parent in parents)
-            results.Add(projection(parent));
-        return results;
+        return parents.Select(projection).ToList();
     }
 
     /// <summary>
@@ -505,7 +424,7 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     /// </summary>
     /// <param name="cancellationToken">The cancellation token for the async operation.</param>
     /// <returns>The first loaded parent row, or null when no row exists.</returns>
-    public async Task<TParent?> FirstOrDefaultAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<TParent?> FirstOrDefaultAsync(CancellationToken cancellationToken = default)
         => (await ToListAsync(cancellationToken)).FirstOrDefault();
 
     /// <summary>
@@ -515,7 +434,7 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     /// <param name="projection">The projection function applied after child rows are loaded.</param>
     /// <param name="cancellationToken">The cancellation token for the async operation.</param>
     /// <returns>The projected first row, or default when no row exists.</returns>
-    public async Task<TResult?> FirstOrDefaultAsync<TResult>(Func<TParent, TResult> projection, CancellationToken cancellationToken = default)
+    public async ValueTask<TResult?> FirstOrDefaultAsync<TResult>(Func<TParent, TResult> projection, CancellationToken cancellationToken = default)
     {
         var parent = await FirstOrDefaultAsync(cancellationToken);
         return parent is null ? default : projection(parent);
@@ -536,7 +455,7 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     /// <param name="parameters">The parameters value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ToListAsync operation.</returns>
-    public async Task<IReadOnlyList<TParent>> ToListAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
+    public async ValueTask<IReadOnlyList<TParent>> ToListAsync(string parentSql, object? parameters = null, CancellationToken cancellationToken = default)
     {
         var parents = (await _db.QueryAsync<TParent>(parentSql, parameters, cancellationToken: cancellationToken)).ToList();
         foreach (var loader in _loaders) await loader(parents, cancellationToken);

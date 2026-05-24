@@ -34,7 +34,7 @@ public sealed class ForgeTransparentCommand
     /// <param name="db">The db value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ExecuteAsync operation.</returns>
-    public Task<int> ExecuteAsync(IForgeDb db, CancellationToken cancellationToken = default)
+    public ValueTask<int> ExecuteAsync(IForgeDb db, CancellationToken cancellationToken = default)
         => db.ExecuteAsync(Sql, Parameters, cancellationToken: cancellationToken);
 }
 
@@ -154,7 +154,7 @@ public interface IForgeSchemaManager
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<ForgeSchemaDiff> GenerateDiffAsync<T>(CancellationToken cancellationToken = default);
+    ValueTask<ForgeSchemaDiff> GenerateDiffAsync<T>(CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -167,7 +167,7 @@ public interface IForgeSchemaManager
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<ForgeSchemaVerificationResult> VerifySchemaAsync<T>(CancellationToken cancellationToken = default);
+    ValueTask<ForgeSchemaVerificationResult> VerifySchemaAsync<T>(CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -180,7 +180,7 @@ public interface IForgeSchemaManager
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    Task<string> SyncSchemaAsync<T>(CancellationToken cancellationToken = default);
+    ValueTask<string> SyncSchemaAsync<T>(CancellationToken cancellationToken = default);
 }
 
 public interface IForgeSmartQuery<T>
@@ -251,7 +251,7 @@ public interface IForgeSmartQuery<T>
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ExplainAsync operation.</returns>
-    Task<ForgeExplainResult> ExplainAsync(CancellationToken cancellationToken = default);
+    ValueTask<ForgeExplainResult> ExplainAsync(CancellationToken cancellationToken = default);
 
 /// <summary>
 
@@ -275,7 +275,7 @@ public interface IForgeSmartQuery<T>
     /// <typeparam name="TShape">The type used by the operation.</typeparam>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the TShape operation.</returns>
-    Task<IReadOnlyList<TShape>> ToShapeAsync<TShape>(CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<TShape>> ToShapeAsync<TShape>(CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the TShape operation.
     /// </summary>
@@ -288,7 +288,7 @@ public interface IForgeSmartQuery<T>
     /// <typeparam name="TShape">The type used by the operation.</typeparam>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the TShape operation.</returns>
-    Task<IReadOnlyList<TShape>> MapStaticAsync<TShape>(CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<TShape>> MapStaticAsync<TShape>(CancellationToken cancellationToken = default);
 
 /// <summary>
 
@@ -308,7 +308,7 @@ public interface IForgeSmartQuery<T>
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the IntoJsonDocumentAsync operation.</returns>
-    Task<JsonDocument> IntoJsonDocumentAsync(CancellationToken cancellationToken = default);
+    ValueTask<JsonDocument> IntoJsonDocumentAsync(CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the IntoJson operation.
     /// </summary>
@@ -319,7 +319,7 @@ public interface IForgeSmartQuery<T>
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the IntoJsonAsync operation.</returns>
-    Task<string> IntoJsonAsync(CancellationToken cancellationToken = default);
+    ValueTask<string> IntoJsonAsync(CancellationToken cancellationToken = default);
 
 /// <summary>
 
@@ -347,7 +347,7 @@ public interface IForgeSmartQuery<T>
     /// </summary>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ToListAsync operation.</returns>
-    Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed class ForgeSafeSql

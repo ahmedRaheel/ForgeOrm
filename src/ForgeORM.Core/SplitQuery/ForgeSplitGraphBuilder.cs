@@ -86,7 +86,7 @@ public sealed class ForgeSplitGraphBuilder<TParent>
     /// <summary>
     /// Executes the parent query and all configured split includes.
     /// </summary>
-    public async Task<IReadOnlyList<TParent>> ToListAsync(
+    public async ValueTask<IReadOnlyList<TParent>> ToListAsync(
         string parentSql,
         object? parameters = null,
         CancellationToken cancellationToken = default)
@@ -108,7 +108,7 @@ public sealed class ForgeSplitGraphBuilder<TParent>
 internal interface IForgeSplitInclude<TParent>
     where TParent : class
 {
-    Task ApplyAsync(
+    ValueTask ApplyAsync(
         ForgeDbContext db,
         IReadOnlyList<TParent> parents,
         CancellationToken cancellationToken);
@@ -136,7 +136,7 @@ internal sealed class ForgeSplitIncludeOne<TParent, TChild, TKey> : IForgeSplitI
         _assign = assign;
     }
 
-    public async Task ApplyAsync(
+    public async ValueTask ApplyAsync(
         ForgeDbContext db,
         IReadOnlyList<TParent> parents,
         CancellationToken cancellationToken)
@@ -186,7 +186,7 @@ internal sealed class ForgeSplitIncludeMany<TParent, TChild, TKey> : IForgeSplit
         _assign = assign;
     }
 
-    public async Task ApplyAsync(
+    public async ValueTask ApplyAsync(
         ForgeDbContext db,
         IReadOnlyList<TParent> parents,
         CancellationToken cancellationToken)
@@ -244,7 +244,7 @@ internal sealed class ForgeSplitIncludeManyToMany<TParent, TJoin, TChild, TParen
         _assign = assign;
     }
 
-    public async Task ApplyAsync(
+    public async ValueTask ApplyAsync(
         ForgeDbContext db,
         IReadOnlyList<TParent> parents,
         CancellationToken cancellationToken)

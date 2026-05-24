@@ -14,7 +14,7 @@ internal static class ForgeSqlServerDirectGetByIdExecutor<T>
 {
     private static ExecutorPlan? CachedPlan;
 
-    public static async Task<T?> ExecuteAsync(
+    public static async ValueTask<T?> ExecuteAsync(
         string connectionString,
         ForgeEntityMetadata metadata,
         object id,

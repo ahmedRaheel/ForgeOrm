@@ -15,7 +15,7 @@ public partial class ForgeDb
     /// <param name="childForeignKey">The child foreign-key expression that should receive the inserted parent key.</param>
     /// <param name="cancellationToken">The cancellation token for the async operation.</param>
     /// <returns>The inserted parent key value.</returns>
-    public async Task<object?> InsertGraphAsync<TParent, TChild>(
+    public async ValueTask<object?> InsertGraphAsync<TParent, TChild>(
         TParent parent,
         Expression<Func<TParent, IEnumerable<TChild>>> children,
         Expression<Func<TChild, object>> childForeignKey,
@@ -78,7 +78,7 @@ public partial class ForgeDb
     /// <param name="childForeignKey">The child entity foreign-key expression that should receive the inserted parent key.</param>
     /// <param name="cancellationToken">The cancellation token for the async operation.</param>
     /// <returns>The inserted parent key value.</returns>
-    public Task<object?> InsertGraphAsync<TDto, TParent, TChildDto, TChild>(
+    public ValueTask<object?> InsertGraphAsync<TDto, TParent, TChildDto, TChild>(
         TDto dto,
         Expression<Func<TDto, IEnumerable<TChildDto>>> children,
         Expression<Func<TChild, object>> childForeignKey,

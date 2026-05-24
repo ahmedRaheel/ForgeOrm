@@ -463,7 +463,7 @@ public sealed class ForgeQueryBuilder<TEntity>
     public string ToSql() => Render().Sql;
 
     /// <summary>Executes the query.</summary>
-    public async Task<IReadOnlyList<TEntity>> ToListAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<IReadOnlyList<TEntity>> ToListAsync(CancellationToken cancellationToken = default)
     {
         var started = DateTimeOffset.UtcNow;
         var query = Render();
@@ -652,7 +652,7 @@ public static class ForgeQueryResultCache
 {
     private static readonly Dictionary<string, (DateTimeOffset Expires, object Rows)> Cache = new(StringComparer.Ordinal);
 
-    public static async Task<IReadOnlyList<T>> GetOrExecuteAsync<T>(string sql, IReadOnlyDictionary<string, object?> parameters, TimeSpan? duration, Func<Task<IReadOnlyList<T>>> factory, CancellationToken cancellationToken)
+    public static async ValueTask<IReadOnlyList<T>> GetOrExecuteAsync<T>(string sql, IReadOnlyDictionary<string, object?> parameters, TimeSpan? duration, Func<ValueTask<IReadOnlyList<T>>> factory, CancellationToken cancellationToken)
     {
         if (duration is null || duration.Value <= TimeSpan.Zero)
         {

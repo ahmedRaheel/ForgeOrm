@@ -33,7 +33,7 @@ public sealed class ForgeDataFrame
     /// <param name="stream">The stream value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the FromCsvAsync operation.</returns>
-    public static async Task<ForgeDataFrame> FromCsvAsync(
+    public static async ValueTask<ForgeDataFrame> FromCsvAsync(
     Stream stream,
     CancellationToken cancellationToken = default)
     {
@@ -48,7 +48,7 @@ public sealed class ForgeDataFrame
     /// <param name="stream">The stream value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the FromJsonAsync operation.</returns>
-    public static async Task<ForgeDataFrame> FromJsonAsync(
+    public static async ValueTask<ForgeDataFrame> FromJsonAsync(
         Stream stream,
         CancellationToken cancellationToken = default)
     {
@@ -74,7 +74,7 @@ public sealed class ForgeDataFrame
     /// <param name="delimiter">The delimiter value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the FromCsvAsync operation.</returns>
-    public static async Task<ForgeDataFrame> FromCsvAsync(string path, bool hasHeader = true, char delimiter = ',', CancellationToken cancellationToken = default)
+    public static async ValueTask<ForgeDataFrame> FromCsvAsync(string path, bool hasHeader = true, char delimiter = ',', CancellationToken cancellationToken = default)
         => FromCsvText(await File.ReadAllTextAsync(path, cancellationToken), hasHeader, delimiter);
 
     /// <summary>
@@ -85,7 +85,7 @@ public sealed class ForgeDataFrame
     /// <param name="delimiter">The delimiter value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the FromCsvAsync operation.</returns>
-    public static async Task<ForgeDataFrame> FromCsvAsync(Stream stream, bool hasHeader = true, char delimiter = ',', CancellationToken cancellationToken = default)
+    public static async ValueTask<ForgeDataFrame> FromCsvAsync(Stream stream, bool hasHeader = true, char delimiter = ',', CancellationToken cancellationToken = default)
     {
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
         var csv = await reader.ReadToEndAsync(cancellationToken);
@@ -143,7 +143,7 @@ public sealed class ForgeDataFrame
     /// <param name="path">The path value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the FromJsonAsync operation.</returns>
-    public static async Task<ForgeDataFrame> FromJsonAsync(string path, CancellationToken cancellationToken = default)
+    public static async ValueTask<ForgeDataFrame> FromJsonAsync(string path, CancellationToken cancellationToken = default)
         => FromJsonText(await File.ReadAllTextAsync(path, cancellationToken));
 
     /// <summary>
@@ -152,7 +152,7 @@ public sealed class ForgeDataFrame
     /// <param name="stream">The stream value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the FromJsonv1Async operation.</returns>
-    public static async Task<ForgeDataFrame> FromJsonv1Async(Stream stream, CancellationToken cancellationToken = default)
+    public static async ValueTask<ForgeDataFrame> FromJsonv1Async(Stream stream, CancellationToken cancellationToken = default)
     {
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
         var json = await reader.ReadToEndAsync(cancellationToken);
@@ -194,7 +194,7 @@ public sealed class ForgeDataFrame
     /// <param name="path">The path value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the FromCsvAsync operation.</returns>
-    public static async Task<ForgeDataFrame> FromCsvAsync(
+    public static async ValueTask<ForgeDataFrame> FromCsvAsync(
     string path,
     CancellationToken cancellationToken = default)
     {
@@ -224,7 +224,7 @@ public sealed class ForgeDataFrame
     /// <param name="dropIfExists">The dropIfExists value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ToTableAsync operation.</returns>
-    public async Task<int> ToTableAsync(
+    public async ValueTask<int> ToTableAsync(
         ForgeDb db,
         string tableName,
         bool createIfNotExists = true,

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Threading.Tasks;
 
 namespace ForgeORM.Core;
 
@@ -13,6 +14,35 @@ internal static class ForgeRuntimeMemberCache
     public static object? Get(FieldInfo field, object instance) => FieldGetters.GetOrAdd(field, BuildFieldGetter)(instance);
     public static void Set(FieldInfo field, object instance, object? value) => FieldSetters.GetOrAdd(field, BuildFieldSetter)(instance, value);
     public static object? GetTaskResult(Task task) => TaskResultGetters.GetOrAdd(task.GetType(), BuildTaskResultGetter)(task);
+
+    public static async ValueTask<object?> AwaitAndGetResultAsync(object awaitable)
+    {
+        ArgumentNullException.ThrowIfNull(awaitable);
+
+        if (awaitable is Task task)
+        {
+            await task.ConfigureAwait(false);
+            return task.GetType().IsGenericType ? GetTaskResult(task) : null;
+        }
+
+        if (awaitable is ValueTask valueTask)
+        {
+            await valueTask.ConfigureAwait(false);
+            return null;
+        }
+
+        var type = awaitable.GetType();
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(ValueTask<>))
+        {
+            var asTask = type.GetMethod(nameof(ValueTask<int>.AsTask), BindingFlags.Public | BindingFlags.Instance)
+                ?? throw new InvalidOperationException($"ValueTask type {type.FullName} does not expose AsTask().");
+            var taskObj = (Task)asTask.Invoke(awaitable, null)!;
+            await taskObj.ConfigureAwait(false);
+            return GetTaskResult(taskObj);
+        }
+
+        throw new InvalidOperationException($"Unsupported async return type: {type.FullName}");
+    }
 
     private static Func<object, object?> BuildFieldGetter(FieldInfo field)
     {

@@ -23,7 +23,7 @@ public interface IForgeEventStore
     /// <param name="events">The events value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the AppendAsync operation.</returns>
-    Task AppendAsync(string streamId, IEnumerable<IForgeEvent> events, CancellationToken cancellationToken = default);
+    ValueTask AppendAsync(string streamId, IEnumerable<IForgeEvent> events, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the ReadStreamAsync operation.
     /// </summary>
@@ -31,14 +31,14 @@ public interface IForgeEventStore
     /// <param name="fromVersion">The fromVersion value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ReadStreamAsync operation.</returns>
-    Task<IReadOnlyList<ForgeStoredEvent>> ReadStreamAsync(string streamId, long fromVersion = 0, CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<ForgeStoredEvent>> ReadStreamAsync(string streamId, long fromVersion = 0, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the ReadAllAsync operation.
     /// </summary>
     /// <param name="fromSequence">The fromSequence value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ReadAllAsync operation.</returns>
-    Task<IReadOnlyList<ForgeStoredEvent>> ReadAllAsync(long fromSequence = 0, CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<ForgeStoredEvent>> ReadAllAsync(long fromSequence = 0, CancellationToken cancellationToken = default);
 }
 
 public sealed class InMemoryForgeEventStore : IForgeEventStore
@@ -53,14 +53,14 @@ public sealed class InMemoryForgeEventStore : IForgeEventStore
     /// <param name="events">The events value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the AppendAsync operation.</returns>
-    public Task AppendAsync(string streamId, IEnumerable<IForgeEvent> events, CancellationToken cancellationToken = default)
+    public ValueTask AppendAsync(string streamId, IEnumerable<IForgeEvent> events, CancellationToken cancellationToken = default)
     {
         foreach (var e in events)
         {
             var seq = Interlocked.Increment(ref _sequence);
             _events.Add(new ForgeStoredEvent(seq, streamId, e.GetType().Name, System.Text.Json.JsonSerializer.Serialize(e, e.GetType()), e.OccurredUtc));
         }
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>
@@ -70,8 +70,8 @@ public sealed class InMemoryForgeEventStore : IForgeEventStore
     /// <param name="fromVersion">The fromVersion value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ReadStreamAsync operation.</returns>
-    public Task<IReadOnlyList<ForgeStoredEvent>> ReadStreamAsync(string streamId, long fromVersion = 0, CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyList<ForgeStoredEvent>>(_events.Where(x => x.StreamId == streamId && x.Sequence >= fromVersion).OrderBy(x => x.Sequence).ToList());
+    public ValueTask<IReadOnlyList<ForgeStoredEvent>> ReadStreamAsync(string streamId, long fromVersion = 0, CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult<IReadOnlyList<ForgeStoredEvent>>(_events.Where(x => x.StreamId == streamId && x.Sequence >= fromVersion).OrderBy(x => x.Sequence).ToList());
 
     /// <summary>
     /// Executes the ReadAllAsync operation.
@@ -79,8 +79,8 @@ public sealed class InMemoryForgeEventStore : IForgeEventStore
     /// <param name="fromSequence">The fromSequence value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ReadAllAsync operation.</returns>
-    public Task<IReadOnlyList<ForgeStoredEvent>> ReadAllAsync(long fromSequence = 0, CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyList<ForgeStoredEvent>>(_events.Where(x => x.Sequence >= fromSequence).OrderBy(x => x.Sequence).ToList());
+    public ValueTask<IReadOnlyList<ForgeStoredEvent>> ReadAllAsync(long fromSequence = 0, CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult<IReadOnlyList<ForgeStoredEvent>>(_events.Where(x => x.Sequence >= fromSequence).OrderBy(x => x.Sequence).ToList());
 }
 
 public interface IForgeProjection<in TEvent> where TEvent : IForgeEvent
@@ -97,7 +97,7 @@ public interface IForgeProjection<in TEvent> where TEvent : IForgeEvent
     /// <param name="evt">The evt value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the ApplyAsync operation.</returns>
-    Task ApplyAsync(TEvent evt, CancellationToken cancellationToken = default);
+    ValueTask ApplyAsync(TEvent evt, CancellationToken cancellationToken = default);
 }
 
 public static class ForgeEventSourcingServiceCollectionExtensions

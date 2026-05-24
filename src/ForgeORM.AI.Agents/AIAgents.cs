@@ -26,7 +26,7 @@ public interface IForgeAiAgent
     /// <param name="task">The task value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the RunAsync operation.</returns>
-    Task<ForgeAgentResult> RunAsync(ForgeAgentTask task, CancellationToken cancellationToken = default);
+    ValueTask<ForgeAgentResult> RunAsync(ForgeAgentTask task, CancellationToken cancellationToken = default);
 }
 
 public sealed class ForgeOptimizationAgent : IForgeAiAgent
@@ -38,10 +38,10 @@ public sealed class ForgeOptimizationAgent : IForgeAiAgent
     /// <param name="task">The task value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the RunAsync operation.</returns>
-    public Task<ForgeAgentResult> RunAsync(ForgeAgentTask task, CancellationToken cancellationToken = default)
+    public ValueTask<ForgeAgentResult> RunAsync(ForgeAgentTask task, CancellationToken cancellationToken = default)
     {
         var actions = new[] { "Analyze slow SQL", "Recommend covering indexes", "Check cache candidates", "Check tenant filters" };
-        return Task.FromResult(new ForgeAgentResult(Name, $"Optimization plan created for: {task.Goal}", actions, []));
+        return ValueTask.FromResult(new ForgeAgentResult(Name, $"Optimization plan created for: {task.Goal}", actions, []));
     }
 }
 
@@ -53,7 +53,7 @@ public sealed class ForgeAgentRunner(IEnumerable<IForgeAiAgent> agents)
     /// <param name="task">The task value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the RunAllAsync operation.</returns>
-    public async Task<IReadOnlyList<ForgeAgentResult>> RunAllAsync(ForgeAgentTask task, CancellationToken cancellationToken = default)
+    public async ValueTask<IReadOnlyList<ForgeAgentResult>> RunAllAsync(ForgeAgentTask task, CancellationToken cancellationToken = default)
     {
         var results = new List<ForgeAgentResult>();
         foreach (var agent in agents) results.Add(await agent.RunAsync(task, cancellationToken));

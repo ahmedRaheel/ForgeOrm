@@ -35,7 +35,7 @@ public static class ForgeProjectionQueryExtensions
 
 public interface IForgeProjectedQuery<TSource, TProjection>
 {
-    Task<IReadOnlyList<TProjection>> ToListAsync(CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<TProjection>> ToListAsync(CancellationToken cancellationToken = default);
 }
 
 internal sealed class ForgeProjectedQuery<TSource, TProjection> : IForgeProjectedQuery<TSource, TProjection>
@@ -49,7 +49,7 @@ internal sealed class ForgeProjectedQuery<TSource, TProjection> : IForgeProjecte
         _projection = projection;
     }
 
-    public async Task<IReadOnlyList<TProjection>> ToListAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<IReadOnlyList<TProjection>> ToListAsync(CancellationToken cancellationToken = default)
     {
         var rows = await _source.ToListAsync(cancellationToken).ConfigureAwait(false);
         var map = ForgeExpressionDelegateCache.Get(_projection);

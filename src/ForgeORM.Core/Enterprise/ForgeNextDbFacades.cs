@@ -33,7 +33,7 @@ public static class ForgeNextDbFacadeExtensions
         return new ForgeShardQueryable<T>(query);
     }
 
-    public static async Task<int> ReadIntoAsync<T>(this IForgeQuery<T> query, T[] buffer, CancellationToken cancellationToken = default)
+    public static async ValueTask<int> ReadIntoAsync<T>(this IForgeQuery<T> query, T[] buffer, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(buffer);
         var rows = await query.Take(buffer.Length).ToListAsync(cancellationToken).ConfigureAwait(false);
@@ -42,7 +42,7 @@ public static class ForgeNextDbFacadeExtensions
         return count;
     }
 
-    public static async Task<int> ReadIntoAsync<TSource, TDestination>(this IForgeQuery<TSource> query, TDestination[] buffer, CancellationToken cancellationToken = default)
+    public static async ValueTask<int> ReadIntoAsync<TSource, TDestination>(this IForgeQuery<TSource> query, TDestination[] buffer, CancellationToken cancellationToken = default)
         where TDestination : class
     {
         ArgumentNullException.ThrowIfNull(buffer);
@@ -128,20 +128,20 @@ public sealed class ForgeShardQueryable<T> : IForgeQuery<T>
     public IForgeQuery<T> TemporalContainedIn(DateTime fromUtc, DateTime toUtc) { Inner.TemporalContainedIn(fromUtc, toUtc); return this; }
     public IForgeQuery<T> Include<TProperty>(Expression<Func<T, TProperty>> navigation) { Inner.Include(navigation); return this; }
     public bool Any() => Inner.Any();
-    public Task<bool> AnyAsync(CancellationToken cancellationToken = default) => Inner.AnyAsync(cancellationToken);
+    public ValueTask<bool> AnyAsync(CancellationToken cancellationToken = default) => Inner.AnyAsync(cancellationToken);
     public IReadOnlyList<T> ToList() => Inner.ToList();
-    public Task<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default) => Inner.ToListAsync(cancellationToken);
+    public ValueTask<IReadOnlyList<T>> ToListAsync(CancellationToken cancellationToken = default) => Inner.ToListAsync(cancellationToken);
     public IAsyncEnumerable<T> StreamAsync(CancellationToken cancellationToken = default) => Inner.StreamAsync(cancellationToken);
-    public Task ProcessInBatchesAsync(int batchSize, Func<IReadOnlyList<T>, Task> processor, CancellationToken cancellationToken = default) => Inner.ProcessInBatchesAsync(batchSize, processor, cancellationToken);
+    public ValueTask ProcessInBatchesAsync(int batchSize, Func<IReadOnlyList<T>, ValueTask> processor, CancellationToken cancellationToken = default) => Inner.ProcessInBatchesAsync(batchSize, processor, cancellationToken);
     public T? FirstOrDefault() => Inner.FirstOrDefault();
-    public Task<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default) => Inner.FirstOrDefaultAsync(cancellationToken);
+    public ValueTask<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default) => Inner.FirstOrDefaultAsync(cancellationToken);
     public int Count() => Inner.Count();
-    public Task<int> CountAsync(CancellationToken cancellationToken = default) => Inner.CountAsync(cancellationToken);
-    public Task<decimal> SumAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default) => Inner.SumAsync(selector, cancellationToken);
-    public Task<decimal> AverageAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default) => Inner.AverageAsync(selector, cancellationToken);
-    public Task<decimal> MinAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default) => Inner.MinAsync(selector, cancellationToken);
-    public Task<decimal> MaxAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default) => Inner.MaxAsync(selector, cancellationToken);
-    public Task<ForgePagedResult<T>> PageAsync(int page, int pageSize, CancellationToken cancellationToken = default) => Inner.PageAsync(page, pageSize, cancellationToken);
+    public ValueTask<int> CountAsync(CancellationToken cancellationToken = default) => Inner.CountAsync(cancellationToken);
+    public ValueTask<decimal> SumAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default) => Inner.SumAsync(selector, cancellationToken);
+    public ValueTask<decimal> AverageAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default) => Inner.AverageAsync(selector, cancellationToken);
+    public ValueTask<decimal> MinAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default) => Inner.MinAsync(selector, cancellationToken);
+    public ValueTask<decimal> MaxAsync(Expression<Func<T, decimal>> selector, CancellationToken cancellationToken = default) => Inner.MaxAsync(selector, cancellationToken);
+    public ValueTask<ForgePagedResult<T>> PageAsync(int page, int pageSize, CancellationToken cancellationToken = default) => Inner.PageAsync(page, pageSize, cancellationToken);
     public string ToSql() => Inner.ToSql();
 
     public IForgeQuery<T> UnionShards() => this;
@@ -152,7 +152,7 @@ public sealed class ForgeVectorQuery<T>
     private readonly ForgeDb _db;
     internal ForgeVectorQuery(ForgeDb db) => _db = db;
 
-    public async Task<IReadOnlyList<ForgeVectorMatch<T>>> SearchAsync(float[] queryEmbedding, int topK = 10, VectorMetric metric = VectorMetric.Cosine, CancellationToken ct = default)
+    public async ValueTask<IReadOnlyList<ForgeVectorMatch<T>>> SearchAsync(float[] queryEmbedding, int topK = 10, VectorMetric metric = VectorMetric.Cosine, CancellationToken ct = default)
     {
         var rows = await _db.Set<T>().Take(topK).ToListAsync(ct).ConfigureAwait(false);
         return rows.Select((x, i) => new ForgeVectorMatch<T>(x, 1d / (i + 1))).ToArray();
@@ -188,8 +188,8 @@ public sealed class ForgeGraphPathQuery<TTo>
     {
         _path = new ForgeGraphPath([new ForgeGraphPathNode(from, fromId), new ForgeGraphPathNode(to, toId)], [new ForgeGraphPathEdge(edge ?? "RELATED")]);
     }
-    public Task<IReadOnlyList<ForgeGraphPath>> ToListAsync(CancellationToken cancellationToken = default)
-        => Task.FromResult<IReadOnlyList<ForgeGraphPath>>([_path]);
+    public ValueTask<IReadOnlyList<ForgeGraphPath>> ToListAsync(CancellationToken cancellationToken = default)
+        => ValueTask.FromResult<IReadOnlyList<ForgeGraphPath>>([_path]);
 }
 
 public sealed record ForgeWorkflowStartResult(string Workflow, string ExecutionId, string Status);
@@ -198,8 +198,8 @@ public sealed class ForgeWorkflowFacade<TWorkflow>
 {
     private readonly ForgeDb _db;
     internal ForgeWorkflowFacade(ForgeDb db) => _db = db;
-    public Task<ForgeWorkflowStartResult> StartAsync<TRequest>(TRequest request, CancellationToken cancellationToken = default)
-        => Task.FromResult(new ForgeWorkflowStartResult(typeof(TWorkflow).Name, Guid.NewGuid().ToString("N"), "Started"));
+    public ValueTask<ForgeWorkflowStartResult> StartAsync<TRequest>(TRequest request, CancellationToken cancellationToken = default)
+        => ValueTask.FromResult(new ForgeWorkflowStartResult(typeof(TWorkflow).Name, Guid.NewGuid().ToString("N"), "Started"));
 }
 
 public sealed record ForgeJobEnqueueResult(string JobId, string Status);
@@ -208,18 +208,18 @@ public sealed class ForgeJobFacade
 {
     private readonly ForgeDb _db;
     internal ForgeJobFacade(ForgeDb db) => _db = db;
-    public Task<ForgeJobEnqueueResult> EnqueueAsync<TJob>(TJob job, CancellationToken cancellationToken = default)
-        => Task.FromResult(new ForgeJobEnqueueResult(Guid.NewGuid().ToString("N"), "Queued"));
+    public ValueTask<ForgeJobEnqueueResult> EnqueueAsync<TJob>(TJob job, CancellationToken cancellationToken = default)
+        => ValueTask.FromResult(new ForgeJobEnqueueResult(Guid.NewGuid().ToString("N"), "Queued"));
 }
 
 public sealed class ForgeRulesFacade
 {
     private readonly ForgeDb _db;
     internal ForgeRulesFacade(ForgeDb db) => _db = db;
-    public Task<TResult?> EvaluateAsync<TResult>(string ruleSet, object facts, CancellationToken cancellationToken = default)
+    public ValueTask<TResult?> EvaluateAsync<TResult>(string ruleSet, object facts, CancellationToken cancellationToken = default)
     {
         var factory = ForgeRuntimeAccessorCache.Constructor(typeof(TResult));
-        return Task.FromResult((TResult?)factory());
+        return ValueTask.FromResult((TResult?)factory());
     }
 }
 
@@ -242,7 +242,7 @@ public sealed class ForgeCubeBuilder<T>
         return this;
     }
 
-    public async Task<IReadOnlyList<Dictionary<string, object?>>> BuildAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<IReadOnlyList<Dictionary<string, object?>>> BuildAsync(CancellationToken cancellationToken = default)
     {
         var dimensions = _dimensions.Count == 0 ? ["1 AS Bucket"] : _dimensions.ToArray();
         var measures = _measures.Count == 0 ? ["COUNT(1) AS Count"] : _measures.Select(m => m.Sql).ToArray();

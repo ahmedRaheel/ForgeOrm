@@ -1,4 +1,3 @@
-using System.Buffers;
 using System.Collections;
 using System.Data;
 using System.Data.Common;
@@ -56,56 +55,21 @@ internal static class ForgeProviderNativeCollectionBinder
         var cleanName = logicalName.TrimStart('@', ':');
         RemoveParameterFamily(command, cleanName);
 
-        var capacity = values is ICollection collection ? Math.Max(collection.Count, 1) : 8;
-        var rentedNames = ArrayPool<string>.Shared.Rent(capacity);
-        var count = 0;
-        try
+        var names = new List<string>(8);
+        var index = 0;
+        foreach (var item in values)
         {
-            foreach (var item in values)
-            {
-                if (count == rentedNames.Length)
-                {
-                    var expanded = ArrayPool<string>.Shared.Rent(rentedNames.Length * 2);
-                    Array.Copy(rentedNames, expanded, rentedNames.Length);
-                    ArrayPool<string>.Shared.Return(rentedNames, clearArray: true);
-                    rentedNames = expanded;
-                }
-
-                var name = ForgeParameterBinderCompiler.NormalizeParameterName(cleanName + count.ToString(CultureInfo.InvariantCulture));
-                var parameter = command.CreateParameter();
-                parameter.ParameterName = name;
-                parameter.Value = item ?? DBNull.Value;
-                command.Parameters.Add(parameter);
-                rentedNames[count++] = name;
-            }
-
-            var replacement = count == 0
-                ? "(SELECT 1 WHERE 1 = 0)"
-                : BuildExpandedParameterList(rentedNames.AsSpan(0, count));
-            command.CommandText = ReplaceParameterToken(command.CommandText, cleanName, replacement);
+            var name = ForgeParameterBinderCompiler.NormalizeParameterName(cleanName + index.ToString(CultureInfo.InvariantCulture));
+            index++;
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = name;
+            parameter.Value = item ?? DBNull.Value;
+            command.Parameters.Add(parameter);
+            names.Add(name);
         }
-        finally
-        {
-            ArrayPool<string>.Shared.Return(rentedNames, clearArray: true);
-        }
-    }
 
-    private static string BuildExpandedParameterList(ReadOnlySpan<string> names)
-    {
-        var length = 2;
-        for (var i = 0; i < names.Length; i++)
-            length += names[i].Length + (i == 0 ? 0 : 2);
-
-        var builder = new StringBuilder(length);
-        builder.Append('(');
-        for (var i = 0; i < names.Length; i++)
-        {
-            if (i != 0)
-                builder.Append(", ");
-            builder.Append(names[i]);
-        }
-        builder.Append(')');
-        return builder.ToString();
+        var replacement = names.Count == 0 ? "(SELECT 1 WHERE 1 = 0)" : "(" + string.Join(", ", names) + ")";
+        command.CommandText = ReplaceParameterToken(command.CommandText, cleanName, replacement);
     }
 
     internal static void RemoveParameterFamily(DbCommand command, string logicalName)

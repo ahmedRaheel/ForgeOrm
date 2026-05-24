@@ -14,7 +14,7 @@ public partial class ForgeDb
     /// <summary>
     /// Executes multiple ForgeORM operations inside one connection and transaction.
     /// </summary>
-    public async Task TransactionAsync(Func<ForgeDbTransactionScope, Task> action, IsolationLevel isolationLevel = IsolationLevel.ReadCommitted, CancellationToken cancellationToken = default)
+    public async ValueTask TransactionAsync(Func<ForgeDbTransactionScope, ValueTask> action, IsolationLevel isolationLevel = IsolationLevel.ReadCommitted, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
         await using var connection = CreateConnection();
@@ -38,7 +38,7 @@ public partial class ForgeDb
     /// <summary>
     /// Executes multiple ForgeORM operations inside one connection and transaction and returns a result.
     /// </summary>
-    public async Task<TResult> TransactionAsync<TResult>(Func<ForgeDbTransactionScope, Task<TResult>> action, IsolationLevel isolationLevel = IsolationLevel.ReadCommitted, CancellationToken cancellationToken = default)
+    public async ValueTask<TResult> TransactionAsync<TResult>(Func<ForgeDbTransactionScope, ValueTask<TResult>> action, IsolationLevel isolationLevel = IsolationLevel.ReadCommitted, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
         await using var connection = CreateConnection();
@@ -111,7 +111,7 @@ public sealed class ForgeBatchBuilder : IAsyncDisposable, IDisposable
     public ForgeBatchBuilder Update(string sql, object? parameters = null) => Execute(sql, parameters);
     public ForgeBatchBuilder Delete(string sql, object? parameters = null) => Execute(sql, parameters);
 
-    public async Task<int> ExecuteAsync(IsolationLevel isolationLevel = IsolationLevel.ReadCommitted, CancellationToken cancellationToken = default)
+    public async ValueTask<int> ExecuteAsync(IsolationLevel isolationLevel = IsolationLevel.ReadCommitted, CancellationToken cancellationToken = default)
     {
         if (_connection.State != ConnectionState.Open)
             await _connection.OpenAsync(cancellationToken).ConfigureAwait(false);

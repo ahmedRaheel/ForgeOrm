@@ -24,7 +24,7 @@ public interface IForgeWorkflowEngine
     /// <param name="workflow">The workflow value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the RunAsync operation.</returns>
-    Task<ForgeWorkflowExecution> RunAsync(ForgeWorkflowDefinition workflow, CancellationToken cancellationToken = default);
+    ValueTask<ForgeWorkflowExecution> RunAsync(ForgeWorkflowDefinition workflow, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the ToDesignerModel operation.
     /// </summary>
@@ -41,7 +41,7 @@ public sealed class ForgeWorkflowEngine : IForgeWorkflowEngine
     /// <param name="workflow">The workflow value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the RunAsync operation.</returns>
-    public async Task<ForgeWorkflowExecution> RunAsync(ForgeWorkflowDefinition workflow, CancellationToken cancellationToken = default)
+    public async ValueTask<ForgeWorkflowExecution> RunAsync(ForgeWorkflowDefinition workflow, CancellationToken cancellationToken = default)
     {
         var results = new List<ForgeWorkflowStepResult>();
         foreach (var step in workflow.Steps)

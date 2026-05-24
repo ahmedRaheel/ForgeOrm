@@ -33,7 +33,7 @@ public partial class ForgeDb
     /// <summary>
     /// Executes a SQL query through the centralized Forge performance pipeline.
     /// </summary>
-    public async Task<IReadOnlyList<T>> QueryFastV1Async<T>(
+    public async ValueTask<IReadOnlyList<T>> QueryFastV1Async<T>(
         string sql,
         object? parameters = null,
         int? timeoutSeconds = null,
@@ -46,7 +46,7 @@ public partial class ForgeDb
     /// <summary>
     /// Executes a non-query command through the centralized Forge performance pipeline and cached MSIL parameter binder.
     /// </summary>
-    public async Task<int> ExecuteFastAsync(
+    public async ValueTask<int> ExecuteFastAsync(
         string sql,
         object? parameters = null,
         CommandType commandType = CommandType.Text,
@@ -60,7 +60,7 @@ public partial class ForgeDb
     /// <summary>
     /// Inserts an entity using the cached runtime entity plan and MSIL parameter binder.
     /// </summary>
-    public Task<int> InsertCompiledv1Async<T>(T entity, CancellationToken cancellationToken = default)
+    public ValueTask<int> InsertCompiledv1Async<T>(T entity, CancellationToken cancellationToken = default)
     {
         var plan = ForgeRuntimeEntityMetadataCache.For<T>();
         return ExecuteFastAsync(plan.InsertSql, entity, cancellationToken: cancellationToken);
@@ -69,7 +69,7 @@ public partial class ForgeDb
     /// <summary>
     /// Updates an entity using the cached runtime entity plan and MSIL parameter binder.
     /// </summary>
-    public Task<int> UpdateCompiledAsync<T>(T entity, CancellationToken cancellationToken = default)
+    public ValueTask<int> UpdateCompiledAsync<T>(T entity, CancellationToken cancellationToken = default)
     {
         var plan = ForgeRuntimeEntityMetadataCache.For<T>();
         return ExecuteFastAsync(plan.UpdateSql, entity, cancellationToken: cancellationToken);
@@ -78,7 +78,7 @@ public partial class ForgeDb
     /// <summary>
     /// Deletes an entity by its key using the cached runtime entity plan.
     /// </summary>
-    public Task<int> DeleteCompiledAsync<T>(object id, CancellationToken cancellationToken = default)
+    public ValueTask<int> DeleteCompiledAsync<T>(object id, CancellationToken cancellationToken = default)
     {
         var plan = ForgeRuntimeEntityMetadataCache.For<T>();
         if (plan.Key is null)
@@ -90,7 +90,7 @@ public partial class ForgeDb
     /// <summary>
     /// Reads one entity by key using cached SQL, cached parameters and cached MSIL materialization.
     /// </summary>
-    public async Task<T?> GetByIdCompiledAsync<T>(object id, CancellationToken cancellationToken = default)
+    public async ValueTask<T?> GetByIdCompiledAsync<T>(object id, CancellationToken cancellationToken = default)
     {
         var plan = ForgeRuntimeEntityMetadataCache.For<T>();
         if (plan.Key is null)

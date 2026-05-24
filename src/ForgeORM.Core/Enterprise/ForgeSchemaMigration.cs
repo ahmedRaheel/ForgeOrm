@@ -15,7 +15,7 @@ public static class ForgeSchemaMigrationExtensions
         return new ForgeSchemaDiff(type.Name, [sql]);
     }
 
-    public static Task<int> ApplyMigrationAsync(this ForgeDb db, ForgeSchemaDiff diff, CancellationToken cancellationToken = default)
+    public static ValueTask<int> ApplyMigrationAsync(this ForgeDb db, ForgeSchemaDiff diff, CancellationToken cancellationToken = default)
     {
         return db.ExecuteAsync(string.Join("\n", diff.Statements), cancellationToken: cancellationToken);
     }

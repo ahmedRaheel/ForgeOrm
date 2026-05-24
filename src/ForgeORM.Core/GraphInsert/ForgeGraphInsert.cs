@@ -19,7 +19,7 @@ public partial class ForgeDb
     /// <param name="dto">The dto value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the TDto operation.</returns>
-    public Task<int> InsertAsync<TEntity, TDto>(TDto dto, CancellationToken cancellationToken = default)
+    public ValueTask<int> InsertAsync<TEntity, TDto>(TDto dto, CancellationToken cancellationToken = default)
         where TEntity : new()
     {
         var entity = ForgeObjectMapper.Map<TEntity>(dto!);
@@ -36,7 +36,7 @@ public partial class ForgeDb
     /// <param name="configure">The configure value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the TKey operation.</returns>
-    public async Task<TKey> InsertGraphAsync<TParent, TDto, TKey>(
+    public async ValueTask<TKey> InsertGraphAsync<TParent, TDto, TKey>(
         TDto dto,
         Action<ForgeGraphInsertOptions<TParent, TDto>> configure,
         CancellationToken cancellationToken = default)
@@ -77,7 +77,7 @@ public partial class ForgeDb
     /// for parent-only inserts or when samples want to demonstrate strategy selection without
     /// explicit child mapping. Use the graph-mapping overload for parent + children.
     /// </summary>
-    public async Task<TKey> InsertGraphAsync<TParent, TDto, TKey>(
+    public async ValueTask<TKey> InsertGraphAsync<TParent, TDto, TKey>(
         TDto dto,
         Action<ForgeGraphOptions> configure,
         CancellationToken cancellationToken = default)
@@ -129,7 +129,7 @@ public partial class ForgeDb
     /// <param name="configure">The configure value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the TDto operation.</returns>
-    public async Task<object?> InsertGraphAsync<TParent, TDto>(
+    public async ValueTask<object?> InsertGraphAsync<TParent, TDto>(
         TDto dto,
         Action<ForgeGraphInsertOptions<TParent, TDto>> configure,
         CancellationToken cancellationToken = default)
@@ -152,7 +152,7 @@ public partial class ForgeDb
     /// <param name="childForeignKey">The childForeignKey value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the TKey operation.</returns>
-    public async Task<TKey> InsertGraphAsync<TParent, TChild, TKey>(
+    public async ValueTask<TKey> InsertGraphAsync<TParent, TChild, TKey>(
         TParent parent,
         Expression<Func<TParent, IEnumerable<TChild>>> children,
         Expression<Func<TParent, TKey>> parentKey,
@@ -218,7 +218,7 @@ public partial class ForgeDb
     /// <param name="childForeignKey">The childForeignKey value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the TKey operation.</returns>
-    public Task<TKey> InsertGraphAsync<TDto, TParent, TChildDto, TChild, TKey>(
+    public ValueTask<TKey> InsertGraphAsync<TDto, TParent, TChildDto, TChild, TKey>(
         TDto dto,
         Func<TDto, TParent> parentFactory,
         Func<TDto, IEnumerable<TChildDto>> children,
@@ -242,7 +242,7 @@ public partial class ForgeDb
             cancellationToken);
     }
 
-    private static async Task InsertChildrenRowByRowAsync<TChild>(
+    private static async ValueTask InsertChildrenRowByRowAsync<TChild>(
         DbConnection connection,
         DbTransaction transaction,
         IReadOnlyList<TChild> children,
@@ -289,7 +289,7 @@ public partial class ForgeDb
             ForgeRuntimeAccessorCache.Set(key, entity, ForgeRuntimeAccessorCache.DefaultValue(keyType));
     }
 
-    private static async Task<TKey> InsertParentAndReturnKeyAsync<TParent, TDto, TKey>(
+    private static async ValueTask<TKey> InsertParentAndReturnKeyAsync<TParent, TDto, TKey>(
         DbConnection connection,
         DbTransaction transaction,
         TParent parent,
@@ -474,7 +474,7 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
     /// <param name="parentKey">The parentKey value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the InsertAsync operation.</returns>
-    public async Task InsertAsync(DbConnection connection, DbTransaction transaction, TDto dto, object parentKey, CancellationToken cancellationToken)
+    public async ValueTask InsertAsync(DbConnection connection, DbTransaction transaction, TDto dto, object parentKey, CancellationToken cancellationToken)
     {
         var rows = _selector(dto)?.ToList() ?? [];
         if (rows.Count == 0) return;
@@ -504,7 +504,7 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
         await ExecuteRowByRowFallbackAsync(connection, transaction, entities, cancellationToken);
     }
 
-    private async Task ExecuteSqlServerTvpAsync(DbConnection connection, DbTransaction transaction, IReadOnlyList<TChildEntity> entities, CancellationToken cancellationToken)
+    private async ValueTask ExecuteSqlServerTvpAsync(DbConnection connection, DbTransaction transaction, IReadOnlyList<TChildEntity> entities, CancellationToken cancellationToken)
     {
         var table = ForgeTvpDataTable.Create(entities);
         await using var command = connection.CreateCommand();
@@ -521,14 +521,14 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static async Task ExecuteSqlServerOpenJsonAsync(DbConnection connection, DbTransaction transaction, IReadOnlyList<TChildEntity> entities, CancellationToken cancellationToken)
+    private static async ValueTask ExecuteSqlServerOpenJsonAsync(DbConnection connection, DbTransaction transaction, IReadOnlyList<TChildEntity> entities, CancellationToken cancellationToken)
     {
         // Safe fallback until provider-specific OPENJSON SQL generation is enabled.
         // This keeps the public API compile-safe and behaviorally correct.
         await ExecuteRowByRowFallbackAsync(connection, transaction, entities, cancellationToken);
     }
 
-    private static async Task ExecuteRowByRowFallbackAsync(DbConnection connection, DbTransaction transaction, IReadOnlyList<TChildEntity> entities, CancellationToken cancellationToken)
+    private static async ValueTask ExecuteRowByRowFallbackAsync(DbConnection connection, DbTransaction transaction, IReadOnlyList<TChildEntity> entities, CancellationToken cancellationToken)
     {
         var shape = ForgeEntityShape.For(typeof(TChildEntity));
         var key = shape.KeyProperty;
@@ -581,7 +581,7 @@ internal interface IForgeGraphChildInsert<TDto>
     /// <param name="parentKey">The parentKey value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the InsertAsync operation.</returns>
-    Task InsertAsync(DbConnection connection, DbTransaction transaction, TDto dto, object parentKey, CancellationToken cancellationToken);
+    ValueTask InsertAsync(DbConnection connection, DbTransaction transaction, TDto dto, object parentKey, CancellationToken cancellationToken);
 }
 internal static partial class ForgeGraphWriteHelpers
 {

@@ -38,7 +38,7 @@ public static class NextGenFeaturePackEndpoints
             var result = await ForgeParallelQueryEngine.ExecuteAsync(
                 Enumerable.Range(1, 10),
                 new ForgeParallelQueryOptions(MaxDegreeOfParallelism: 4),
-                (x, _) => Task.FromResult(x * x),
+                (x, _) => ValueTask.FromResult(x * x),
                 ct);
 
             return Results.Ok(new

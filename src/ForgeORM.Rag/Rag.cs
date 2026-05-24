@@ -35,7 +35,7 @@ public interface IForgeEmbeddingProvider
     /// <param name="text">The text value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the EmbedAsync operation.</returns>
-    Task<float[]> EmbedAsync(
+    ValueTask<float[]> EmbedAsync(
         string text,
         CancellationToken cancellationToken = default);
 }
@@ -50,7 +50,7 @@ public sealed class DeterministicEmbeddingProvider : IForgeEmbeddingProvider
     /// <param name="text">The text value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the EmbedAsync operation.</returns>
-    public Task<float[]> EmbedAsync(
+    public ValueTask<float[]> EmbedAsync(
         string text,
         CancellationToken cancellationToken = default)
     {
@@ -70,7 +70,7 @@ public sealed class DeterministicEmbeddingProvider : IForgeEmbeddingProvider
                 vector[i] /= length;
         }
 
-        return Task.FromResult(vector);
+        return ValueTask.FromResult(vector);
     }
 }
 
@@ -88,7 +88,7 @@ public interface IForgeRagEngine
     /// <param name="document">The document value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the IngestAsync operation.</returns>
-    Task<IReadOnlyList<ForgeRagChunk>> IngestAsync(
+    ValueTask<IReadOnlyList<ForgeRagChunk>> IngestAsync(
         ForgeRagDocument document,
         CancellationToken cancellationToken = default);
 
@@ -113,7 +113,7 @@ public interface IForgeRagEngine
     /// <param name="topK">The topK value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the BuildContextAsync operation.</returns>
-    Task<ForgeRagAnswerContext> BuildContextAsync(
+    ValueTask<ForgeRagAnswerContext> BuildContextAsync(
         string question,
         int topK = 5,
         CancellationToken cancellationToken = default);
@@ -144,7 +144,7 @@ public sealed class ForgeRagEngine : IForgeRagEngine
     /// <param name="document">The document value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the IngestAsync operation.</returns>
-    public async Task<IReadOnlyList<ForgeRagChunk>> IngestAsync(
+    public async ValueTask<IReadOnlyList<ForgeRagChunk>> IngestAsync(
         ForgeRagDocument document,
         CancellationToken cancellationToken = default)
     {
@@ -197,7 +197,7 @@ public sealed class ForgeRagEngine : IForgeRagEngine
     /// <param name="topK">The topK value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the BuildContextAsync operation.</returns>
-    public async Task<ForgeRagAnswerContext> BuildContextAsync(
+    public async ValueTask<ForgeRagAnswerContext> BuildContextAsync(
         string question,
         int topK = 5,
         CancellationToken cancellationToken = default)

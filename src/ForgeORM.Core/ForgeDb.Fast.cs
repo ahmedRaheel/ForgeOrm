@@ -20,7 +20,7 @@ public partial class ForgeDb
     /// Fast primary-key lookup path. Bypasses expression translation, include handling, graph logic, and query-state rendering.
     /// This is the path to benchmark against Dapper QueryFirst/QueryFirstOrDefault by primary key.
     /// </summary>
-    public async Task<T?> FindAsync<T>(object id, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+    public async ValueTask<T?> FindAsync<T>(object id, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         var metadata = _metadata.Resolve<T>();
         var c = Provider.BuildGetById(metadata, id);
@@ -38,7 +38,7 @@ public partial class ForgeDb
     /// <summary>
     /// Fast raw SQL list path. Skips expression translation and navigation processing.
     /// </summary>
-    public async Task<IReadOnlyList<T>> QueryFastAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+    public async ValueTask<IReadOnlyList<T>> QueryFastAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         return await ForgeFrameworkExecutionPolicy.QueryAsync<T>(Provider, _connectionString, sql, parameters, timeoutSeconds, cancellationToken);
     }
@@ -54,7 +54,7 @@ public partial class ForgeDb
     /// <summary>
     /// Fast raw SQL single-row path. Skips expression translation and navigation processing.
     /// </summary>
-    public async Task<T?> QueryFirstFastAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+    public async ValueTask<T?> QueryFirstFastAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         return await ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T>(Provider, _connectionString, sql, parameters, timeoutSeconds, cancellationToken);
     }

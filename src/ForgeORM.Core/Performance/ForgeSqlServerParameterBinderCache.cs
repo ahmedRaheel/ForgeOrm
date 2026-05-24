@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Text;
 using System.Reflection;
 using System.Reflection.Emit;
 using Microsoft.Data.SqlClient;
@@ -11,38 +10,14 @@ internal static class ForgeSqlServerParameterBinderCache
     private static readonly ConcurrentDictionary<SqlServerParameterBinderKey, Action<SqlCommand, object>> Cache = new();
 
     public static Action<SqlCommand, object> GetOrAdd(Type parameterType, string[] parameterNames)
-        => Cache.GetOrAdd(new SqlServerParameterBinderKey(parameterType, BuildParameterNameKey(parameterNames)),
-            _ => Build(parameterType, parameterNames));
-
-    private static string BuildParameterNameKey(string[] parameterNames)
-    {
-        if (parameterNames.Length == 0)
-            return string.Empty;
-
-        var copy = parameterNames.Length <= 8
-            ? parameterNames.ToArray()
-            : (string[])parameterNames.Clone();
-        Array.Sort(copy, StringComparer.OrdinalIgnoreCase);
-
-        var builder = new StringBuilder(copy.Length * 16);
-        for (var i = 0; i < copy.Length; i++)
-        {
-            if (i != 0) builder.Append('|');
-            builder.Append(copy[i]);
-        }
-        return builder.ToString();
-    }
+        => Cache.GetOrAdd(new SqlServerParameterBinderKey(parameterType, string.Join("|", parameterNames.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))),
+            key => Build(parameterType, parameterNames));
 
     private static Action<SqlCommand, object> Build(Type parameterType, string[] parameterNames)
     {
-        var propertyArray = parameterType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-        var properties = new Dictionary<string, PropertyInfo>(propertyArray.Length, StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < propertyArray.Length; i++)
-        {
-            var property = propertyArray[i];
-            if (property.CanRead)
-                properties[property.Name] = property;
-        }
+        var properties = parameterType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanRead)
+            .ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
 
         var method = new DynamicMethod(
             $"ForgeORM_SqlServerBind_{parameterType.Name}_{Guid.NewGuid():N}",

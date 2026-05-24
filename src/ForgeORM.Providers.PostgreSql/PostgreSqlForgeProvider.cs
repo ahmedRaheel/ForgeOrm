@@ -109,7 +109,7 @@ public sealed class PostgreSqlForgeProvider : IForgeDatabaseProvider
     /// <param name="rows">The rows value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default) => PostgreSqlNativeBulk.BulkInsertAsync(connection, tableName, rows, cancellationToken);
+    public ValueTask BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default) => PostgreSqlNativeBulk.BulkInsertAsync(connection, tableName, rows, cancellationToken);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -120,7 +120,7 @@ public sealed class PostgreSqlForgeProvider : IForgeDatabaseProvider
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+    public ValueTask BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -131,7 +131,7 @@ public sealed class PostgreSqlForgeProvider : IForgeDatabaseProvider
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public Task BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+    public ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
 
     private string BuildInsertSql(ForgeEntityMetadata e)
     {
@@ -160,13 +160,27 @@ internal static class BulkFallback
     /// <param name="rows">The rows value.</param>
     /// <param name="ct">The ct value.</param>
     /// <returns>The result of the T operation.</returns>
-    public static Task InsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken ct)
+    public static async ValueTask InsertAsync<T>(
+    DbConnection connection,
+    string tableName,
+    IReadOnlyCollection<T> rows,
+    CancellationToken ct)
     {
-        var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead && IsScalar(p.PropertyType)).ToList();
+        if (rows is null || rows.Count == 0)
+            return;
+
+        var props = typeof(T)
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanRead && IsScalar(p.PropertyType))
+            .ToList();
+
         var columns = string.Join(", ", props.Select(p => p.Name));
         var values = string.Join(", ", props.Select(p => "@" + p.Name));
+
         var sql = $"INSERT INTO {tableName} ({columns}) VALUES ({values})";
-        return ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
+
+        await ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct)
+            .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -179,12 +193,12 @@ internal static class BulkFallback
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="ct">The ct value.</param>
     /// <returns>The result of the T operation.</returns>
-    public static Task UpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken ct)
+    public static async ValueTask UpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken ct)
     {
         var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead && IsScalar(p.PropertyType) && !p.Name.Equals(keyColumn, StringComparison.OrdinalIgnoreCase)).ToList();
         var set = string.Join(", ", props.Select(p => p.Name + " = @" + p.Name));
         var sql = $"UPDATE {tableName} SET {set} WHERE {keyColumn} = @{keyColumn}";
-        return ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
+       await ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
     }
     private static bool IsScalar(Type type)
     {
@@ -216,7 +230,7 @@ internal static class ForgeProviderAdo
     /// <param name="rows">The rows value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public static async Task<int> ExecuteManyAsync<T>(DbConnection connection, string sql, IReadOnlyCollection<T> rows, CancellationToken cancellationToken)
+    public static async ValueTask<int> ExecuteManyAsync<T>(DbConnection connection, string sql, IReadOnlyCollection<T> rows, CancellationToken cancellationToken)
     {
         var total = 0;
         foreach (var row in rows)

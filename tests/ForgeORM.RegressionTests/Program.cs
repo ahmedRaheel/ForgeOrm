@@ -17,7 +17,7 @@ await TestNumericHeadersAndDataFrameBridgeAsync();
 
 Console.WriteLine("ForgeORM regression checks passed.");
 
-static async Task TestCsvNullLikeValuesAsync()
+static async ValueTask TestCsvNullLikeValuesAsync()
 {
     var csv = "Name,Price,1980\nLaptop,?,10\nMouse,120.50,?";
     var frame = ForgeDataFrame.FromCsvText(csv);
@@ -27,7 +27,7 @@ static async Task TestCsvNullLikeValuesAsync()
     Assert(Get(frame.Rows[1], "1980") is null, "CSV numeric-header '?' must become null.");
 }
 
-static async Task TestJsonNullLikeValuesAsync()
+static async ValueTask TestJsonNullLikeValuesAsync()
 {
     var json = """
     [
@@ -43,7 +43,7 @@ static async Task TestJsonNullLikeValuesAsync()
     Assert(Get(frame.Rows[0], "Stock") is null, "JSON 'NA' must become null.");
 }
 
-static async Task TestStreamOverloadsAsync()
+static async ValueTask TestStreamOverloadsAsync()
 {
     await using var csvStream = new MemoryStream(Encoding.UTF8.GetBytes("A,B\n1,?"));
     var csvFrame = await ForgeDataFrame.FromCsvAsync(csvStream);
@@ -54,7 +54,7 @@ static async Task TestStreamOverloadsAsync()
     Assert(Get(jsonFrame.Rows[0], "B") is null, "JSON stream overload should normalize '?'.");
 }
 
-static async Task TestNumericHeadersAndDataFrameBridgeAsync()
+static async ValueTask TestNumericHeadersAndDataFrameBridgeAsync()
 {
     var frame = ForgeDataFrame.FromCsvText("Country,1980,1981\nCanada,10,?\nPakistan,20,30");
     Assert(frame.Columns.Contains("1980"), "Numeric CSV header 1980 should be preserved.");

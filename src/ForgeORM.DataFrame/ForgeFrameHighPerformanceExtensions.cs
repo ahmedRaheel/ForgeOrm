@@ -48,7 +48,7 @@ public static class ForgeFrameHighPerformanceExtensions
 
     public static ForgeDataFrame Take(this ForgeDataFrame frame, int count) => frame.Head(count);
 
-    public static async Task ExportCsvAsync(this ForgeDataFrame frame, string path, CancellationToken cancellationToken = default)
+    public static async ValueTask ExportCsvAsync(this ForgeDataFrame frame, string path, CancellationToken cancellationToken = default)
     {
         var columns = frame.Columns.ToArray();
         await using var stream = File.Create(path);

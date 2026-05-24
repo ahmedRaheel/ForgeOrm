@@ -56,7 +56,7 @@ public sealed class ForgeDbAiFacade
     /// Converts a natural-language data question into safe SQL and executes it through ForgeORM.
     /// Example: await db.AI.QueryAsync("Top 10 customers by revenue last month", o => o.TenantId = tenantId, ct);
     /// </summary>
-    public async Task<ForgeAiQueryResult> QueryAsync(
+    public async ValueTask<ForgeAiQueryResult> QueryAsync(
         string prompt,
         Action<ForgeAiQueryOptions>? configure = null,
         CancellationToken cancellationToken = default)
@@ -79,7 +79,7 @@ public sealed class ForgeDbAiFacade
     }
 
     /// <summary>Analyzes SQL and returns optimization suggestions without executing the query.</summary>
-    public Task<ForgeAiOptimizationResult> OptimizeAsync(
+    public ValueTask<ForgeAiOptimizationResult> OptimizeAsync(
         string sql,
         CancellationToken cancellationToken = default)
     {
@@ -113,7 +113,7 @@ public sealed class ForgeDbAiFacade
         suggestions.Add("Use QueryAsync<T> with a DTO projection for a compiled reader shape.");
         suggestions.Add("Use seek pagination for large ordered result sets instead of deep OFFSET paging.");
 
-        return Task.FromResult(new ForgeAiOptimizationResult(
+        return ValueTask.FromResult(new ForgeAiOptimizationResult(
             sql,
             optimized,
             suggestions.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),

@@ -174,11 +174,17 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     {
         _loaders.Add(async (parents, ct) =>
         {
-            var keys = parents.Select(parentKey).Distinct().ToList();
+            var keys = BuildDistinctKeys(parents, parentKey);
             if (keys.Count == 0) return;
 
             var children = await _db.QueryAsync<TChild>(childSqlFactory(keys), new { Ids = keys, ParentIds = keys }, cancellationToken: ct);
-            var lookup = children.GroupBy(childForeignKey).ToDictionary(x => x.Key, x => x.FirstOrDefault());
+            var lookup = new Dictionary<TKey, TChild?>(children.Count);
+            foreach (var child in children)
+            {
+                var key = childForeignKey(child);
+                if (!lookup.ContainsKey(key))
+                    lookup[key] = child;
+            }
 
             foreach (var parent in parents)
             {
@@ -208,11 +214,11 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     {
         _loaders.Add(async (parents, ct) =>
         {
-            var keys = parents.Select(parentKey).Distinct().ToList();
+            var keys = BuildDistinctKeys(parents, parentKey);
             if (keys.Count == 0) return;
 
             var children = await _db.QueryAsync<TChild>(childSqlFactory(keys), new { Ids = keys, ParentIds = keys }, cancellationToken: ct);
-            var lookup = children.GroupBy(childForeignKey).ToDictionary(x => x.Key, x => (IReadOnlyList<TChild>)x.ToList());
+            var lookup = BuildListLookup(children, childForeignKey);
 
             foreach (var parent in parents)
             {
@@ -247,7 +253,14 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
 
         _loaders.Add(async (parents, ct) =>
         {
-            var keys = parents.Select(x => parentKeyProperty.GetValue(x)).Where(x => x is not null).Distinct().ToList();
+            var keys = new List<object?>(parents.Count);
+            var seen = new HashSet<object?>();
+            foreach (var parent in parents)
+            {
+                var key = parentKeyProperty.GetValue(parent);
+                if (key is not null && seen.Add(key))
+                    keys.Add(key);
+            }
             if (keys.Count == 0) return;
 
             var sql = $"SELECT * FROM {childTable} WHERE {childForeignKey} IN @ParentIds";
@@ -255,7 +268,17 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
                 sql += " AND " + childWhereSql;
 
             var children = await _db.QueryAsync<TChild>(sql, new { Ids = keys, ParentIds = keys }, cancellationToken: ct);
-            var lookup = children.GroupBy(x => childForeignKeyProperty.GetValue(x)).ToDictionary(x => x.Key, x => (IReadOnlyList<TChild>)x.ToList());
+            var lookup = new Dictionary<object?, List<TChild>>(children.Count);
+            foreach (var child in children)
+            {
+                var key = childForeignKeyProperty.GetValue(child);
+                if (!lookup.TryGetValue(key, out var list))
+                {
+                    list = new List<TChild>();
+                    lookup[key] = list;
+                }
+                list.Add(child);
+            }
 
             foreach (var parent in parents)
             {
@@ -330,11 +353,11 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     {
         _loaders.Add(async (parents, ct) =>
         {
-            var parentKeys = parents.Select(parentKey).Distinct().ToList();
+            var parentKeys = BuildDistinctKeys(parents, parentKey);
             if (parentKeys.Count == 0) return;
 
             var joins = await _db.QueryAsync<TJoin>(joinSqlFactory(parentKeys), new { Ids = parentKeys, ParentIds = parentKeys }, cancellationToken: ct);
-            var childKeys = joins.Select(joinChildKey).Distinct().ToList();
+            var childKeys = BuildDistinctKeys(joins, joinChildKey);
 
             if (childKeys.Count == 0)
             {
@@ -343,8 +366,25 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
             }
 
             var children = await _db.QueryAsync<TChild>(childSqlFactory(childKeys), new { Ids = childKeys, ChildIds = childKeys }, cancellationToken: ct);
-            var childLookup = children.ToDictionary(childKey);
-            var joinLookup = joins.GroupBy(joinParentKey).ToDictionary(x => x.Key, x => x.Select(joinChildKey).ToList());
+            var childLookup = new Dictionary<TChildKey, TChild>(children.Count);
+            foreach (var child in children)
+            {
+                var key = childKey(child);
+                if (!childLookup.ContainsKey(key))
+                    childLookup[key] = child;
+            }
+
+            var joinLookup = new Dictionary<TParentKey, List<TChildKey>>(joins.Count);
+            foreach (var join in joins)
+            {
+                var pkey = joinParentKey(join);
+                if (!joinLookup.TryGetValue(pkey, out var list))
+                {
+                    list = new List<TChildKey>();
+                    joinLookup[pkey] = list;
+                }
+                list.Add(joinChildKey(join));
+            }
 
             foreach (var parent in parents)
             {
@@ -354,10 +394,48 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
                     assign(parent, []);
                     continue;
                 }
-                assign(parent, relatedKeys.Where(childLookup.ContainsKey).Select(x => childLookup[x]).ToList());
+
+                var related = new List<TChild>(relatedKeys.Count);
+                for (var i = 0; i < relatedKeys.Count; i++)
+                {
+                    if (childLookup.TryGetValue(relatedKeys[i], out var child))
+                        related.Add(child);
+                }
+                assign(parent, related);
             }
         });
         return this;
+    }
+
+    private static List<TKey> BuildDistinctKeys<TItem, TKey>(IReadOnlyList<TItem> items, Func<TItem, TKey> keySelector)
+        where TKey : notnull
+    {
+        var result = new List<TKey>(items.Count);
+        var seen = new HashSet<TKey>();
+        foreach (var item in items)
+        {
+            var key = keySelector(item);
+            if (seen.Add(key))
+                result.Add(key);
+        }
+        return result;
+    }
+
+    private static Dictionary<TKey, List<TItem>> BuildListLookup<TItem, TKey>(IReadOnlyList<TItem> items, Func<TItem, TKey> keySelector)
+        where TKey : notnull
+    {
+        var lookup = new Dictionary<TKey, List<TItem>>(items.Count);
+        foreach (var item in items)
+        {
+            var key = keySelector(item);
+            if (!lookup.TryGetValue(key, out var list))
+            {
+                list = new List<TItem>();
+                lookup[key] = list;
+            }
+            list.Add(item);
+        }
+        return lookup;
     }
 
     /// <summary>
@@ -416,7 +494,10 @@ public sealed class ForgeRelationshipSplitQuery<TParent>
     public async Task<IReadOnlyList<TResult>> ToListAsync<TResult>(Func<TParent, TResult> projection, CancellationToken cancellationToken = default)
     {
         var parents = await ToListAsync(cancellationToken);
-        return parents.Select(projection).ToList();
+        var results = new List<TResult>(parents.Count);
+        foreach (var parent in parents)
+            results.Add(projection(parent));
+        return results;
     }
 
     /// <summary>

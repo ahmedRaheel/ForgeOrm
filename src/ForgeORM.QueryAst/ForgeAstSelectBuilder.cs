@@ -700,7 +700,18 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
     /// <returns>The current AST select builder.</returns>
     public IForgeAstSelectBuilder<T> WhereIdsSql<TKey>(string keyColumn, IEnumerable<TKey> ids)
     {
-        var values = ids.Select(x => (object?)x).Where(x => x is not null).Distinct().ToList();
+        var values = new List<object?>();
+        var seen = new HashSet<object?>();
+        foreach (var id in ids)
+        {
+            if (id is null)
+                continue;
+
+            var value = (object?)id;
+            if (seen.Add(value))
+                values.Add(value);
+        }
+
         if (values.Count == 0)
         {
             _where.Add("1 = 0");
@@ -1028,10 +1039,15 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
                 return readonlyDictionary;
             if (parameters is IDictionary<string, object?> dictionary)
                 return new Dictionary<string, object?>(dictionary, StringComparer.OrdinalIgnoreCase);
-            return parameters.GetType()
-                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(x => x.CanRead)
-                .ToDictionary(x => x.Name, x => x.GetValue(parameters), StringComparer.OrdinalIgnoreCase);
+            var properties = parameters.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            var result = new Dictionary<string, object?>(properties.Length, StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < properties.Length; i++)
+            {
+                var property = properties[i];
+                if (property.CanRead)
+                    result[property.Name] = property.GetValue(parameters);
+            }
+            return result;
         }
     }
 }

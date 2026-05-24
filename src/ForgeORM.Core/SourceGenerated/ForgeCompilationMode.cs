@@ -6,7 +6,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using ForgeORM.Abstractions;
-using Microsoft.Data.SqlClient;
 
 namespace ForgeORM.Core;
 
@@ -199,34 +198,6 @@ public interface IForgeSourceGeneratedAccessorProvider
         return false;
     }
 
-    /// <summary>Executes a generated SQL Server first-row query using typed SqlConnection/SqlDataReader/SqlCommand.</summary>
-    bool TryExecuteSqlServerFirstOrDefaultAsync<T>(
-        SqlConnection connection,
-        string sql,
-        object? parameters,
-        SqlTransaction? transaction,
-        int? timeoutSeconds,
-        CancellationToken cancellationToken,
-        out ValueTask<T?> result)
-    {
-        result = default;
-        return false;
-    }
-
-    /// <summary>Executes a generated SQL Server list query using typed SqlConnection/SqlDataReader/SqlCommand.</summary>
-    bool TryExecuteSqlServerQueryAsync<T>(
-        SqlConnection connection,
-        string sql,
-        object? parameters,
-        SqlTransaction? transaction,
-        int? timeoutSeconds,
-        CancellationToken cancellationToken,
-        out ValueTask<IReadOnlyList<T>> result)
-    {
-        result = default;
-        return false;
-    }
-
     /// <summary>
     /// Compatibility SQL Server executor retained for older generated providers.
     /// New generated providers should implement provider-neutral methods above.
@@ -314,13 +285,6 @@ public static class ForgeSourceGeneratedRegistry
             return false;
         }
 
-        if (commandType == CommandType.Text && connection is SqlConnection sqlConnection)
-        {
-            var sqlTransaction = transaction as SqlTransaction;
-            if (provider.TryExecuteSqlServerFirstOrDefaultAsync(sqlConnection, sql, parameters, sqlTransaction, timeoutSeconds, cancellationToken, out result))
-                return true;
-        }
-
         return provider.TryExecuteFirstOrDefaultAsync(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out result);
     }
 
@@ -339,13 +303,6 @@ public static class ForgeSourceGeneratedRegistry
         {
             result = default;
             return false;
-        }
-
-        if (commandType == CommandType.Text && connection is SqlConnection sqlConnection)
-        {
-            var sqlTransaction = transaction as SqlTransaction;
-            if (provider.TryExecuteSqlServerQueryAsync(sqlConnection, sql, parameters, sqlTransaction, timeoutSeconds, cancellationToken, out result))
-                return true;
         }
 
         return provider.TryExecuteQueryAsync(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out result);
@@ -372,7 +329,7 @@ public static class ForgeSourceGeneratedRegistry
     }
 
     /// <summary>Attempts to execute a full source-generated provider-neutral non-query command.</summary>
-    public static bool TryExecuteNonQueryAsync(
+    public static bool TryExecuteNonQueryAsync<T>(
         DbConnection connection,
         string sql,
         object? parameters,
@@ -382,23 +339,13 @@ public static class ForgeSourceGeneratedRegistry
         CancellationToken cancellationToken,
         out ValueTask<int> result)
     {
-        if (CompilationMode == ForgeOrmCompilationMode.RuntimeEmit)
+        if (CompilationMode == ForgeOrmCompilationMode.RuntimeEmit || !TryGetProvider(typeof(T), out var provider))
         {
             result = default;
             return false;
         }
 
-        lock (Gate)
-        {
-            foreach (var provider in Providers)
-            {
-                if (provider.TryExecuteNonQueryAsync(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out result))
-                    return true;
-            }
-        }
-
-        result = default;
-        return false;
+        return provider.TryExecuteNonQueryAsync(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out result);
     }
 
     /// <summary>Attempts to execute a full source-generated SQL Server first-row query with older generated providers.</summary>

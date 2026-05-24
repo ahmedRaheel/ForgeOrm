@@ -160,8 +160,13 @@ public static class ForgeAdo
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        return await ForgePerformancePipeline.ExecuteScalarAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken)
-            .ConfigureAwait(false);
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken);
+
+        await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+
+        return ForgeValueConverter.FromDatabase<T>(value);
     }
 
     /// <summary>

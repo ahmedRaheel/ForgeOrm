@@ -36,7 +36,7 @@ internal static class ForgeCompiledExecutionPlanCache
         var provider = connection.GetType().FullName ?? connection.GetType().Name;
         var parameterType = parameters?.GetType();
         var sqlHash = ForgeFastHash.HashSql(sql);
-        var key = new ForgeCompiledExecutionPlanKey(provider, typeof(T), parameterType, commandType, behavior, ForgeSourceGeneratedRegistry.CompilationMode, sqlHash);
+        var key = new ForgeCompiledExecutionPlanKey(provider, typeof(T), parameterType, commandType, behavior, sqlHash);
         return (ForgeCompiledQueryPlan<T>)Cache.GetOrAdd(key, _ => new ForgeCompiledQueryPlan<T>
         {
             Sql = sql,
@@ -105,7 +105,6 @@ internal readonly record struct ForgeCompiledExecutionPlanKey(
     Type? ParameterType,
     CommandType CommandType,
     CommandBehavior Behavior,
-    ForgeOrmCompilationMode CompilationMode,
     ulong SqlFingerprint);
 
 /// <summary>
@@ -117,7 +116,7 @@ internal static class ForgeParameterBinderCompiler
 
     public static Action<DbCommand, object?> Compile(Type? parameterType, string sql, CommandType commandType, ulong sqlHash)
     {
-        var key = new ForgeParameterBinderKey(parameterType, commandType, ForgeSourceGeneratedRegistry.CompilationMode, sqlHash);
+        var key = new ForgeParameterBinderKey(parameterType, commandType, sqlHash);
         return Cache.GetOrAdd(key, _ => Build(parameterType, sql, commandType));
     }
 
@@ -486,5 +485,5 @@ internal static class ForgeParameterBinderCompiler
     }
 }
 
-internal readonly record struct ForgeParameterBinderKey(Type? ParameterType, CommandType CommandType, ForgeOrmCompilationMode CompilationMode, ulong SqlFingerprint);
+internal readonly record struct ForgeParameterBinderKey(Type? ParameterType, CommandType CommandType, ulong SqlFingerprint);
 internal readonly record struct ForgeParameterProperty(string Name, Func<object, object?> Getter, Type PropertyType, PropertyInfo Property);

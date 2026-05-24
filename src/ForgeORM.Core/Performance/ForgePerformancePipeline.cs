@@ -79,13 +79,6 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        if (ForgeDirectQueryExecutor.CanUse(sql, parameters, commandType))
-        {
-            await foreach (var row in ForgeDirectQueryExecutor.StreamAsync<T>(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken).ConfigureAwait(false))
-                yield return row;
-            yield break;
-        }
-
         var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SequentialAccess | CommandBehavior.CloseConnection);
         await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
 

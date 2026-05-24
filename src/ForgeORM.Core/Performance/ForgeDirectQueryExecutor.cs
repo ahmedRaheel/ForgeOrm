@@ -391,6 +391,7 @@ internal static class ForgeDirectQueryExecutor
     {
         var props = parameterType.GetProperties(BindingFlags.Instance | BindingFlags.Public);
         var selected = new List<PropertyInfo>(2);
+
         for (var i = 0; i < props.Length; i++)
         {
             var prop = props[i];
@@ -409,26 +410,59 @@ internal static class ForgeDirectQueryExecutor
         if (selected.Count == 0)
             return null;
 
-        var names = new string[selected.Count];
-        var types = new Type[selected.Count];
-        var getters = new Func<object, object?>[selected.Count];
-        for (var i = 0; i < selected.Count; i++)
-        {
-            names[i] = NormalizeParameterName(selected[i].Name);
-            types[i] = selected[i].PropertyType;
-            getters[i] = CompileGetter(parameterType, selected[i]);
-        }
-
-        return new DirectParameterAccessor(names, types, getters);
+        return new DirectParameterAccessor(CompileParameterBinder(parameterType, selected));
     }
 
-    private static Func<object, object?> CompileGetter(Type declaringType, PropertyInfo property)
+    private static Action<DbCommand, object> CompileParameterBinder(Type declaringType, IReadOnlyList<PropertyInfo> properties)
     {
-        var instance = Expression.Parameter(typeof(object), "instance");
-        var cast = Expression.Convert(instance, declaringType);
-        var access = Expression.Property(cast, property);
-        var box = Expression.Convert(access, typeof(object));
-        return Expression.Lambda<Func<object, object?>>(box, instance).Compile();
+        var command = Expression.Parameter(typeof(DbCommand), "command");
+        var parameters = Expression.Parameter(typeof(object), "parameters");
+        var typedParameters = Expression.Convert(parameters, declaringType);
+
+        var addMethod = typeof(ForgeDirectQueryExecutor).GetMethod(
+            nameof(AddKnown),
+            BindingFlags.Static | BindingFlags.NonPublic)
+            ?? throw new MissingMethodException(nameof(ForgeDirectQueryExecutor), nameof(AddKnown));
+
+        var calls = new Expression[properties.Count];
+        for (var i = 0; i < properties.Count; i++)
+        {
+            var property = properties[i];
+            var access = Expression.Property(typedParameters, property);
+            var declaredType = property.PropertyType;
+            calls[i] = Expression.Call(
+                addMethod,
+                command,
+                Expression.Constant(NormalizeParameterName(property.Name), typeof(string)),
+                Expression.Convert(access, typeof(object)),
+                Expression.Constant(declaredType, typeof(Type)),
+                Expression.Constant(ToSqlDbType(declaredType), typeof(SqlDbType?)),
+                Expression.Constant(ToDbType(declaredType), typeof(DbType?)));
+        }
+
+        return Expression.Lambda<Action<DbCommand, object>>(Expression.Block(calls), command, parameters).Compile();
+    }
+
+
+    private static void AddKnown(DbCommand command, string name, object? value, Type? declaredType, SqlDbType? sqlDbType, DbType? dbType)
+    {
+        var parameterValue = NormalizeValue(value, declaredType);
+
+        if (command is SqlCommand sqlCommand)
+        {
+            var sqlParameter = sqlDbType.HasValue
+                ? sqlCommand.Parameters.Add(name, sqlDbType.Value)
+                : sqlCommand.Parameters.Add(name, SqlDbType.Variant);
+            sqlParameter.Value = parameterValue;
+            return;
+        }
+
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        if (dbType.HasValue)
+            parameter.DbType = dbType.Value;
+        parameter.Value = parameterValue;
+        command.Parameters.Add(parameter);
     }
 
     private static void Add(DbCommand command, string name, object? value, Type? declaredType)
@@ -577,26 +611,32 @@ internal static class ForgeDirectQueryExecutor
 
     private sealed class DirectExecutionPlan
     {
-        public static readonly DirectExecutionPlan Unsupported = new(null, null, null, false);
-        public static readonly DirectExecutionPlan NoParameters = new(null, null, null, true);
+        public static readonly DirectExecutionPlan Unsupported = new(null, null, null, null, null, false);
+        public static readonly DirectExecutionPlan NoParameters = new(null, null, null, null, null, true);
 
         private readonly DirectParameterAccessor? _accessor;
         private readonly string? _scalarName;
         private readonly Type? _scalarType;
+        private readonly SqlDbType? _scalarSqlDbType;
+        private readonly DbType? _scalarDbType;
 
-        private DirectExecutionPlan(DirectParameterAccessor? accessor, string? scalarName, Type? scalarType, bool isSupported)
+        private DirectExecutionPlan(DirectParameterAccessor? accessor, string? scalarName, Type? scalarType, SqlDbType? scalarSqlDbType, DbType? scalarDbType, bool isSupported)
         {
             _accessor = accessor;
             _scalarName = scalarName;
             _scalarType = scalarType;
+            _scalarSqlDbType = scalarSqlDbType;
+            _scalarDbType = scalarDbType;
             IsSupported = isSupported;
         }
 
         public bool IsSupported { get; }
 
-        public static DirectExecutionPlan ForScalar(string name, Type type) => new(null, name, type, true);
+        public static DirectExecutionPlan ForScalar(string name, Type type)
+            => new(null, name, type, ToSqlDbType(type), ToDbType(type), true);
 
-        public static DirectExecutionPlan ForAccessor(DirectParameterAccessor accessor) => new(accessor, null, null, true);
+        public static DirectExecutionPlan ForAccessor(DirectParameterAccessor accessor)
+            => new(accessor, null, null, null, null, true);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Bind(DbCommand command, object? parameters)
@@ -606,7 +646,7 @@ internal static class ForgeDirectQueryExecutor
 
             if (_scalarName is not null)
             {
-                Add(command, _scalarName, parameters, _scalarType);
+                AddKnown(command, _scalarName, parameters, _scalarType, _scalarSqlDbType, _scalarDbType);
                 return;
             }
 
@@ -616,22 +656,17 @@ internal static class ForgeDirectQueryExecutor
 
     private sealed class DirectParameterAccessor
     {
-        private readonly Func<object, object?>[] _getters;
-        private readonly string[] _names;
-        private readonly Type[] _types;
+        private readonly Action<DbCommand, object> _binder;
 
-        public DirectParameterAccessor(string[] names, Type[] types, Func<object, object?>[] getters)
+        public DirectParameterAccessor(Action<DbCommand, object> binder)
         {
-            _names = names;
-            _types = types;
-            _getters = getters;
+            _binder = binder;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Bind(DbCommand command, object parameters)
         {
-            for (var i = 0; i < _getters.Length; i++)
-                Add(command, _names[i], _getters[i](parameters), _types[i]);
+            _binder(command, parameters);
         }
     }
 }

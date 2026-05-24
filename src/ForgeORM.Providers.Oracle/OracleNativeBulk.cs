@@ -1,6 +1,5 @@
 using System.Data.Common;
 using System.Reflection;
-using Oracle.ManagedDataAccess.Client;
 
 namespace ForgeORM.Providers.Oracle;
 
@@ -8,7 +7,7 @@ internal static class OracleNativeBulk
 {
     public static async ValueTask BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default)
     {
-        if (rows.Count == 0)
+        if (rows is null || rows.Count == 0)
             return;
 
         // Provider-native hook: Oracle array binding is isolated here.

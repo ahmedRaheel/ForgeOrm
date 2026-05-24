@@ -9,7 +9,7 @@ internal static class SqlServerNativeBulk
 {
     public static async ValueTask BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default)
     {
-        if (rows.Count == 0)
+        if (rows is null || rows.Count == 0)
             return;
 
         if (connection is not SqlConnection sqlConnection)

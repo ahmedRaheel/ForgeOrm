@@ -1,17 +1,30 @@
-using ForgeORM.Abstractions;
-using Oracle.ManagedDataAccess.Client;
+using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+using ForgeORM.Abstractions;
+using Oracle.ManagedDataAccess.Client;
 
 namespace ForgeORM.Providers.Oracle;
 
 public sealed class OracleForgeProvider : IForgeDatabaseProvider
 {
     public string ProviderName => "Oracle";
-    public ForgeSqlDialect Dialect { get; } = new() { Name = "Oracle", ParameterPrefix = ":", OpenIdentifier = "\"", CloseIdentifier = "\"" };
+
+    public ForgeSqlDialect Dialect { get; } = new()
+    {
+        Name = "Oracle",
+        ParameterPrefix = ":",
+        OpenIdentifier = "",
+        CloseIdentifier = ""
+    };
+
     public ForgeProviderCapabilities Capabilities { get; } = new()
     {
         SupportsBulkInsert = true,
@@ -21,305 +34,248 @@ public sealed class OracleForgeProvider : IForgeDatabaseProvider
         SupportsStoredProcedures = true,
         SupportsFunctions = true,
         SupportsArrayParameters = true,
-        SupportsRefCursor = true
+        SupportsRefCursor = true,
     };
 
-    /// <summary>
-    /// Executes the CreateConnection operation.
-    /// </summary>
-    /// <param name="connectionString">The connectionString value.</param>
-    /// <returns>The result of the CreateConnection operation.</returns>
     public DbConnection CreateConnection(string connectionString) => new OracleConnection(connectionString);
 
-    /// <summary>
-    /// Executes the BuildGetById operation.
-    /// </summary>
-    /// <param name="e">The e value.</param>
-    /// <param name="id">The id value.</param>
-    /// <returns>The result of the BuildGetById operation.</returns>
-    public ForgeCommand BuildGetById(ForgeEntityMetadata e, object id) => ForgeCommand.Text($"SELECT * FROM {e.TableName} WHERE {e.KeyColumn} = {Dialect.Parameter("Id")}", new { Id = id });
-    /// <summary>
-    /// Executes the BuildGetByCode operation.
-    /// </summary>
-    /// <param name="e">The e value.</param>
-    /// <param name="code">The code value.</param>
-    /// <returns>The result of the BuildGetByCode operation.</returns>
-    public ForgeCommand BuildGetByCode(ForgeEntityMetadata e, string code) => ForgeCommand.Text($"SELECT * FROM {e.TableName} WHERE {e.CodeColumn} = {Dialect.Parameter("Code")}", new { Code = code });
-    /// <summary>
-    /// Executes the BuildGetByIds operation.
-    /// </summary>
-    /// <param name="e">The e value.</param>
-    /// <param name="pairs">The pairs value.</param>
-    /// <param name="pairs">The pairs value.</param>
-    /// <param name="x">The x value.</param>
-    /// <returns>The result of the BuildGetByIds operation.</returns>
-    public ForgeCommand BuildGetByIds(ForgeEntityMetadata e, IReadOnlyCollection<int> ids) { var pairs = ids.Select((id, i) => new { id, name = $"Id{i}" }).ToList(); return ForgeCommand.Text($"SELECT * FROM {e.TableName} WHERE {e.KeyColumn} IN ({string.Join(", ", pairs.Select(x => ":" + x.name))})", pairs.ToDictionary(x => x.name, x => (object)x.id)); }
-    /// <summary>
-    /// Executes the BuildInsert operation.
-    /// </summary>
-    /// <param name="e">The e value.</param>
-    /// <param name="entity">The entity value.</param>
-    /// <returns>The result of the BuildInsert operation.</returns>
-    public ForgeCommand BuildInsert(ForgeEntityMetadata e, object entity) => ForgeCommand.Text(BuildInsertSql(e), entity);
-    /// <summary>
-    /// Executes the BuildUpdate operation.
-    /// </summary>
-    /// <param name="e">The e value.</param>
-    /// <param name="entity">The entity value.</param>
-    /// <returns>The result of the BuildUpdate operation.</returns>
-    public ForgeCommand BuildUpdate(ForgeEntityMetadata e, object entity) => ForgeCommand.Text(BuildUpdateSql(e), entity);
-    /// <summary>
-    /// Executes the BuildDelete operation.
-    /// </summary>
-    /// <param name="e">The e value.</param>
-    /// <param name="id">The id value.</param>
-    /// <returns>The result of the BuildDelete operation.</returns>
-    public ForgeCommand BuildDelete(ForgeEntityMetadata e, object id) => ForgeCommand.Text($"DELETE FROM {e.TableName} WHERE {e.KeyColumn} = {Dialect.Parameter("Id")}", new { Id = id });
-    /// <summary>
-    /// Executes the BuildPage operation.
-    /// </summary>
-    /// <param name="r">The r value.</param>
-    /// <returns>The result of the BuildPage operation.</returns>
-    public ForgeCommand BuildPage(ForgePageRequest r) => ForgeCommand.Text($"""SELECT * FROM ({r.Sql}) ForgePage ORDER BY {r.OrderBy} OFFSET {r.Skip} ROWS FETCH NEXT {r.PageSize} ROWS ONLY""", r.Parameters);
-    /// <summary>
-    /// Executes the BuildCount operation.
-    /// </summary>
-    /// <param name="baseSql">The baseSql value.</param>
-    /// <param name="parameters">The parameters value.</param>
-    /// <returns>The result of the BuildCount operation.</returns>
-    public ForgeCommand BuildCount(string baseSql, object? parameters = null) => ForgeCommand.Text($"SELECT COUNT(1) FROM ({baseSql}) ForgeCount", parameters);
-    /// <summary>
-    /// Executes the BuildBulkDelete operation.
-    /// </summary>
-    /// <param name="tableName">The tableName value.</param>
-    /// <param name="keyColumn">The keyColumn value.</param>
-    /// <param name="ids">The ids value.</param>
-    /// <returns>The result of the BuildBulkDelete operation.</returns>
-    public ForgeCommand BuildBulkDelete(string tableName, string keyColumn, IReadOnlyCollection<int> ids) => ForgeCommand.Text($"DELETE FROM {tableName} WHERE {keyColumn} IN @Ids", new { Ids = ids });
-    /// <summary>
-    /// Executes the BuildFunctionScalar operation.
-    /// </summary>
-    /// <param name="functionName">The functionName value.</param>
-    /// <param name="parameters">The parameters value.</param>
-    /// <returns>The result of the BuildFunctionScalar operation.</returns>
-    public ForgeCommand BuildFunctionScalar(string functionName, object? parameters = null) => ForgeCommand.Text($"SELECT {functionName}() FROM DUAL", parameters);
+    public ForgeCommand BuildGetById(ForgeEntityMetadata entity, object id)
+        => ForgeCommand.Text($"SELECT * FROM {entity.TableName} WHERE {entity.KeyColumn} = {Dialect.Parameter("Id")}", new { Id = id });
 
-    /// <summary>
-    /// Executes the T operation.
-    /// </summary>
-    /// <typeparam name="T">The type used by the operation.</typeparam>
-    /// <param name="connection">The connection value.</param>
-    /// <param name="tableName">The tableName value.</param>
-    /// <param name="rows">The rows value.</param>
-    /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The result of the T operation.</returns>
-    public ValueTask BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default) => OracleNativeBulk.BulkInsertAsync(connection, tableName, rows, cancellationToken);
-    /// <summary>
-    /// Executes the T operation.
-    /// </summary>
-    /// <typeparam name="T">The type used by the operation.</typeparam>
-    /// <param name="connection">The connection value.</param>
-    /// <param name="tableName">The tableName value.</param>
-    /// <param name="rows">The rows value.</param>
-    /// <param name="keyColumn">The keyColumn value.</param>
-    /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The result of the T operation.</returns>
-    public ValueTask BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
-    /// <summary>
-    /// Executes the T operation.
-    /// </summary>
-    /// <typeparam name="T">The type used by the operation.</typeparam>
-    /// <param name="connection">The connection value.</param>
-    /// <param name="tableName">The tableName value.</param>
-    /// <param name="rows">The rows value.</param>
-    /// <param name="keyColumn">The keyColumn value.</param>
-    /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The result of the T operation.</returns>
-    public ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+    public ForgeCommand BuildGetByCode(ForgeEntityMetadata entity, string code)
+        => ForgeCommand.Text($"SELECT * FROM {entity.TableName} WHERE {entity.CodeColumn} = {Dialect.Parameter("Code")}", new { Code = code });
 
-    private string BuildInsertSql(ForgeEntityMetadata e)
+    public ForgeCommand BuildGetByIds(ForgeEntityMetadata entity, IReadOnlyCollection<int> ids)
     {
-        var props = e.Properties.Where(p => !p.IsComputed && !p.IsKey).ToList();
-        var columns = string.Join(", ", props.Select(p => p.ColumnName));
-        var values = string.Join(", ", props.Select(p => Dialect.Parameter(p.PropertyName)));
-        return $"INSERT INTO {e.TableName} ({columns}) VALUES ({values})";
+        if (ids is null || ids.Count == 0)
+            return ForgeCommand.Text($"SELECT * FROM {entity.TableName} WHERE 1 = 0");
+        var parameterNames = new string[ids.Count];
+        var values = new Dictionary<string, object?>(ids.Count, StringComparer.OrdinalIgnoreCase);
+        var index = 0;
+        foreach (var id in ids)
+        {
+            var name = "Id" + index;
+            parameterNames[index] = ":" + name;
+            values[name] = id;
+            index++;
+        }
+
+        return ForgeCommand.Text($"SELECT * FROM {entity.TableName} WHERE {entity.KeyColumn} IN ({string.Join(", ", parameterNames)})", values);
     }
 
-    private string BuildUpdateSql(ForgeEntityMetadata e)
+    public ForgeCommand BuildInsert(ForgeEntityMetadata entity, object entityInstance)
+        => ForgeCommand.Text(BuildInsertSql(entity), entityInstance);
+
+    public ForgeCommand BuildUpdate(ForgeEntityMetadata entity, object entityInstance)
+        => ForgeCommand.Text(BuildUpdateSql(entity), entityInstance);
+
+    public ForgeCommand BuildDelete(ForgeEntityMetadata entity, object id)
+        => ForgeCommand.Text($"DELETE FROM {entity.TableName} WHERE {entity.KeyColumn} = {Dialect.Parameter("Id")}", new { Id = id });
+
+    public ForgeCommand BuildPage(ForgePageRequest request)
+        => ForgeCommand.Text($"SELECT * FROM ({request.Sql}) ForgePage ORDER BY {request.OrderBy} OFFSET {request.Skip} ROWS FETCH NEXT {request.PageSize} ROWS ONLY", request.Parameters);
+
+    public ForgeCommand BuildCount(string baseSql, object? parameters = null)
+        => ForgeCommand.Text($"SELECT COUNT(1) FROM ({baseSql}) ForgeCount", parameters);
+
+    public ForgeCommand BuildBulkDelete(string tableName, string keyColumn, IReadOnlyCollection<int> ids)
     {
-        var props = e.Properties.Where(p => !p.IsComputed && !p.IsKey).ToList();
-        var sets = string.Join(", ", props.Select(p => p.ColumnName + " = " + Dialect.Parameter(p.PropertyName)));
-        return $"UPDATE {e.TableName} SET {sets} WHERE {e.KeyColumn} = {Dialect.Parameter(e.KeyColumn)}";
+        if (ids is null || ids.Count == 0)
+            return ForgeCommand.Text($"DELETE FROM {tableName} WHERE 1 = 0");
+        var parameterNames = new string[ids.Count];
+        var values = new Dictionary<string, object?>(ids.Count, StringComparer.OrdinalIgnoreCase);
+        var index = 0;
+        foreach (var id in ids)
+        {
+            var name = "Id" + index;
+            parameterNames[index] = ":" + name;
+            values[name] = id;
+            index++;
+        }
+
+        return ForgeCommand.Text($"DELETE FROM {tableName} WHERE {keyColumn} IN ({string.Join(", ", parameterNames)})", values);
+    }
+
+    public ForgeCommand BuildFunctionScalar(string functionName, object? parameters = null)
+        => ForgeCommand.Text($"SELECT {functionName}()", parameters);
+
+    public ValueTask BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default)
+        => BulkFallback.InsertAsync(connection, tableName, rows, cancellationToken);
+
+    public ValueTask BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default)
+        => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+
+    public ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default)
+        => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+
+    private string BuildInsertSql(ForgeEntityMetadata entity)
+    {
+        var properties = entity.Properties.Where(p => !p.IsComputed && !p.IsKey).ToArray();
+        if (properties.Length == 0)
+            throw new InvalidOperationException($"Entity '{entity.EntityType.Name}' has no insertable scalar properties.");
+
+        var columns = string.Join(", ", properties.Select(p => p.ColumnName));
+        var values = string.Join(", ", properties.Select(p => Dialect.Parameter(p.PropertyName)));
+        return $"INSERT INTO {entity.TableName} ({columns}) VALUES ({values})";
+    }
+
+    private string BuildUpdateSql(ForgeEntityMetadata entity)
+    {
+        var properties = entity.Properties.Where(p => !p.IsComputed && !p.IsKey).ToArray();
+        if (properties.Length == 0)
+            throw new InvalidOperationException($"Entity '{entity.EntityType.Name}' has no updateable scalar properties.");
+
+        var sets = string.Join(", ", properties.Select(p => p.ColumnName + " = " + Dialect.Parameter(p.PropertyName)));
+        return $"UPDATE {entity.TableName} SET {sets} WHERE {entity.KeyColumn} = {Dialect.Parameter(entity.KeyColumn)}";
     }
 }
 
 internal static class BulkFallback
 {
+    private const string ParameterPrefix = ":";
+    private static readonly ConcurrentDictionary<(Type Type, string Table), string> InsertSqlCache = new();
     private static readonly ConcurrentDictionary<(Type Type, string Table, string Key), string> UpdateSqlCache = new();
-    /// <summary>
-    /// Executes the T operation.
-    /// </summary>
-    /// <typeparam name="T">The type used by the operation.</typeparam>
-    /// <param name="connection">The connection value.</param>
-    /// <param name="tableName">The tableName value.</param>
-    /// <param name="rows">The rows value.</param>
-    /// <param name="ct">The ct value.</param>
-    /// <returns>The result of the T operation.</returns>
-    public static async ValueTask InsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken ct)
-    {
-        var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead && IsScalar(p.PropertyType)).ToList();
-        var columns = string.Join(", ", props.Select(p => p.Name));
-        var values = string.Join(", ", props.Select(p => "@" + p.Name));
-        var sql = $"INSERT INTO {tableName} ({columns}) VALUES ({values})";
-        return ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
-    }
 
-    /// <summary>
-    /// Executes the T operation.
-    /// </summary>
-    /// <typeparam name="T">The type used by the operation.</typeparam>
-    /// <param name="connection">The connection value.</param>
-    /// <param name="tableName">The tableName value.</param>
-    /// <param name="rows">The rows value.</param>
-    /// <param name="keyColumn">The keyColumn value.</param>
-    /// <param name="ct">The ct value.</param>
-    /// <returns>The result of the T operation.</returns>
-    public static ValueTask UpdateAsync<T>(
-        DbConnection connection,
-        string tableName,
-        IReadOnlyCollection<T> rows,
-        string keyColumn,
-        CancellationToken ct)
+    public static ValueTask InsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken)
     {
-        // 1. Guard clause to avoid processing overhead or state machine instantiation
-        if (rows == null || rows.Count == 0)
-            return ValueTask.CompletedTask;
+        if (rows is null || rows.Count == 0)
+            return default;
 
-        // 2. Retrieve or compile the SQL update string. This executes exactly ONCE per unique schema setup.
-        var sql = UpdateSqlCache.GetOrAdd((typeof(T), tableName, keyColumn), static key =>
+        var sql = InsertSqlCache.GetOrAdd((typeof(T), tableName), static key =>
         {
-            var (type, table, pk) = key;
+            var columns = ForgeProviderAdo.PropertyCache<T>.InsertColumns;
+            if (columns.Length == 0)
+                throw new InvalidOperationException($"Type {key.Type.Name} has no scalar properties to insert.");
 
-            // Extract all updateable properties (excluding the primary key column)
-            var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => p.CanRead && IsScalar(p.PropertyType) && !p.Name.Equals(pk, StringComparison.OrdinalIgnoreCase))
-                .Select(p => p.Name)
-                .ToList();
-
-            if (props.Count == 0)
-                throw new InvalidOperationException($"Type {type.Name} has no valid scalar properties to update.");
-
-            // Build the SET clause: Field1 = @Field1, Field2 = @Field2
-            var setClause = string.Join(", ", props.Select(p => $"{p} = @{p}"));
-
-            // Build the final optimized SQL statement
-            return $"UPDATE {table} SET {setClause} WHERE {pk} = @{pk}";
+            return $"INSERT INTO {key.Table} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", ForgeProviderAdo.PropertyCache<T>.InsertParameterNames)})";
         });
 
-        // 3. Perfect-forward the ValueTask straight down to the optimized batch executor.
-        // This elides the async state machine wrapper allocation entirely.
-        return ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
+        return IgnoreResult(ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ForgeProviderAdo.PropertyCache<T>.InsertProperties, cancellationToken));
     }
-    private static bool IsScalar(Type type)
+
+    public static ValueTask UpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken)
     {
-        var actual = Nullable.GetUnderlyingType(type) ?? type;
-        return actual.IsPrimitive
-               || actual.IsEnum
-               || actual == typeof(string)
-               || actual == typeof(Guid)
-               || actual == typeof(decimal)
-               || actual == typeof(DateTime)
-               || actual == typeof(DateTimeOffset)
-               || actual == typeof(DateOnly)
-               || actual == typeof(TimeOnly)
-               || actual == typeof(TimeSpan)
-               || actual == typeof(byte[]);
+        if (rows is null || rows.Count == 0)
+            return default;
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(keyColumn);
+
+        var sql = UpdateSqlCache.GetOrAdd((typeof(T), tableName, keyColumn), static key =>
+        {
+            var updateProperties = ForgeProviderAdo.PropertyCache<T>.GetUpdateProperties(key.Key);
+            if (updateProperties.Length == 0)
+                throw new InvalidOperationException($"Type {key.Type.Name} has no scalar properties to update.");
+
+            var setParts = new string[updateProperties.Length];
+            for (var i = 0; i < updateProperties.Length; i++)
+                setParts[i] = updateProperties[i].Info.Name + " = " + ParameterPrefix + updateProperties[i].Info.Name;
+
+            return $"UPDATE {key.Table} SET {string.Join(", ", setParts)} WHERE {key.Key} = {ParameterPrefix}{key.Key}";
+        });
+
+        return IgnoreResult(ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ForgeProviderAdo.PropertyCache<T>.Properties, cancellationToken));
     }
 
+    private static async ValueTask IgnoreResult(ValueTask<int> task)
+    {
+        await task.ConfigureAwait(false);
+    }
 }
-
 
 internal static class ForgeProviderAdo
 {
-    // High-performance static generic cache initialized once per type T by the CLR.
-    // This reduces structural type lookup overhead to an absolute zero runtime allocation cost.
-    private static class PropertyCache<T>
+    internal readonly struct CachedProperty
     {
-        public static readonly (PropertyInfo Info, string ParamName, Type DeclaredType)[] Properties =
-            typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => p.CanRead && IsScalar(p.PropertyType))
-                .Select(p => (p, "@" + p.Name, p.PropertyType))
-                .ToArray();
+        public CachedProperty(PropertyInfo info, string parameterName, Type declaredType)
+        {
+            Info = info;
+            ParameterName = parameterName;
+            DeclaredType = declaredType;
+        }
+
+        public PropertyInfo Info { get; }
+        public string ParameterName { get; }
+        public Type DeclaredType { get; }
     }
 
-    /// <summary>
-    /// Executes the T operation using a zero-allocation parameter mutation architecture.
-    /// </summary>
-    public static async ValueTask ExecuteManyAsync<T>(
-    DbConnection connection,
-    string sql,
-    IReadOnlyCollection<T> rows,
-    CancellationToken cancellationToken)
+    internal static class PropertyCache<T>
     {
-        // 1. Guard clauses on the synchronous hot path.
-        // If there is nothing to process, we exit with zero allocation using a pre-cached token.
-        if (rows is null || rows.Count == 0)
-            return;
+        public static readonly CachedProperty[] Properties = BuildProperties(includeIdentity: true);
+        public static readonly CachedProperty[] InsertProperties = BuildProperties(includeIdentity: false);
+        public static readonly string[] InsertColumns = InsertProperties.Select(p => p.Info.Name).ToArray();
+        public static readonly string[] InsertParameterNames = InsertProperties.Select(p => p.ParameterName).ToArray();
+        private static readonly ConcurrentDictionary<string, CachedProperty[]> UpdatePropertyCache = new(StringComparer.OrdinalIgnoreCase);
 
-        var cachedProps = PropertyCache<T>.Properties;
-        if (cachedProps.Length == 0)
-            return;
+        public static CachedProperty[] GetUpdateProperties(string keyColumn)
+            => UpdatePropertyCache.GetOrAdd(keyColumn, static key =>
+                Properties.Where(p => !p.Info.Name.Equals(key, StringComparison.OrdinalIgnoreCase)).ToArray());
 
-        // 2. Delegate to the internal async loop execution path
-        await ExecuteManyInternalAsync(connection, sql, rows, cachedProps, cancellationToken).ConfigureAwait(false);
+        private static CachedProperty[] BuildProperties(bool includeIdentity)
+        {
+            var properties = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            var list = new List<CachedProperty>(properties.Length);
+
+            for (var i = 0; i < properties.Length; i++)
+            {
+                var property = properties[i];
+                if (!property.CanRead || !IsScalar(property.PropertyType))
+                    continue;
+
+                if (!includeIdentity && IsIdentityConvention(property))
+                    continue;
+
+                list.Add(new CachedProperty(property, property.Name, property.PropertyType));
+            }
+
+            return list.ToArray();
+        }
     }
 
-    // Keeping the async state machine generation safely separated here
-    private static async ValueTask ExecuteManyInternalAsync<T>(
-        DbConnection connection,
-        string sql,
-        IReadOnlyCollection<T> rows,
-        (System.Reflection.PropertyInfo Info, string ParamName, Type DeclaredType)[] cachedProps,
-        CancellationToken cancellationToken)
+    public static ValueTask<int> ExecuteManyAsync<T>(DbConnection connection, string sql, IReadOnlyCollection<T> rows, CachedProperty[] properties, CancellationToken cancellationToken)
+    {
+        if (rows is null || rows.Count == 0 || properties.Length == 0)
+            return new ValueTask<int>(0);
+
+        return ExecuteManyInternalAsync(connection, sql, rows, properties, cancellationToken);
+    }
+
+    private static async ValueTask<int> ExecuteManyInternalAsync<T>(DbConnection connection, string sql, IReadOnlyCollection<T> rows, CachedProperty[] properties, CancellationToken cancellationToken)
     {
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        // Allocate EXACTLY ONE command and a single set of reusable parameters for the entire batch
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
 
-        var dbParameters = new DbParameter[cachedProps.Length];
-        for (int i = 0; i < cachedProps.Length; i++)
+        var dbParameters = new DbParameter[properties.Length];
+        for (var i = 0; i < properties.Length; i++)
         {
             var parameter = command.CreateParameter();
-            parameter.ParameterName = cachedProps[i].ParamName;
+            parameter.ParameterName = properties[i].ParameterName;
             command.Parameters.Add(parameter);
-            dbParameters[i] = parameter; // Direct array access optimization
+            dbParameters[i] = parameter;
         }
 
-        // Attempt command preparation if supported by the underlying ADO.NET provider
-        try { command.Prepare(); } catch { /* Fallback for engines lacking explicit preparation support */ }
+        try { command.Prepare(); } catch { }
 
-        // Allocation-Free Execution Loop
+        var total = 0;
         foreach (var row in rows)
         {
-            for (int i = 0; i < cachedProps.Length; i++)
+            for (var i = 0; i < properties.Length; i++)
             {
-                ref readonly var propMetadata = ref cachedProps[i];
-                var rawValue = ForgeProviderAccessors.Get(propMetadata.Info, row!);
-
-                // Mutate the parameter values in-place on the heap pool
-                dbParameters[i].Value = NormalizeValue(rawValue, propMetadata.DeclaredType) ?? DBNull.Value;
+                var metadata = properties[i];
+                var rawValue = ForgeProviderAccessors.Get(metadata.Info, row!);
+                dbParameters[i].Value = NormalizeValue(rawValue, metadata.DeclaredType) ?? DBNull.Value;
             }
 
-            // Execute the database write without returning or capturing an unused integer result
-            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            total += await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
+
+        return total;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsScalar(Type type)
+    internal static bool IsScalar(Type type)
     {
         var actual = Nullable.GetUnderlyingType(type) ?? type;
         return actual.IsPrimitive
@@ -333,6 +289,14 @@ internal static class ForgeProviderAdo
                || actual == typeof(TimeOnly)
                || actual == typeof(TimeSpan)
                || actual == typeof(byte[]);
+    }
+
+    private static bool IsIdentityConvention(PropertyInfo property)
+    {
+        var entityId = property.DeclaringType?.Name + "Id";
+        return property.Name.Equals("Id", StringComparison.OrdinalIgnoreCase)
+               || property.Name.Equals(entityId, StringComparison.OrdinalIgnoreCase)
+               || property.GetCustomAttributes().Any(attribute => attribute.GetType().Name is "ForgeKeyAttribute" or "KeyAttribute");
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -343,12 +307,13 @@ internal static class ForgeProviderAdo
 
         var actual = Nullable.GetUnderlyingType(declaredType) ?? declaredType;
 
+        if (actual.IsEnum)
+            return value.ToString();
+
         if (actual == typeof(DateTime))
         {
             var dateTime = (DateTime)value;
-            return dateTime == default || dateTime < new DateTime(1753, 1, 1)
-                ? DateTime.UtcNow
-                : dateTime;
+            return dateTime == default || dateTime < new DateTime(1753, 1, 1) ? DateTime.UtcNow : dateTime;
         }
 
         if (actual == typeof(DateTimeOffset))

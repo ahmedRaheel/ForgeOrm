@@ -131,6 +131,20 @@ internal static class ForgeFrameworkExecutionPolicy
             .ConfigureAwait(false);
     }
 
+
+    public static ForgePagedResult<T> Page<T>(IForgeDatabaseProvider provider, string connectionString, ForgePageRequest request, int? timeoutSeconds = null)
+    {
+        using var connection = CreateConnection(provider, connectionString);
+        return ForgePerformancePipeline.Page<T>(connection, provider, request, timeoutSeconds: timeoutSeconds);
+    }
+
+    public static async ValueTask<ForgePagedResult<T>> PageAsync<T>(IForgeDatabaseProvider provider, string connectionString, ForgePageRequest request, int? timeoutSeconds, CancellationToken cancellationToken)
+    {
+        await using var connection = CreateConnection(provider, connectionString);
+        return await ForgePerformancePipeline.PageAsync<T>(connection, provider, request, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public static async IAsyncEnumerable<T> StreamAsync<T>(IForgeDatabaseProvider provider, string connectionString, string sql, object? parameters, int? timeoutSeconds, [EnumeratorCancellation] CancellationToken cancellationToken, CommandType commandType = CommandType.Text)
     {
         await using var connection = CreateConnection(provider, connectionString);

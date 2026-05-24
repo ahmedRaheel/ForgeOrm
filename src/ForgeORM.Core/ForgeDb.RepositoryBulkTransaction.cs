@@ -142,13 +142,7 @@ public partial class ForgeDb
     /// <param name="request">The request value.</param>
     /// <returns>The result of the T operation.</returns>
     public ForgePagedResult<T> Page<T>(ForgePageRequest request)
-    {
-        var count = Provider.BuildCount(request.Sql, request.Parameters);
-        var total = ExecuteScalar<int>(count.CommandText, count.Parameters);
-        var page = Provider.BuildPage(request);
-        var rows = Query<T>(page.CommandText, page.Parameters);
-        return new ForgePagedResult<T> { Items = rows, Page = request.Page, PageSize = request.PageSize, TotalRecords = total };
-    }
+        => ForgeFrameworkExecutionPolicy.Page<T>(Provider, _connectionString, request);
 
     /// <summary>
     /// Executes the T operation.
@@ -157,14 +151,8 @@ public partial class ForgeDb
     /// <param name="request">The request value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public async ValueTask<ForgePagedResult<T>> PageAsync<T>(ForgePageRequest request, CancellationToken cancellationToken = default)
-    {
-        var count = Provider.BuildCount(request.Sql, request.Parameters);
-        var total = await ExecuteScalarAsync<int>(count.CommandText, count.Parameters, cancellationToken: cancellationToken);
-        var page = Provider.BuildPage(request);
-        var rows = await QueryAsync<T>(page.CommandText, page.Parameters, cancellationToken: cancellationToken);
-        return new ForgePagedResult<T> { Items = rows, Page = request.Page, PageSize = request.PageSize, TotalRecords = total };
-    }
+    public ValueTask<ForgePagedResult<T>> PageAsync<T>(ForgePageRequest request, CancellationToken cancellationToken = default)
+        => ForgeFrameworkExecutionPolicy.PageAsync<T>(Provider, _connectionString, request, timeoutSeconds: null, cancellationToken: cancellationToken);
 
     /// <summary>
     /// Executes the T operation.

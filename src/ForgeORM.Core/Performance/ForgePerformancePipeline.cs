@@ -420,21 +420,103 @@ public static class ForgePerformancePipeline
         return ForgeScalarConverter.To<T>(value);
     }
 
+    public static ForgePagedResult<T> Page<T>(
+        DbConnection connection,
+        IForgeDatabaseProvider provider,
+        ForgePageRequest request,
+        DbTransaction? transaction = null,
+        int? timeoutSeconds = null)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(provider);
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (connection.State != ConnectionState.Open)
+            connection.Open();
+
+        var count = provider.BuildCount(request.Sql, request.Parameters);
+        var countPlan = ForgeCompiledExecutionPlanCache.GetOrAdd<int>(
+            connection,
+            count.CommandText,
+            count.Parameters,
+            CommandType.Text,
+            CommandBehavior.SingleResult);
+
+        using var countCommand = CreateCommand(connection, countPlan, count.Parameters, transaction, timeoutSeconds);
+        var countValue = countCommand.ExecuteScalar();
+        var total = ForgeScalarConverter.To<int>(countValue);
+
+        var page = provider.BuildPage(request);
+        var pagePlan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(
+            connection,
+            page.CommandText,
+            page.Parameters,
+            CommandType.Text,
+            CommandBehavior.SequentialAccess);
+
+        using var pageCommand = CreateCommand(connection, pagePlan, page.Parameters, transaction, timeoutSeconds);
+        var rows = ExecuteReaderList(pageCommand, pagePlan, request.PageSize > 0 ? request.PageSize : 32);
+
+        return new ForgePagedResult<T>
+        {
+            Items = rows,
+            Page = request.Page,
+            PageSize = request.PageSize,
+            TotalRecords = total
+        };
+    }
+
     public static async ValueTask<ForgePagedResult<T>> PageAsync<T>(
         DbConnection connection,
         IForgeDatabaseProvider provider,
         ForgePageRequest request,
+        DbTransaction? transaction = null,
+        int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(provider);
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
         var count = provider.BuildCount(request.Sql, request.Parameters);
-        var total = await ExecuteScalarAsync<int>(connection, count.CommandText, count.Parameters, cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
+        var countPlan = ForgeCompiledExecutionPlanCache.GetOrAdd<int>(
+            connection,
+            count.CommandText,
+            count.Parameters,
+            CommandType.Text,
+            CommandBehavior.SingleResult);
+
+        await using var countCommand = CreateCommand(connection, countPlan, count.Parameters, transaction, timeoutSeconds);
+        var countValue = await countCommand.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        var total = ForgeScalarConverter.To<int>(countValue);
 
         var page = provider.BuildPage(request);
-        var rows = await QueryAsync<T>(connection, page.CommandText, page.Parameters, cancellationToken: cancellationToken)
+        var pagePlan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(
+            connection,
+            page.CommandText,
+            page.Parameters,
+            CommandType.Text,
+            CommandBehavior.SequentialAccess);
+
+        await using var pageCommand = CreateCommand(connection, pagePlan, page.Parameters, transaction, timeoutSeconds);
+        var rows = await ExecuteReaderListAsync<T>(
+                pageCommand,
+                pagePlan,
+                ForgeCommandOperation.Query,
+                request.PageSize > 0 ? request.PageSize : 32,
+                cancellationToken)
             .ConfigureAwait(false);
 
-        return new ForgePagedResult<T> { Items = rows, Page = request.Page, PageSize = request.PageSize, TotalRecords = total };
+        return new ForgePagedResult<T>
+        {
+            Items = rows,
+            Page = request.Page,
+            PageSize = request.PageSize,
+            TotalRecords = total
+        };
     }
 
 
@@ -868,7 +950,44 @@ public static class ForgePerformancePipeline
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int EstimateCapacity(string sql)
-        => sql.Contains("TOP 1", StringComparison.OrdinalIgnoreCase) || sql.Contains("LIMIT 1", StringComparison.OrdinalIgnoreCase) ? 1 : 32;
+    {
+        if (string.IsNullOrWhiteSpace(sql))
+            return 32;
+
+        if (sql.Contains("TOP 1", StringComparison.OrdinalIgnoreCase) ||
+            sql.Contains("LIMIT 1", StringComparison.OrdinalIgnoreCase) ||
+            sql.Contains("FETCH NEXT 1", StringComparison.OrdinalIgnoreCase))
+            return 1;
+
+        if (TryReadPositiveIntAfter(sql, "FETCH NEXT", out var fetch))
+            return Math.Clamp(fetch, 1, 1024);
+
+        if (TryReadPositiveIntAfter(sql, "LIMIT", out var limit))
+            return Math.Clamp(limit, 1, 1024);
+
+        if (TryReadPositiveIntAfter(sql, "TOP", out var top))
+            return Math.Clamp(top, 1, 1024);
+
+        return 32;
+    }
+
+    private static bool TryReadPositiveIntAfter(string text, string token, out int value)
+    {
+        value = 0;
+        var index = text.IndexOf(token, StringComparison.OrdinalIgnoreCase);
+        if (index < 0)
+            return false;
+
+        index += token.Length;
+        while (index < text.Length && char.IsWhiteSpace(text[index]))
+            index++;
+
+        var start = index;
+        while (index < text.Length && char.IsDigit(text[index]))
+            index++;
+
+        return index > start && int.TryParse(text.AsSpan(start, index - start), out value) && value > 0;
+    }
 }
 
 internal static class ForgeRawEnumParameterMap<T>

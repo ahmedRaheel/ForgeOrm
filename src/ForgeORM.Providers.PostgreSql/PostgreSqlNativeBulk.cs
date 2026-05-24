@@ -1,5 +1,6 @@
 using System.Data.Common;
 using System.Reflection;
+using Npgsql;
 
 namespace ForgeORM.Providers.PostgreSql;
 
@@ -7,7 +8,7 @@ internal static class PostgreSqlNativeBulk
 {
     public static async ValueTask BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default)
     {
-        if (rows is null || rows.Count == 0)
+        if (rows.Count == 0)
             return;
 
         // Provider-native hook: Npgsql COPY support can be enabled here per deployment.

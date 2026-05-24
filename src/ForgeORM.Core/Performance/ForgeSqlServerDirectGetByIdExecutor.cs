@@ -75,7 +75,8 @@ internal static class ForgeSqlServerDirectGetByIdExecutor<T>
 
     private sealed class ExecutorPlan
     {
-        private Func<SqlDataReader, T>? _reader;
+        private Func<SqlDataReader, T>? _runtimeEmitReader;
+        private Func<SqlDataReader, T>? _sourceGeneratedReader;
 
         private ExecutorPlan(string sql, string parameterName, Type keyType)
         {
@@ -111,14 +112,29 @@ internal static class ForgeSqlServerDirectGetByIdExecutor<T>
 
         public T Materialize(SqlDataReader reader)
         {
-            var materializer = _reader;
-            if (materializer is null)
+            // Keep separate cached materializers per compilation mode. Otherwise a benchmark that
+            // switches RuntimeEmit <-> SourceGenerated in the same process reuses the first delegate
+            // and both modes appear to have identical allocation/ratio numbers.
+            if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.RuntimeEmit)
             {
-                materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
-                Volatile.Write(ref _reader, materializer);
+                var runtime = _runtimeEmitReader;
+                if (runtime is null)
+                {
+                    runtime = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
+                    Volatile.Write(ref _runtimeEmitReader, runtime);
+                }
+
+                return runtime(reader);
             }
 
-            return materializer(reader);
+            var generated = _sourceGeneratedReader;
+            if (generated is null)
+            {
+                generated = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
+                Volatile.Write(ref _sourceGeneratedReader, generated);
+            }
+
+            return generated(reader);
         }
     }
 }

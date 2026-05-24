@@ -20,12 +20,17 @@ internal static class ForgeSqlServerDirectMaterializerCache
 
     public static Func<SqlDataReader, T> GetOrCreate<T>(SqlDataReader reader)
     {
-        if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
-            && ForgeSourceGeneratedRegistry.TryGetProvider(typeof(T), out var provider)
-            && provider.TryCreateReader<T>(reader, out var generated)
-            && generated is not null)
+        if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit)
         {
-            return r => generated(r);
+            if (ForgeSourceGeneratedRegistry.TryGetProvider(typeof(T), out var provider)
+                && provider.TryCreateReader<T>(reader, out var generated)
+                && generated is not null)
+            {
+                return r => generated(r);
+            }
+
+            if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGeneratedStrict)
+                throw new InvalidOperationException($"No ForgeORM source-generated SQL Server direct materializer was registered for {typeof(T).FullName}.");
         }
 
         var type = typeof(T);

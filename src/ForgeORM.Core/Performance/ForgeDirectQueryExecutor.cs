@@ -372,13 +372,29 @@ internal static class ForgeDirectQueryExecutor
         int? timeoutSeconds,
         DirectExecutionPlan plan)
     {
-        var command = connection.CreateCommand();
-        command.CommandText = sql;
+        DbCommand command;
+
+        // Provider-typed hot path: avoid a virtual CreateCommand() + provider-neutral setup when
+        // the underlying connection is SQL Server. Other providers still use the safe generic path.
+        if (connection is SqlConnection sqlConnection)
+        {
+            var sqlTransaction = transaction as SqlTransaction;
+            command = sqlTransaction is null
+                ? new SqlCommand(sql, sqlConnection)
+                : new SqlCommand(sql, sqlConnection, sqlTransaction);
+        }
+        else
+        {
+            command = connection.CreateCommand();
+            command.CommandText = sql;
+            if (transaction is not null)
+                command.Transaction = transaction;
+        }
+
         command.CommandType = CommandType.Text;
-        if (transaction is not null)
-            command.Transaction = transaction;
         if (timeoutSeconds.HasValue)
             command.CommandTimeout = timeoutSeconds.Value;
+
         plan.Bind(command, parameters);
         return command;
     }

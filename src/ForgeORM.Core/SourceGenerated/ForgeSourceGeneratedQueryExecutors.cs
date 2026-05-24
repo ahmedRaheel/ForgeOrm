@@ -1,3 +1,4 @@
+using System.Threading;
 using Microsoft.Data.SqlClient;
 
 namespace ForgeORM.Core;
@@ -33,18 +34,24 @@ public interface IForgeSqlServerQueryExecutorProvider
 /// </summary>
 public static class ForgeSqlServerQueryExecutorRegistry
 {
-    private static readonly List<IForgeSqlServerQueryExecutorProvider> Providers = new();
-    private static readonly object Gate = new();
+    private static IForgeSqlServerQueryExecutorProvider[] Providers = [];
 
-    public static bool HasProviders
-    {
-        get { lock (Gate) return Providers.Count != 0; }
-    }
+    public static bool HasProviders => Volatile.Read(ref Providers).Length != 0;
 
     public static void Register(IForgeSqlServerQueryExecutorProvider provider)
     {
         ArgumentNullException.ThrowIfNull(provider);
-        lock (Gate) Providers.Add(provider);
+
+        while (true)
+        {
+            var snapshot = Volatile.Read(ref Providers);
+            var updated = new IForgeSqlServerQueryExecutorProvider[snapshot.Length + 1];
+            Array.Copy(snapshot, updated, snapshot.Length);
+            updated[^1] = provider;
+
+            if (ReferenceEquals(Interlocked.CompareExchange(ref Providers, updated, snapshot), snapshot))
+                return;
+        }
     }
 
     public static bool TryFirstOrDefaultAsync<T>(
@@ -56,13 +63,11 @@ public static class ForgeSqlServerQueryExecutorRegistry
         CancellationToken cancellationToken,
         out ValueTask<T?> result)
     {
-        lock (Gate)
+        var providers = Volatile.Read(ref Providers);
+        for (var i = 0; i < providers.Length; i++)
         {
-            for (var i = 0; i < Providers.Count; i++)
-            {
-                if (Providers[i].TryFirstOrDefaultAsync(sql, connection, parameters, transaction, timeoutSeconds, cancellationToken, out result))
-                    return true;
-            }
+            if (providers[i].TryFirstOrDefaultAsync(sql, connection, parameters, transaction, timeoutSeconds, cancellationToken, out result))
+                return true;
         }
 
         result = default;
@@ -78,13 +83,11 @@ public static class ForgeSqlServerQueryExecutorRegistry
         CancellationToken cancellationToken,
         out ValueTask<IReadOnlyList<T>> result)
     {
-        lock (Gate)
+        var providers = Volatile.Read(ref Providers);
+        for (var i = 0; i < providers.Length; i++)
         {
-            for (var i = 0; i < Providers.Count; i++)
-            {
-                if (Providers[i].TryQueryAsync(sql, connection, parameters, transaction, timeoutSeconds, cancellationToken, out result))
-                    return true;
-            }
+            if (providers[i].TryQueryAsync(sql, connection, parameters, transaction, timeoutSeconds, cancellationToken, out result))
+                return true;
         }
 
         result = default;

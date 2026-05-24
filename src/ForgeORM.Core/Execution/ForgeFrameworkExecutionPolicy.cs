@@ -59,6 +59,36 @@ internal static class ForgeFrameworkExecutionPolicy
             .ConfigureAwait(false);
     }
 
+
+    public static T? FirstOrDefault<T, TParameters>(IForgeDatabaseProvider provider, string connectionString, string sql, TParameters parameters, int? timeoutSeconds, CommandType commandType = CommandType.Text)
+    {
+        using var connection = CreateConnection(provider, connectionString);
+        return ForgePerformancePipeline.FirstOrDefaultAsync<T, TParameters>(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds)
+            .AsTask().GetAwaiter().GetResult();
+    }
+
+    public static async Task<T?> FirstOrDefaultAsync<T, TParameters>(IForgeDatabaseProvider provider, string connectionString, string sql, TParameters parameters, int? timeoutSeconds, CancellationToken cancellationToken, CommandType commandType = CommandType.Text)
+    {
+        await using var connection = CreateConnection(provider, connectionString);
+        return await ForgePerformancePipeline.FirstOrDefaultAsync<T, TParameters>(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public static T? SingleOrDefault<T, TParameters>(IForgeDatabaseProvider provider, string connectionString, string sql, TParameters parameters, int? timeoutSeconds, CommandType commandType = CommandType.Text)
+    {
+        using var connection = CreateConnection(provider, connectionString);
+        return ForgePerformancePipeline.SingleOrDefaultAsync<T, TParameters>(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds)
+            .AsTask().GetAwaiter().GetResult();
+    }
+
+    public static async Task<T?> SingleOrDefaultAsync<T, TParameters>(IForgeDatabaseProvider provider, string connectionString, string sql, TParameters parameters, int? timeoutSeconds, CancellationToken cancellationToken, CommandType commandType = CommandType.Text)
+    {
+        await using var connection = CreateConnection(provider, connectionString);
+        return await ForgePerformancePipeline.SingleOrDefaultAsync<T, TParameters>(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+
     public static T? SingleOrDefault<T>(IForgeDatabaseProvider provider, string connectionString, string sql, object? parameters, int? timeoutSeconds, CommandType commandType = CommandType.Text)
     {
         using var connection = CreateConnection(provider, connectionString);

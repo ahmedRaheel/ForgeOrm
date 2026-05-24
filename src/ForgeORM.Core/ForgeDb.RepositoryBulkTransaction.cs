@@ -16,7 +16,7 @@ public partial class ForgeDb
     {
         var metadata = _metadata.Resolve<T>();
         var c = Provider.BuildGetById(metadata, id);
-        return ForgeFrameworkExecutionPolicy.FirstOrDefault<T>(Provider, _connectionString, c.CommandText, c.Parameters, timeoutSeconds: null);
+        return ForgeFrameworkExecutionPolicy.FirstOrDefault<T, ForgeIdParameter<object?>>(Provider, _connectionString, c.CommandText, ForgeIdParameter<object?>.Create(id), timeoutSeconds: null);
     }
     /// <summary>
     /// Executes the T operation.
@@ -29,7 +29,7 @@ public partial class ForgeDb
     {
         var metadata = _metadata.Resolve<T>();
         var c = Provider.BuildGetById(metadata, id);
-        return await ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T>(Provider, _connectionString, c.CommandText, c.Parameters, timeoutSeconds: null, cancellationToken).ConfigureAwait(false);
+        return await ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T, ForgeIdParameter<object?>>(Provider, _connectionString, c.CommandText, ForgeIdParameter<object?>.Create(id), timeoutSeconds: null, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Gets one row by the configured key without boxing the key value at the public API.</summary>
@@ -37,7 +37,7 @@ public partial class ForgeDb
     {
         var metadata = _metadata.Resolve<T>();
         var c = Provider.BuildGetById(metadata, id!);
-        return ForgeFrameworkExecutionPolicy.FirstOrDefault<T>(Provider, _connectionString, c.CommandText, c.Parameters, timeoutSeconds: null);
+        return ForgeFrameworkExecutionPolicy.FirstOrDefault<T, ForgeIdParameter<TKey>>(Provider, _connectionString, c.CommandText, ForgeIdParameter<TKey>.Create(id), timeoutSeconds: null);
     }
 
     /// <summary>Gets one row by the configured key without boxing the key value at the public API.</summary>
@@ -45,7 +45,7 @@ public partial class ForgeDb
     {
         var metadata = _metadata.Resolve<T>();
         var c = Provider.BuildGetById(metadata, id!);
-        return await ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T>(Provider, _connectionString, c.CommandText, c.Parameters, timeoutSeconds: null, cancellationToken).ConfigureAwait(false);
+        return await ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T, ForgeIdParameter<TKey>>(Provider, _connectionString, c.CommandText, ForgeIdParameter<TKey>.Create(id), timeoutSeconds: null, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

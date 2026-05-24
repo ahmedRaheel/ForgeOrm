@@ -131,6 +131,51 @@ public static class ForgePerformancePipeline
             .ConfigureAwait(false);
     }
 
+
+    /// <summary>Lower-allocation typed-parameter single-row path used by every First/Single/GetById style API.</summary>
+    public static async ValueTask<T?> FirstOrDefaultAsync<T, TParameters>(
+        DbConnection connection,
+        string sql,
+        TParameters parameters,
+        DbTransaction? transaction = null,
+        CommandType commandType = CommandType.Text,
+        int? timeoutSeconds = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!ForgeEnterpriseRuntime.IsEnabled &&
+            ForgeSourceGeneratedRegistry.TryExecuteFirstOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var generatedFirst))
+            return await generatedFirst.ConfigureAwait(false);
+
+        var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
+        await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
+
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        return await ExecuteReaderSingleAsync<T>(command, plan, ForgeCommandOperation.FirstOrDefault, requireSingle: false, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>Lower-allocation typed-parameter single-row path used by every Single/SingleOrDefault style API.</summary>
+    public static async ValueTask<T?> SingleOrDefaultAsync<T, TParameters>(
+        DbConnection connection,
+        string sql,
+        TParameters parameters,
+        DbTransaction? transaction = null,
+        CommandType commandType = CommandType.Text,
+        int? timeoutSeconds = null,
+        CancellationToken cancellationToken = default)
+    {
+        var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SequentialAccess);
+        await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
+
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        return await ExecuteReaderSingleAsync<T>(command, plan, ForgeCommandOperation.SingleOrDefault, requireSingle: true, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public static async ValueTask<T?> SingleOrDefaultAsync<T>(
         DbConnection connection,
         string sql,

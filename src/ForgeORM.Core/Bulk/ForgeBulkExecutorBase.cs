@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -23,10 +25,16 @@ internal abstract class ForgeBulkExecutorBase : IForgeProviderBulkExecutor
             return new ValueTask<int>(0);
 
         var props = ForgeProviderAdo.PropertyCache<T>.Properties;
+
         if (props.Length == 0)
             return new ValueTask<int>(0);
 
-        return ExecuteCoreAsync(connection, RewriteSql(sql), rows, props, cancellationToken);
+        return ExecuteCoreAsync(
+            connection,
+            RewriteSql(sql),
+            rows,
+            props,
+            cancellationToken);
     }
 
     private async ValueTask<int> ExecuteCoreAsync<T>(
@@ -39,7 +47,8 @@ internal abstract class ForgeBulkExecutorBase : IForgeProviderBulkExecutor
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        await using var command = connection.CreateCommand();
+        using var command = connection.CreateCommand();
+
         command.CommandText = sql;
         command.CommandType = CommandType.Text;
 
@@ -48,8 +57,11 @@ internal abstract class ForgeBulkExecutorBase : IForgeProviderBulkExecutor
         for (var i = 0; i < props.Length; i++)
         {
             var parameter = command.CreateParameter();
+
             parameter.ParameterName = FormatParameterName(props[i].Info.Name);
+
             ApplyProviderParameterSettings(parameter, props[i].DeclaredType);
+
             command.Parameters.Add(parameter);
             parameters[i] = parameter;
         }
@@ -63,10 +75,14 @@ internal abstract class ForgeBulkExecutorBase : IForgeProviderBulkExecutor
             for (var i = 0; i < props.Length; i++)
             {
                 var value = ForgeProviderAccessors.Get(props[i].Info, row!);
-                parameters[i].Value = NormalizeValue(value, props[i].DeclaredType) ?? DBNull.Value;
+
+                parameters[i].Value =
+                    NormalizeValue(value, props[i].DeclaredType) ?? DBNull.Value;
             }
 
-            affected += await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            affected += await command
+                .ExecuteNonQueryAsync(cancellationToken)
+                .ConfigureAwait(false);
         }
 
         return affected;
@@ -76,7 +92,9 @@ internal abstract class ForgeBulkExecutorBase : IForgeProviderBulkExecutor
 
     protected virtual string FormatParameterName(string name) => "@" + name;
 
-    protected virtual void ApplyProviderParameterSettings(DbParameter parameter, Type declaredType)
+    protected virtual void ApplyProviderParameterSettings(
+        DbParameter parameter,
+        Type declaredType)
     {
     }
 
@@ -88,7 +106,7 @@ internal abstract class ForgeBulkExecutorBase : IForgeProviderBulkExecutor
         }
         catch
         {
-            // Some providers do not support Prepare for every SQL shape.
+            // Provider does not support Prepare for this SQL shape.
         }
     }
 
@@ -100,11 +118,12 @@ internal abstract class ForgeBulkExecutorBase : IForgeProviderBulkExecutor
         var actual = Nullable.GetUnderlyingType(declaredType) ?? declaredType;
 
         if (actual.IsEnum)
-            return Convert.ToInt32(value);
+            return Convert.ChangeType(value, Enum.GetUnderlyingType(actual));
 
         if (actual == typeof(DateTime))
         {
             var dateTime = (DateTime)value;
+
             return dateTime == default || dateTime < new DateTime(1753, 1, 1)
                 ? DateTime.UtcNow
                 : dateTime;
@@ -117,5 +136,29 @@ internal abstract class ForgeBulkExecutorBase : IForgeProviderBulkExecutor
         }
 
         return value;
+    }
+}
+internal static class ForgeProviderAccessors
+{
+    private static readonly ConcurrentDictionary<PropertyInfo, Func<object, object?>> Cache = new();
+
+    public static object? Get(PropertyInfo property, object target)
+    {
+        return Cache.GetOrAdd(property, CreateGetter)(target);
+    }
+
+    public static Func<object, object?> CreateGetter(PropertyInfo property)
+    {
+        var instance = Expression.Parameter(typeof(object), "instance");
+
+        var typedInstance = Expression.Convert(instance, property.DeclaringType!);
+
+        var propertyAccess = Expression.Property(typedInstance, property);
+
+        var convert = Expression.Convert(propertyAccess, typeof(object));
+
+        return Expression
+            .Lambda<Func<object, object?>>(convert, instance)
+            .Compile();
     }
 }

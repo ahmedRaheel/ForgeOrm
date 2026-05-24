@@ -27,7 +27,7 @@ public static class ForgeAdo
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the T operation.</returns>
     public static IReadOnlyList<T> Query<T>(DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null)
-        => QueryAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds).GetAwaiter().GetResult();
+        => ForgePerformancePipeline.Query<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -101,7 +101,7 @@ public static class ForgeAdo
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the Execute operation.</returns>
     public static int Execute(DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null)
-      => ExecuteAsync(connection, sql, parameters, transaction, commandType, timeoutSeconds).GetAwaiter().GetResult();
+      => ForgePerformancePipeline.Execute(connection, sql, parameters, transaction, commandType, timeoutSeconds);
     /// <summary>
     /// Executes the ExecuteAsync operation.
     /// </summary>
@@ -137,7 +137,7 @@ public static class ForgeAdo
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the T operation.</returns>
     public static T? ExecuteScalar<T>(DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null)
-      => ExecuteScalarAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds).GetAwaiter().GetResult();
+      => ForgePerformancePipeline.ExecuteScalar<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds);
 
     /// <summary>
     /// Executes the T operation.
@@ -160,13 +160,8 @@ public static class ForgeAdo
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken);
-
-        await using var command = CreateCommand(connection, sql, parameters, transaction, commandType, timeoutSeconds);
-        var value = await command.ExecuteScalarAsync(cancellationToken);
-
-        return ForgeValueConverter.FromDatabase<T>(value);
+        return await ForgePerformancePipeline.ExecuteScalarAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>

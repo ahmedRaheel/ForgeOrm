@@ -40,10 +40,9 @@ internal static class ForgeSqlServerDirectMaterializerCache
 
     private static string CreateKey(Type type, SqlDataReader reader)
     {
-        var parts = new string[(reader.FieldCount * 2) + 2];
+        var parts = new string[(reader.FieldCount * 2) + 1];
         parts[0] = type.FullName ?? type.Name;
-        parts[1] = ForgeSourceGeneratedRegistry.CompilationMode.ToString();
-        var index = 2;
+        var index = 1;
         for (var i = 0; i < reader.FieldCount; i++)
         {
             parts[index++] = Normalize(reader.GetName(i));

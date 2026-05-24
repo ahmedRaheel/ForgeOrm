@@ -19,19 +19,12 @@ internal static class ForgeFrameworkExecutionPolicy
 
     public static IReadOnlyList<T> Query<T>(IForgeDatabaseProvider provider, string connectionString, string sql, object? parameters, int? timeoutSeconds, CommandType commandType = CommandType.Text)
     {
-        if (commandType == CommandType.Text && ForgeSqlServerProviderDirectHotPath.CanUse(provider))
-            return ForgeSqlServerProviderDirectHotPath.Query<T>(connectionString, sql, parameters, timeoutSeconds);
-
         using var connection = CreateConnection(provider, connectionString);
-        return ForgePerformancePipeline.QueryAsync<T>(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds)
-            .AsTask().GetAwaiter().GetResult();
+        return ForgePerformancePipeline.Query<T>(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds);
     }
 
     public static async ValueTask<IReadOnlyList<T>> QueryAsync<T>(IForgeDatabaseProvider provider, string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken, CommandType commandType = CommandType.Text)
     {
-        if (commandType == CommandType.Text && ForgeSqlServerProviderDirectHotPath.CanUse(provider))
-            return await ForgeSqlServerProviderDirectHotPath.QueryAsync<T>(connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false);
-
         await using var connection = CreateConnection(provider, connectionString);
         return await ForgePerformancePipeline.QueryAsync<T>(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
@@ -53,19 +46,12 @@ internal static class ForgeFrameworkExecutionPolicy
 
     public static T? FirstOrDefault<T>(IForgeDatabaseProvider provider, string connectionString, string sql, object? parameters, int? timeoutSeconds, CommandType commandType = CommandType.Text)
     {
-        if (commandType == CommandType.Text && ForgeSqlServerProviderDirectHotPath.CanUse(provider))
-            return ForgeSqlServerProviderDirectHotPath.QueryFirstOrDefault<T>(connectionString, sql, parameters, timeoutSeconds);
-
         using var connection = CreateConnection(provider, connectionString);
-        return ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds)
-            .AsTask().GetAwaiter().GetResult();
+        return ForgePerformancePipeline.FirstOrDefault<T>(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds);
     }
 
     public static async ValueTask<T?> FirstOrDefaultAsync<T>(IForgeDatabaseProvider provider, string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken, CommandType commandType = CommandType.Text)
     {
-        if (commandType == CommandType.Text && ForgeSqlServerProviderDirectHotPath.CanUse(provider))
-            return await ForgeSqlServerProviderDirectHotPath.QueryFirstOrDefaultAsync<T>(connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false);
-
         await using var connection = CreateConnection(provider, connectionString);
         return await ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
@@ -74,19 +60,12 @@ internal static class ForgeFrameworkExecutionPolicy
 
     public static T? FirstOrDefault<T, TParameters>(IForgeDatabaseProvider provider, string connectionString, string sql, TParameters parameters, int? timeoutSeconds, CommandType commandType = CommandType.Text)
     {
-        if (commandType == CommandType.Text && ForgeSqlServerProviderDirectHotPath.CanUse(provider))
-            return ForgeSqlServerProviderDirectHotPath.QueryFirstOrDefault<T>(connectionString, sql, parameters, timeoutSeconds);
-
         using var connection = CreateConnection(provider, connectionString);
-        return ForgePerformancePipeline.FirstOrDefaultAsync<T, TParameters>(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds)
-            .AsTask().GetAwaiter().GetResult();
+        return ForgePerformancePipeline.FirstOrDefault<T, TParameters>(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds);
     }
 
     public static async ValueTask<T?> FirstOrDefaultAsync<T, TParameters>(IForgeDatabaseProvider provider, string connectionString, string sql, TParameters parameters, int? timeoutSeconds, CancellationToken cancellationToken, CommandType commandType = CommandType.Text)
     {
-        if (commandType == CommandType.Text && ForgeSqlServerProviderDirectHotPath.CanUse(provider))
-            return await ForgeSqlServerProviderDirectHotPath.QueryFirstOrDefaultAsync<T>(connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false);
-
         await using var connection = CreateConnection(provider, connectionString);
         return await ForgePerformancePipeline.FirstOrDefaultAsync<T, TParameters>(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
@@ -95,8 +74,7 @@ internal static class ForgeFrameworkExecutionPolicy
     public static T? SingleOrDefault<T, TParameters>(IForgeDatabaseProvider provider, string connectionString, string sql, TParameters parameters, int? timeoutSeconds, CommandType commandType = CommandType.Text)
     {
         using var connection = CreateConnection(provider, connectionString);
-        return ForgePerformancePipeline.SingleOrDefaultAsync<T, TParameters>(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds)
-            .AsTask().GetAwaiter().GetResult();
+        return ForgePerformancePipeline.SingleOrDefault<T, TParameters>(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds);
     }
 
     public static async ValueTask<T?> SingleOrDefaultAsync<T, TParameters>(IForgeDatabaseProvider provider, string connectionString, string sql, TParameters parameters, int? timeoutSeconds, CancellationToken cancellationToken, CommandType commandType = CommandType.Text)
@@ -110,8 +88,7 @@ internal static class ForgeFrameworkExecutionPolicy
     public static T? SingleOrDefault<T>(IForgeDatabaseProvider provider, string connectionString, string sql, object? parameters, int? timeoutSeconds, CommandType commandType = CommandType.Text)
     {
         using var connection = CreateConnection(provider, connectionString);
-        return ForgePerformancePipeline.SingleOrDefaultAsync<T>(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds)
-            .AsTask().GetAwaiter().GetResult();
+        return ForgePerformancePipeline.SingleOrDefault<T>(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds);
     }
 
     public static async ValueTask<T?> SingleOrDefaultAsync<T>(IForgeDatabaseProvider provider, string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken, CommandType commandType = CommandType.Text)
@@ -123,19 +100,12 @@ internal static class ForgeFrameworkExecutionPolicy
 
     public static int Execute(IForgeDatabaseProvider provider, string connectionString, string sql, object? parameters, CommandType commandType, int? timeoutSeconds)
     {
-        if (commandType == CommandType.Text && ForgeSqlServerProviderDirectHotPath.CanUse(provider))
-            return ForgeSqlServerProviderDirectHotPath.Execute(connectionString, sql, parameters, timeoutSeconds);
-
         using var connection = CreateConnection(provider, connectionString);
-        return ForgePerformancePipeline.ExecuteAsync(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds)
-            .AsTask().GetAwaiter().GetResult();
+        return ForgePerformancePipeline.Execute(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds);
     }
 
     public static async ValueTask<int> ExecuteAsync(IForgeDatabaseProvider provider, string connectionString, string sql, object? parameters, CommandType commandType, int? timeoutSeconds, CancellationToken cancellationToken)
     {
-        if (commandType == CommandType.Text && ForgeSqlServerProviderDirectHotPath.CanUse(provider))
-            return await ForgeSqlServerProviderDirectHotPath.ExecuteAsync(connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false);
-
         await using var connection = CreateConnection(provider, connectionString);
         return await ForgePerformancePipeline.ExecuteAsync(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
@@ -143,19 +113,12 @@ internal static class ForgeFrameworkExecutionPolicy
 
     public static T? Scalar<T>(IForgeDatabaseProvider provider, string connectionString, string sql, object? parameters, CommandType commandType, int? timeoutSeconds)
     {
-        if (commandType == CommandType.Text && ForgeSqlServerProviderDirectHotPath.CanUse(provider))
-            return ForgeSqlServerProviderDirectHotPath.ExecuteScalar<T>(connectionString, sql, parameters, timeoutSeconds);
-
         using var connection = CreateConnection(provider, connectionString);
-        return ForgePerformancePipeline.ExecuteScalarAsync<T>(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds)
-            .AsTask().GetAwaiter().GetResult();
+        return ForgePerformancePipeline.ExecuteScalar<T>(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds);
     }
 
     public static async ValueTask<T?> ScalarAsync<T>(IForgeDatabaseProvider provider, string connectionString, string sql, object? parameters, CommandType commandType, int? timeoutSeconds, CancellationToken cancellationToken)
     {
-        if (commandType == CommandType.Text && ForgeSqlServerProviderDirectHotPath.CanUse(provider))
-            return await ForgeSqlServerProviderDirectHotPath.ExecuteScalarAsync<T>(connectionString, sql, parameters, timeoutSeconds, cancellationToken).ConfigureAwait(false);
-
         await using var connection = CreateConnection(provider, connectionString);
         return await ForgePerformancePipeline.ExecuteScalarAsync<T>(connection, sql, parameters, commandType: commandType, timeoutSeconds: timeoutSeconds, cancellationToken: cancellationToken)
             .ConfigureAwait(false);

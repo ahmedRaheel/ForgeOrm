@@ -9,7 +9,7 @@ public static class SplitQueryEndpoints
 
         group.MapGet("/one-to-one", async (ForgeDbContext db) =>
         {
-            db.QueryFirstOrDefaultAsync<Order>("", new { });
+            
 
 
             var rows = await db.SplitGraph<Customer>()

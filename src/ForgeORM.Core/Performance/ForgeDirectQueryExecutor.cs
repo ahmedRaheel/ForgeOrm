@@ -6,6 +6,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using ForgeORM.Core;
+using Microsoft.Data.SqlClient;
 
 namespace ForgeORM.Core.Performance;
 
@@ -19,28 +20,181 @@ internal static class ForgeDirectQueryExecutor
     private static readonly ConcurrentDictionary<Type, DirectParameterAccessor?> ParameterAccessorsByType = new();
     private static readonly ConcurrentDictionary<string, string> FirstParameterNameBySql = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<DirectReaderKey, object> ReaderCache = new();
+    private static readonly ConcurrentDictionary<DirectPlanKey, DirectExecutionPlan> PlanCache = new();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool CanUse(string sql, object? parameters, CommandType commandType)
-    {
-        if (ForgeEnterpriseRuntime.IsEnabled)
-            return false;
-        if (commandType != CommandType.Text || string.IsNullOrWhiteSpace(sql))
-            return false;
-        if (parameters is null)
-            return true;
-        if (parameters is System.Collections.IDictionary)
-            return false;
-        if (parameters is IReadOnlyDictionary<string, object?>)
-            return false;
-        if (parameters is System.Collections.IEnumerable && parameters is not string && parameters is not byte[])
-            return false;
+        => GetPlan(sql, parameters, commandType) is not null;
 
-        var type = parameters.GetType();
-        return IsScalar(type) || GetAccessor(type) is not null;
+    /// <summary>Precompiles the direct execution plan for a command shape during application/benchmark warmup.</summary>
+    public static bool Precompile(string sql, object? parameters = null, CommandType commandType = CommandType.Text)
+        => GetPlan(sql, parameters, commandType) is not null;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryQueryAsync<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters,
+        DbTransaction? transaction,
+        CommandType commandType,
+        int? timeoutSeconds,
+        CancellationToken cancellationToken,
+        out ValueTask<IReadOnlyList<T>> result)
+    {
+        var plan = GetPlan(sql, parameters, commandType);
+        if (plan is null)
+        {
+            result = default;
+            return false;
+        }
+
+        result = QueryAsync(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken, plan);
+        return true;
     }
 
-    public static async ValueTask<T?> FirstOrDefaultAsync<T>(
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryFirstOrDefaultAsync<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters,
+        DbTransaction? transaction,
+        CommandType commandType,
+        int? timeoutSeconds,
+        CancellationToken cancellationToken,
+        out ValueTask<T?> result)
+    {
+        var plan = GetPlan(sql, parameters, commandType);
+        if (plan is null)
+        {
+            result = default;
+            return false;
+        }
+
+        result = FirstOrDefaultAsync(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken, plan);
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TrySingleOrDefaultAsync<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters,
+        DbTransaction? transaction,
+        CommandType commandType,
+        int? timeoutSeconds,
+        CancellationToken cancellationToken,
+        out ValueTask<T?> result)
+    {
+        var plan = GetPlan(sql, parameters, commandType);
+        if (plan is null)
+        {
+            result = default;
+            return false;
+        }
+
+        result = SingleOrDefaultAsync(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken, plan);
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryScalarAsync<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters,
+        DbTransaction? transaction,
+        CommandType commandType,
+        int? timeoutSeconds,
+        CancellationToken cancellationToken,
+        out ValueTask<T?> result)
+    {
+        var plan = GetPlan(sql, parameters, commandType);
+        if (plan is null)
+        {
+            result = default;
+            return false;
+        }
+
+        result = ScalarAsync<T>(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken, plan);
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryExecuteAsync(
+        DbConnection connection,
+        string sql,
+        object? parameters,
+        DbTransaction? transaction,
+        CommandType commandType,
+        int? timeoutSeconds,
+        CancellationToken cancellationToken,
+        out ValueTask<int> result)
+    {
+        var plan = GetPlan(sql, parameters, commandType);
+        if (plan is null)
+        {
+            result = default;
+            return false;
+        }
+
+        result = ExecuteAsync(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken, plan);
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static DirectExecutionPlan? GetPlan(string sql, object? parameters, CommandType commandType)
+    {
+        if (ForgeEnterpriseRuntime.IsEnabled)
+        {
+            ForgeDirectExecutionDiagnostics.Reject();
+            return null;
+        }
+        if (commandType != CommandType.Text || string.IsNullOrWhiteSpace(sql))
+        {
+            ForgeDirectExecutionDiagnostics.Reject();
+            return null;
+        }
+
+        var parameterType = parameters?.GetType();
+        var key = new DirectPlanKey(sql, parameterType, commandType);
+        var plan = PlanCache.GetOrAdd(key, static (k, args) => BuildPlan(k.Sql, args.Parameters), new BuildPlanArgs(parameters));
+        return plan.IsSupported ? plan : null;
+    }
+
+    private static DirectExecutionPlan BuildPlan(string sql, object? parameters)
+    {
+        if (parameters is null)
+            return DirectExecutionPlan.NoParameters;
+        if (parameters is System.Collections.IDictionary)
+        {
+            ForgeDirectExecutionDiagnostics.Reject();
+            return DirectExecutionPlan.Unsupported;
+        }
+        if (parameters is IReadOnlyDictionary<string, object?>)
+        {
+            ForgeDirectExecutionDiagnostics.Reject();
+            return DirectExecutionPlan.Unsupported;
+        }
+        if (parameters is System.Collections.IEnumerable && parameters is not string && parameters is not byte[])
+        {
+            ForgeDirectExecutionDiagnostics.Reject();
+            return DirectExecutionPlan.Unsupported;
+        }
+
+        var type = parameters.GetType();
+        if (IsScalar(type))
+            return DirectExecutionPlan.ForScalar(NormalizeParameterName(FirstParameterName(sql)), type);
+
+        var accessor = GetAccessor(type);
+        if (accessor is null)
+        {
+            ForgeDirectExecutionDiagnostics.Reject();
+            return DirectExecutionPlan.Unsupported;
+        }
+
+        return DirectExecutionPlan.ForAccessor(accessor);
+    }
+
+    public static ValueTask<T?> FirstOrDefaultAsync<T>(
         DbConnection connection,
         string sql,
         object? parameters,
@@ -48,7 +202,21 @@ internal static class ForgeDirectQueryExecutor
         int? timeoutSeconds,
         CancellationToken cancellationToken)
     {
-        await using var command = CreateCommand(connection, sql, parameters, transaction, timeoutSeconds);
+        var plan = GetPlan(sql, parameters, CommandType.Text) ?? throw new InvalidOperationException("Direct executor cannot handle this command shape.");
+        return FirstOrDefaultAsync(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken, plan);
+    }
+
+    private static async ValueTask<T?> FirstOrDefaultAsync<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters,
+        DbTransaction? transaction,
+        int? timeoutSeconds,
+        CancellationToken cancellationToken,
+        DirectExecutionPlan plan)
+    {
+        ForgeDirectExecutionDiagnostics.HitFirst();
+        await using var command = CreateCommand(connection, sql, parameters, plan, transaction, timeoutSeconds);
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
@@ -59,7 +227,7 @@ internal static class ForgeDirectQueryExecutor
         return GetReader<T>(connection, sql, reader)(reader);
     }
 
-    public static async ValueTask<T?> SingleOrDefaultAsync<T>(
+    public static ValueTask<T?> SingleOrDefaultAsync<T>(
         DbConnection connection,
         string sql,
         object? parameters,
@@ -67,7 +235,21 @@ internal static class ForgeDirectQueryExecutor
         int? timeoutSeconds,
         CancellationToken cancellationToken)
     {
-        await using var command = CreateCommand(connection, sql, parameters, transaction, timeoutSeconds);
+        var plan = GetPlan(sql, parameters, CommandType.Text) ?? throw new InvalidOperationException("Direct executor cannot handle this command shape.");
+        return SingleOrDefaultAsync(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken, plan);
+    }
+
+    private static async ValueTask<T?> SingleOrDefaultAsync<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters,
+        DbTransaction? transaction,
+        int? timeoutSeconds,
+        CancellationToken cancellationToken,
+        DirectExecutionPlan plan)
+    {
+        ForgeDirectExecutionDiagnostics.HitSingle();
+        await using var command = CreateCommand(connection, sql, parameters, plan, transaction, timeoutSeconds);
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
@@ -82,7 +264,7 @@ internal static class ForgeDirectQueryExecutor
         return first;
     }
 
-    public static async ValueTask<IReadOnlyList<T>> QueryAsync<T>(
+    public static ValueTask<IReadOnlyList<T>> QueryAsync<T>(
         DbConnection connection,
         string sql,
         object? parameters,
@@ -90,7 +272,21 @@ internal static class ForgeDirectQueryExecutor
         int? timeoutSeconds,
         CancellationToken cancellationToken)
     {
-        await using var command = CreateCommand(connection, sql, parameters, transaction, timeoutSeconds);
+        var plan = GetPlan(sql, parameters, CommandType.Text) ?? throw new InvalidOperationException("Direct executor cannot handle this command shape.");
+        return QueryAsync<T>(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken, plan);
+    }
+
+    private static async ValueTask<IReadOnlyList<T>> QueryAsync<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters,
+        DbTransaction? transaction,
+        int? timeoutSeconds,
+        CancellationToken cancellationToken,
+        DirectExecutionPlan plan)
+    {
+        ForgeDirectExecutionDiagnostics.HitQuery();
+        await using var command = CreateCommand(connection, sql, parameters, plan, transaction, timeoutSeconds);
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
@@ -102,7 +298,28 @@ internal static class ForgeDirectQueryExecutor
         return rows;
     }
 
-    public static async ValueTask<T?> ScalarAsync<T>(
+
+    public static async IAsyncEnumerable<T> StreamAsync<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters,
+        DbTransaction? transaction,
+        int? timeoutSeconds,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var plan = GetPlan(sql, parameters, CommandType.Text) ?? throw new InvalidOperationException("Direct executor cannot handle this command shape.");
+        ForgeDirectExecutionDiagnostics.HitQuery();
+        await using var command = CreateCommand(connection, sql, parameters, plan, transaction, timeoutSeconds);
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
+        var materializer = GetReader<T>(connection, sql, reader);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            yield return materializer(reader);
+    }
+
+    public static ValueTask<T?> ScalarAsync<T>(
         DbConnection connection,
         string sql,
         object? parameters,
@@ -110,14 +327,28 @@ internal static class ForgeDirectQueryExecutor
         int? timeoutSeconds,
         CancellationToken cancellationToken)
     {
-        await using var command = CreateCommand(connection, sql, parameters, transaction, timeoutSeconds);
+        var plan = GetPlan(sql, parameters, CommandType.Text) ?? throw new InvalidOperationException("Direct executor cannot handle this command shape.");
+        return ScalarAsync<T>(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken, plan);
+    }
+
+    private static async ValueTask<T?> ScalarAsync<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters,
+        DbTransaction? transaction,
+        int? timeoutSeconds,
+        CancellationToken cancellationToken,
+        DirectExecutionPlan plan)
+    {
+        ForgeDirectExecutionDiagnostics.HitScalar();
+        await using var command = CreateCommand(connection, sql, parameters, plan, transaction, timeoutSeconds);
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         var value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
         return ForgeScalarConverter.To<T>(value);
     }
 
-    public static async ValueTask<int> ExecuteAsync(
+    public static ValueTask<int> ExecuteAsync(
         DbConnection connection,
         string sql,
         object? parameters,
@@ -125,13 +356,27 @@ internal static class ForgeDirectQueryExecutor
         int? timeoutSeconds,
         CancellationToken cancellationToken)
     {
-        await using var command = CreateCommand(connection, sql, parameters, transaction, timeoutSeconds);
+        var plan = GetPlan(sql, parameters, CommandType.Text) ?? throw new InvalidOperationException("Direct executor cannot handle this command shape.");
+        return ExecuteAsync(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken, plan);
+    }
+
+    private static async ValueTask<int> ExecuteAsync(
+        DbConnection connection,
+        string sql,
+        object? parameters,
+        DbTransaction? transaction,
+        int? timeoutSeconds,
+        CancellationToken cancellationToken,
+        DirectExecutionPlan plan)
+    {
+        ForgeDirectExecutionDiagnostics.HitExecute();
+        await using var command = CreateCommand(connection, sql, parameters, plan, transaction, timeoutSeconds);
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static DbCommand CreateCommand(DbConnection connection, string sql, object? parameters, DbTransaction? transaction, int? timeoutSeconds)
+    private static DbCommand CreateCommand(DbConnection connection, string sql, object? parameters, DirectExecutionPlan plan, DbTransaction? transaction, int? timeoutSeconds)
     {
         var command = connection.CreateCommand();
         command.CommandText = sql;
@@ -140,28 +385,8 @@ internal static class ForgeDirectQueryExecutor
             command.Transaction = transaction;
         if (timeoutSeconds.HasValue)
             command.CommandTimeout = timeoutSeconds.Value;
-        Bind(command, sql, parameters);
+        plan.Bind(command, parameters);
         return command;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Bind(DbCommand command, string sql, object? parameters)
-    {
-        if (parameters is null)
-            return;
-
-        var type = parameters.GetType();
-        if (IsScalar(type))
-        {
-            Add(command, FirstParameterName(sql), parameters, type);
-            return;
-        }
-
-        var accessor = GetAccessor(type);
-        if (accessor is null)
-            throw new InvalidOperationException($"Unsupported fast-path parameter type: {type.FullName}");
-
-        accessor.Bind(command, parameters);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -195,7 +420,7 @@ internal static class ForgeDirectQueryExecutor
         var getters = new Func<object, object?>[selected.Count];
         for (var i = 0; i < selected.Count; i++)
         {
-            names[i] = selected[i].Name;
+            names[i] = NormalizeParameterName(selected[i].Name);
             types[i] = selected[i].PropertyType;
             getters[i] = CompileGetter(parameterType, selected[i]);
         }
@@ -214,25 +439,40 @@ internal static class ForgeDirectQueryExecutor
 
     private static void Add(DbCommand command, string name, object? value, Type? declaredType)
     {
+        var parameterValue = NormalizeValue(value, declaredType);
+
+        // SQL Server hot path: use SqlParameterCollection.Add(name, SqlDbType) instead of the
+        // provider-neutral CreateParameter + DbType path. This is still hidden behind the
+        // framework-level executor; public APIs remain provider-neutral.
+        if (command is SqlCommand sqlCommand)
+        {
+            var sqlType = ToSqlDbType(declaredType ?? value?.GetType());
+            var sqlParameter = sqlType.HasValue
+                ? sqlCommand.Parameters.Add(name, sqlType.Value)
+                : sqlCommand.Parameters.Add(name, SqlDbType.Variant);
+            sqlParameter.Value = parameterValue;
+            return;
+        }
+
         var p = command.CreateParameter();
-        p.ParameterName = NormalizeParameterName(name);
+        p.ParameterName = name;
         var dbType = ToDbType(declaredType ?? value?.GetType());
         if (dbType.HasValue)
             p.DbType = dbType.Value;
-
-        if (value is null)
-        {
-            p.Value = DBNull.Value;
-        }
-        else
-        {
-            var type = Nullable.GetUnderlyingType(declaredType ?? value.GetType()) ?? (declaredType ?? value.GetType());
-            p.Value = type.IsEnum
-                ? Convert.ChangeType(value, Enum.GetUnderlyingType(type), CultureInfo.InvariantCulture) ?? DBNull.Value
-                : value;
-        }
-
+        p.Value = parameterValue;
         command.Parameters.Add(p);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static object NormalizeValue(object? value, Type? declaredType)
+    {
+        if (value is null)
+            return DBNull.Value;
+
+        var type = Nullable.GetUnderlyingType(declaredType ?? value.GetType()) ?? (declaredType ?? value.GetType());
+        return type.IsEnum
+            ? Convert.ChangeType(value, Enum.GetUnderlyingType(type), CultureInfo.InvariantCulture) ?? DBNull.Value
+            : value;
     }
 
     private static Func<DbDataReader, T> GetReader<T>(DbConnection connection, string sql, DbDataReader reader)
@@ -272,6 +512,31 @@ internal static class ForgeDirectQueryExecutor
     private static string NormalizeParameterName(string name)
         => name.Length > 0 && (name[0] == '@' || name[0] == ':') ? name : "@" + name;
 
+    private static SqlDbType? ToSqlDbType(Type? type)
+    {
+        if (type is null)
+            return null;
+        type = Nullable.GetUnderlyingType(type) ?? type;
+        if (type.IsEnum)
+            type = Enum.GetUnderlyingType(type);
+
+        if (type == typeof(int)) return SqlDbType.Int;
+        if (type == typeof(long)) return SqlDbType.BigInt;
+        if (type == typeof(short)) return SqlDbType.SmallInt;
+        if (type == typeof(byte)) return SqlDbType.TinyInt;
+        if (type == typeof(bool)) return SqlDbType.Bit;
+        if (type == typeof(string)) return SqlDbType.NVarChar;
+        if (type == typeof(decimal)) return SqlDbType.Decimal;
+        if (type == typeof(double)) return SqlDbType.Float;
+        if (type == typeof(float)) return SqlDbType.Real;
+        if (type == typeof(Guid)) return SqlDbType.UniqueIdentifier;
+        if (type == typeof(DateTime)) return SqlDbType.DateTime2;
+        if (type == typeof(DateTimeOffset)) return SqlDbType.DateTimeOffset;
+        if (type == typeof(TimeSpan)) return SqlDbType.Time;
+        if (type == typeof(byte[])) return SqlDbType.VarBinary;
+        return null;
+    }
+
     private static DbType? ToDbType(Type? type)
     {
         if (type is null)
@@ -307,6 +572,48 @@ internal static class ForgeDirectQueryExecutor
     }
 
     private readonly record struct DirectReaderKey(Type ProviderType, Type ResultType, string Sql);
+
+    private readonly record struct DirectPlanKey(string Sql, Type? ParameterType, CommandType CommandType);
+
+    private readonly record struct BuildPlanArgs(object? Parameters);
+
+    private sealed class DirectExecutionPlan
+    {
+        public static readonly DirectExecutionPlan Unsupported = new(null, null, null, false);
+        public static readonly DirectExecutionPlan NoParameters = new(null, null, null, true);
+
+        private readonly DirectParameterAccessor? _accessor;
+        private readonly string? _scalarName;
+        private readonly Type? _scalarType;
+
+        private DirectExecutionPlan(DirectParameterAccessor? accessor, string? scalarName, Type? scalarType, bool isSupported)
+        {
+            _accessor = accessor;
+            _scalarName = scalarName;
+            _scalarType = scalarType;
+            IsSupported = isSupported;
+        }
+
+        public bool IsSupported { get; }
+
+        public static DirectExecutionPlan ForScalar(string name, Type type) => new(null, name, type, true);
+
+        public static DirectExecutionPlan ForAccessor(DirectParameterAccessor accessor) => new(accessor, null, null, true);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Bind(DbCommand command, object? parameters)
+        {
+            if (parameters is null)
+                return;
+            if (_scalarName is not null)
+            {
+                Add(command, _scalarName, parameters, _scalarType);
+                return;
+            }
+
+            _accessor!.Bind(command, parameters);
+        }
+    }
 
     private sealed class DirectParameterAccessor
     {

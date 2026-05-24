@@ -2,6 +2,34 @@ using System.Data;
 
 namespace ForgeORM.Abstractions;
 
+
+/// <summary>
+/// Represents a single named parameter without allocating an anonymous object.
+/// This is used by hot paths such as GetById/Find/Delete and by provider generated executors.
+/// </summary>
+public interface IForgeNamedParameter
+{
+    string Name { get; }
+    object? BoxedValue { get; }
+    Type ValueType { get; }
+}
+
+/// <summary>
+/// Allocation-light strongly typed named parameter. Prefer ForgeParameters.Id(id) over new { Id = id } in hot paths.
+/// </summary>
+public readonly record struct ForgeNamedParameter<T>(string Name, T Value) : IForgeNamedParameter
+{
+    object? IForgeNamedParameter.BoxedValue => Value;
+    Type IForgeNamedParameter.ValueType => typeof(T);
+}
+
+/// <summary>Factory helpers for strongly typed query parameters.</summary>
+public static class ForgeParameters
+{
+    public static ForgeNamedParameter<T> Id<T>(T value) => new("Id", value);
+    public static ForgeNamedParameter<T> Of<T>(string name, T value) => new(name, value);
+}
+
 public sealed class ForgeCommand
 {
     /// <summary>

@@ -174,6 +174,44 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("        return false;");
         sb.AppendLine("    }");
         sb.AppendLine();
+        sb.AppendLine("    public bool TryExecuteSqlServerFirstOrDefaultAsync<T>(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds, CancellationToken cancellationToken, out ValueTask<T?> result)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        if (!IsGeneratedQueryCandidate(sql, CommandType.Text))");
+        sb.AppendLine("        {");
+        sb.AppendLine("            result = default;");
+        sb.AppendLine("            return false;");
+        sb.AppendLine("        }");
+        foreach (var type in entityTypes)
+        {
+            sb.AppendLine("        if (typeof(T).FullName == \"" + Escape(type.ToDisplayString()) + "\")");
+            sb.AppendLine("        {");
+            sb.AppendLine("            result = (ValueTask<T?>)(object)ExecuteSqlServerTypedFirst_" + Safe(type) + "(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken);");
+            sb.AppendLine("            return true;");
+            sb.AppendLine("        }");
+        }
+        sb.AppendLine("        result = default;");
+        sb.AppendLine("        return false;");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine("    public bool TryExecuteSqlServerQueryAsync<T>(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds, CancellationToken cancellationToken, out ValueTask<IReadOnlyList<T>> result)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        if (!IsGeneratedQueryCandidate(sql, CommandType.Text))");
+        sb.AppendLine("        {");
+        sb.AppendLine("            result = default;");
+        sb.AppendLine("            return false;");
+        sb.AppendLine("        }");
+        foreach (var type in entityTypes)
+        {
+            sb.AppendLine("        if (typeof(T).FullName == \"" + Escape(type.ToDisplayString()) + "\")");
+            sb.AppendLine("        {");
+            sb.AppendLine("            result = (ValueTask<IReadOnlyList<T>>)(object)ExecuteSqlServerTypedQuery_" + Safe(type) + "(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken);");
+            sb.AppendLine("            return true;");
+            sb.AppendLine("        }");
+        }
+        sb.AppendLine("        result = default;");
+        sb.AppendLine("        return false;");
+        sb.AppendLine("    }");
+        sb.AppendLine();
         sb.AppendLine("    public bool TryExecuteSqlServerFirstOrDefaultAsync<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken, out ValueTask<T?> result)");
         sb.AppendLine("    {");
         sb.AppendLine("        if (!IsGeneratedQueryCandidate(sql, CommandType.Text))");
@@ -199,6 +237,7 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         {
             EmitReaderFactory(sb, type);
             EmitProviderNeutralExecutors(sb, type);
+            EmitSqlServerTypedExecutors(sb, type);
             EmitSqlServerFirstExecutor(sb, type);
             EmitBinder(sb, type);
             EmitSqlBuilder(sb, type);
@@ -297,6 +336,8 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("    private static object? ExtractParameterValue(object? parameters, string name)");
         sb.AppendLine("    {");
         sb.AppendLine("        if (parameters is null) return null;");
+        sb.AppendLine("        if (parameters is ForgeORM.Abstractions.IForgeNamedParameter namedParameter)");
+        sb.AppendLine("            return string.Equals(namedParameter.Name, name.TrimStart('@', ':'), StringComparison.OrdinalIgnoreCase) ? namedParameter.BoxedValue : null;");
         sb.AppendLine("        var clean = name.TrimStart('@', ':');");
         sb.AppendLine("        if (parameters is System.Collections.Generic.IReadOnlyDictionary<string, object?> ro)");
         sb.AppendLine("            return ro.TryGetValue(clean, out var v) || ro.TryGetValue(name, out v) ? v : null;");
@@ -330,8 +371,41 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("        p.Value = type.IsEnum && value is not null ? Convert.ChangeType(value, Enum.GetUnderlyingType(type)) : value ?? DBNull.Value;");
         sb.AppendLine("    }");
         sb.AppendLine();
+        sb.AppendLine("    private static void AddSqlParameters(SqlCommand command, string sql, object? parameters)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        if (parameters is null) return;");
+        sb.AppendLine("        if (parameters is ForgeORM.Abstractions.IForgeNamedParameter named)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            AddSqlParameter(command, named.Name, named.BoxedValue);");
+        sb.AppendLine("            return;");
+        sb.AppendLine("        }");
+        sb.AppendLine("        var parameterType = parameters.GetType();");
+        sb.AppendLine("        parameterType = Nullable.GetUnderlyingType(parameterType) ?? parameterType;");
+        sb.AppendLine("        if (parameterType.IsPrimitive || parameterType.IsEnum || parameterType == typeof(string) || parameterType == typeof(Guid) || parameterType == typeof(decimal) || parameterType == typeof(DateTime) || parameterType == typeof(DateTimeOffset) || parameterType == typeof(DateOnly) || parameterType == typeof(TimeOnly) || parameterType == typeof(TimeSpan) || parameterType == typeof(byte[]))");
+        sb.AppendLine("        {");
+        sb.AppendLine("            AddSqlParameter(command, FirstSqlParameterName(sql), parameters);");
+        sb.AppendLine("            return;");
+        sb.AppendLine("        }");
+        sb.AppendLine("        var names = SqlParameterNames(sql);");
+        sb.AppendLine("        for (var i = 0; i < names.Length; i++)");
+        sb.AppendLine("            AddSqlParameter(command, names[i], ExtractParameterValue(parameters, names[i]));");
+        sb.AppendLine("    }");
+        sb.AppendLine();
         sb.AppendLine("    private static void AddDbParameters(DbCommand command, string sql, object? parameters)");
         sb.AppendLine("    {");
+        sb.AppendLine("        if (parameters is null) return;");
+        sb.AppendLine("        if (parameters is ForgeORM.Abstractions.IForgeNamedParameter named)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            Add(command, named.Name, named.BoxedValue);");
+        sb.AppendLine("            return;");
+        sb.AppendLine("        }");
+        sb.AppendLine("        var parameterType = parameters.GetType();");
+        sb.AppendLine("        parameterType = Nullable.GetUnderlyingType(parameterType) ?? parameterType;");
+        sb.AppendLine("        if (parameterType.IsPrimitive || parameterType.IsEnum || parameterType == typeof(string) || parameterType == typeof(Guid) || parameterType == typeof(decimal) || parameterType == typeof(DateTime) || parameterType == typeof(DateTimeOffset) || parameterType == typeof(DateOnly) || parameterType == typeof(TimeOnly) || parameterType == typeof(TimeSpan) || parameterType == typeof(byte[]))");
+        sb.AppendLine("        {");
+        sb.AppendLine("            Add(command, FirstSqlParameterName(sql), parameters);");
+        sb.AppendLine("            return;");
+        sb.AppendLine("        }");
         sb.AppendLine("        var names = SqlParameterNames(sql);");
         sb.AppendLine("        for (var i = 0; i < names.Length; i++)");
         sb.AppendLine("            Add(command, names[i], ExtractParameterValue(parameters, names[i]));");
@@ -614,6 +688,67 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
 
         foreach (var p in WritableProperties(type).Where(p => !ctorParamProps.Contains(p.Name)))
             sb.AppendLine(indent + "if (ord_" + p.Name + " >= 0 && !" + readerVariable + ".IsDBNull(ord_" + p.Name + ")) entity." + p.Name + " = " + ReadValueExpression(readerVariable, "ord_" + p.Name, p.Type) + ";");
+    }
+
+
+    private static void EmitSqlServerTypedExecutors(StringBuilder sb, INamedTypeSymbol type)
+    {
+        var full = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        var safe = Safe(type);
+        var props = Properties(type).ToArray();
+        var ctor = PickConstructor(type, props);
+
+        sb.AppendLine();
+        sb.AppendLine("    private static async ValueTask<" + full + "?> ExecuteSqlServerTypedFirst_" + safe + "(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds, CancellationToken cancellationToken)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        var shouldClose = connection.State != ConnectionState.Open;");
+        sb.AppendLine("        if (shouldClose) await connection.OpenAsync(cancellationToken).ConfigureAwait(false);");
+        sb.AppendLine("        try");
+        sb.AppendLine("        {");
+        sb.AppendLine("            await using var command = transaction is null ? new SqlCommand(sql, connection) : new SqlCommand(sql, connection, transaction);");
+        sb.AppendLine("            command.CommandType = CommandType.Text;");
+        sb.AppendLine("            if (timeoutSeconds.HasValue) command.CommandTimeout = timeoutSeconds.Value;");
+        sb.AppendLine("            AddSqlParameters(command, sql, parameters);");
+        sb.AppendLine("            await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);");
+        foreach (var p in props)
+            sb.AppendLine("            var ord_" + p.Name + " = Ordinal(reader, \"" + Escape(ColumnName(p)) + "\");");
+        sb.AppendLine("            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) return default;");
+        EmitEntityMaterializationInto(sb, type, props, ctor, "reader", "            ");
+        sb.AppendLine("            return entity;");
+        sb.AppendLine("        }");
+        sb.AppendLine("        finally");
+        sb.AppendLine("        {");
+        sb.AppendLine("            if (shouldClose) await connection.CloseAsync().ConfigureAwait(false);");
+        sb.AppendLine("        }");
+        sb.AppendLine("    }");
+
+        sb.AppendLine();
+        sb.AppendLine("    private static async ValueTask<IReadOnlyList<" + full + ">> ExecuteSqlServerTypedQuery_" + safe + "(SqlConnection connection, string sql, object? parameters, SqlTransaction? transaction, int? timeoutSeconds, CancellationToken cancellationToken)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        var shouldClose = connection.State != ConnectionState.Open;");
+        sb.AppendLine("        if (shouldClose) await connection.OpenAsync(cancellationToken).ConfigureAwait(false);");
+        sb.AppendLine("        try");
+        sb.AppendLine("        {");
+        sb.AppendLine("            await using var command = transaction is null ? new SqlCommand(sql, connection) : new SqlCommand(sql, connection, transaction);");
+        sb.AppendLine("            command.CommandType = CommandType.Text;");
+        sb.AppendLine("            if (timeoutSeconds.HasValue) command.CommandTimeout = timeoutSeconds.Value;");
+        sb.AppendLine("            AddSqlParameters(command, sql, parameters);");
+        sb.AppendLine("            await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);");
+        foreach (var p in props)
+            sb.AppendLine("            var ord_" + p.Name + " = Ordinal(reader, \"" + Escape(ColumnName(p)) + "\");");
+        sb.AppendLine("            var rows = new global::System.Collections.Generic.List<" + full + ">(32);");
+        sb.AppendLine("            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))");
+        sb.AppendLine("            {");
+        EmitEntityMaterializationInto(sb, type, props, ctor, "reader", "                ");
+        sb.AppendLine("                rows.Add(entity);");
+        sb.AppendLine("            }");
+        sb.AppendLine("            return rows;");
+        sb.AppendLine("        }");
+        sb.AppendLine("        finally");
+        sb.AppendLine("        {");
+        sb.AppendLine("            if (shouldClose) await connection.CloseAsync().ConfigureAwait(false);");
+        sb.AppendLine("        }");
+        sb.AppendLine("    }");
     }
 
     private static void EmitSqlServerFirstExecutor(StringBuilder sb, INamedTypeSymbol type)

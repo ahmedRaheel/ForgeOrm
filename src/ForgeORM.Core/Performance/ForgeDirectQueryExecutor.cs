@@ -6,6 +6,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using ForgeORM.Core;
+using ForgeORM.Abstractions;
 using Microsoft.Data.SqlClient;
 
 namespace ForgeORM.Core.Performance;
@@ -350,6 +351,9 @@ internal static class ForgeDirectQueryExecutor
         if (parameters is null)
             return DirectExecutionPlan.NoParameters;
 
+        if (parameters is IForgeNamedParameter namedParameter)
+            return DirectExecutionPlan.ForScalar(NormalizeParameterName(namedParameter.Name), namedParameter.ValueType);
+
         if (parameters is System.Collections.IDictionary || parameters is IReadOnlyDictionary<string, object?>)
             return DirectExecutionPlan.Unsupported;
 
@@ -662,6 +666,12 @@ internal static class ForgeDirectQueryExecutor
 
             if (_scalarName is not null)
             {
+                if (parameters is IForgeNamedParameter namedParameter)
+                {
+                    AddKnown(command, _scalarName, namedParameter.BoxedValue, namedParameter.ValueType, _scalarSqlDbType, _scalarDbType);
+                    return;
+                }
+
                 AddKnown(command, _scalarName, parameters, _scalarType, _scalarSqlDbType, _scalarDbType);
                 return;
             }

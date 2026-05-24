@@ -26,6 +26,10 @@ public static class ForgePerformancePipeline
             ForgeSourceGeneratedRegistry.TryExecuteQueryAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var generatedQuery))
             return await generatedQuery.ConfigureAwait(false);
 
+        if (ForgeDirectQueryExecutor.CanUse(sql, parameters, commandType))
+            return await ForgeDirectQueryExecutor.QueryAsync<T>(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
+
         var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SequentialAccess);
         await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
 
@@ -52,6 +56,9 @@ public static class ForgePerformancePipeline
         if (!ForgeEnterpriseRuntime.IsEnabled &&
             ForgeSourceGeneratedRegistry.TryExecuteQueryAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var generatedQuery))
             return await generatedQuery.ConfigureAwait(false);
+
+        if (ForgeDirectQueryExecutor.CanUse(sql, parameters, commandType))
+            return await ForgeDirectQueryExecutor.QueryAsync<T>(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken).ConfigureAwait(false);
 
         var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SequentialAccess);
         await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
@@ -121,6 +128,9 @@ public static class ForgePerformancePipeline
             ForgeSourceGeneratedRegistry.TryExecuteFirstOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var generatedFirst))
             return await generatedFirst.ConfigureAwait(false);
 
+        if (ForgeDirectQueryExecutor.CanUse(sql, parameters, commandType))
+            return await ForgeDirectQueryExecutor.FirstOrDefaultAsync<T>(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
         var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
         await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
 
@@ -146,6 +156,9 @@ public static class ForgePerformancePipeline
             ForgeSourceGeneratedRegistry.TryExecuteFirstOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var generatedFirst))
             return await generatedFirst.ConfigureAwait(false);
 
+        if (ForgeDirectQueryExecutor.CanUse(sql, parameters, commandType))
+            return await ForgeDirectQueryExecutor.FirstOrDefaultAsync<T>(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
         var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
         await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
 
@@ -166,6 +179,9 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
+        if (ForgeDirectQueryExecutor.CanUse(sql, parameters, commandType))
+            return await ForgeDirectQueryExecutor.SingleOrDefaultAsync<T>(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
         var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SequentialAccess);
         await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
 
@@ -197,6 +213,9 @@ public static class ForgePerformancePipeline
             };
         }
 
+        if (ForgeDirectQueryExecutor.CanUse(sql, parameters, commandType))
+            return await ForgeDirectQueryExecutor.SingleOrDefaultAsync<T>(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
         var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SequentialAccess);
         await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
 
@@ -216,6 +235,9 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
+        if (ForgeDirectQueryExecutor.CanUse(sql, parameters, commandType))
+            return await ForgeDirectQueryExecutor.ExecuteAsync(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+
         var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<int>(connection, sql, parameters, commandType, CommandBehavior.Default);
         await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
 
@@ -238,6 +260,9 @@ public static class ForgePerformancePipeline
         if (!ForgeEnterpriseRuntime.IsEnabled &&
             ForgeSourceGeneratedRegistry.TryExecuteScalarAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var generatedScalar))
             return await generatedScalar.ConfigureAwait(false);
+
+        if (ForgeDirectQueryExecutor.CanUse(sql, parameters, commandType))
+            return await ForgeDirectQueryExecutor.ScalarAsync<T>(connection, sql, parameters, transaction, timeoutSeconds, cancellationToken).ConfigureAwait(false);
 
         var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SingleResult);
         await using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);

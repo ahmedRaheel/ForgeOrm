@@ -150,9 +150,17 @@ internal static class ForgeSqlServerDirectMaterializerCache
         il.Emit(OpCodes.Ldarg_0);
         il.Emit(OpCodes.Ldc_I4, ordinal);
 
-        var getter = typeof(SqlDataReader).GetMethod(nameof(SqlDataReader.GetFieldValue), new[] { typeof(int) })!
-            .MakeGenericMethod(valueType);
-        il.Emit(OpCodes.Callvirt, getter);
+        var typedGetter = TryGetTypedSqlDataReaderGetter(valueType);
+        if (typedGetter is not null)
+        {
+            il.Emit(OpCodes.Callvirt, typedGetter);
+        }
+        else
+        {
+            var getter = typeof(SqlDataReader).GetMethod(nameof(SqlDataReader.GetFieldValue), new[] { typeof(int) })!
+                .MakeGenericMethod(valueType);
+            il.Emit(OpCodes.Callvirt, getter);
+        }
 
         if (nullableUnderlying is not null)
         {
@@ -160,6 +168,26 @@ internal static class ForgeSqlServerDirectMaterializerCache
             il.Emit(OpCodes.Newobj, ctor);
         }
     }
+    private static MethodInfo? TryGetTypedSqlDataReaderGetter(Type valueType)
+    {
+        valueType = Nullable.GetUnderlyingType(valueType) ?? valueType;
+
+        if (valueType == typeof(int)) return typeof(SqlDataReader).GetMethod(nameof(SqlDataReader.GetInt32), new[] { typeof(int) });
+        if (valueType == typeof(long)) return typeof(SqlDataReader).GetMethod(nameof(SqlDataReader.GetInt64), new[] { typeof(int) });
+        if (valueType == typeof(short)) return typeof(SqlDataReader).GetMethod(nameof(SqlDataReader.GetInt16), new[] { typeof(int) });
+        if (valueType == typeof(byte)) return typeof(SqlDataReader).GetMethod(nameof(SqlDataReader.GetByte), new[] { typeof(int) });
+        if (valueType == typeof(bool)) return typeof(SqlDataReader).GetMethod(nameof(SqlDataReader.GetBoolean), new[] { typeof(int) });
+        if (valueType == typeof(string)) return typeof(SqlDataReader).GetMethod(nameof(SqlDataReader.GetString), new[] { typeof(int) });
+        if (valueType == typeof(decimal)) return typeof(SqlDataReader).GetMethod(nameof(SqlDataReader.GetDecimal), new[] { typeof(int) });
+        if (valueType == typeof(double)) return typeof(SqlDataReader).GetMethod(nameof(SqlDataReader.GetDouble), new[] { typeof(int) });
+        if (valueType == typeof(float)) return typeof(SqlDataReader).GetMethod(nameof(SqlDataReader.GetFloat), new[] { typeof(int) });
+        if (valueType == typeof(Guid)) return typeof(SqlDataReader).GetMethod(nameof(SqlDataReader.GetGuid), new[] { typeof(int) });
+        if (valueType == typeof(DateTime)) return typeof(SqlDataReader).GetMethod(nameof(SqlDataReader.GetDateTime), new[] { typeof(int) });
+        if (valueType == typeof(char)) return typeof(SqlDataReader).GetMethod(nameof(SqlDataReader.GetChar), new[] { typeof(int) });
+
+        return null;
+    }
+
 
     private static ConstructorPlan CreateConstructorPlan(Type type, SqlDataReader reader)
     {

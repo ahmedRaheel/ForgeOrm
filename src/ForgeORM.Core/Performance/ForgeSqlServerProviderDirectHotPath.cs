@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using System.Reflection;
+using System.Text;
 using ForgeORM.Abstractions;
 using ForgeORM.Core;
 using Microsoft.Data.SqlClient;
@@ -60,6 +61,10 @@ internal static class ForgeSqlServerProviderDirectHotPath
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        if (ForgeSourceGeneratedRegistry.TryExecuteQueryAsync<T>(connection, sql, parameters, null, CommandType.Text, timeoutSeconds, cancellationToken, out var generatedRows))
+            return await generatedRows.ConfigureAwait(false);
+
         await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
         await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
         var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
@@ -73,6 +78,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
     {
         using var connection = new SqlConnection(connectionString);
         connection.Open();
+        // Synchronous query intentionally keeps the direct runtime path. Source-generated executors are async ValueTask based.
         using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
         using var reader = command.ExecuteReader(CommandBehavior.SequentialAccess);
         var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
@@ -123,12 +129,17 @@ internal static class ForgeSqlServerProviderDirectHotPath
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
         await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
+        var fieldCount = reader.FieldCount;
+        var columnNames = new string[fieldCount];
+        for (var i = 0; i < fieldCount; i++)
+            columnNames[i] = reader.GetName(i);
+
         var rows = new List<Dictionary<string, object?>>(EstimateCapacity(sql));
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            var row = new Dictionary<string, object?>(reader.FieldCount, StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < reader.FieldCount; i++)
-                row[reader.GetName(i)] = await reader.IsDBNullAsync(i, cancellationToken).ConfigureAwait(false) ? null : reader.GetValue(i);
+            var row = new Dictionary<string, object?>(fieldCount, StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < fieldCount; i++)
+                row[columnNames[i]] = await reader.IsDBNullAsync(i, cancellationToken).ConfigureAwait(false) ? null : reader.GetValue(i);
             rows.Add(row);
         }
         return rows;
@@ -185,13 +196,27 @@ internal static class ForgeSqlServerProviderDirectHotPath
 
     private static SqlServerEntityPlan BuildGetByIdPlan(ForgeEntityMetadata metadata)
     {
-        var key = metadata.Properties.FirstOrDefault(x => string.Equals(x.ColumnName, metadata.KeyColumn, StringComparison.OrdinalIgnoreCase) || x.IsKey);
+        ForgePropertyMetadata? key = null;
+        var columnsBuilder = new StringBuilder(metadata.Properties.Count * 24);
+
+        for (var i = 0; i < metadata.Properties.Count; i++)
+        {
+            var property = metadata.Properties[i];
+
+            if (key is null && (property.IsKey || string.Equals(property.ColumnName, metadata.KeyColumn, StringComparison.OrdinalIgnoreCase)))
+                key = property;
+
+            if (property.IsComputed || string.IsNullOrWhiteSpace(property.ColumnName))
+                continue;
+
+            if (columnsBuilder.Length != 0)
+                columnsBuilder.Append(", ");
+
+            columnsBuilder.Append(property.ColumnName);
+        }
+
         var parameterName = "@" + metadata.KeyColumn;
-        var columns = metadata.Properties.Count == 0
-            ? "*"
-            : string.Join(", ", metadata.Properties.Where(p => !p.IsComputed && !string.IsNullOrWhiteSpace(p.ColumnName)).Select(p => p.ColumnName));
-        if (string.IsNullOrWhiteSpace(columns))
-            columns = "*";
+        var columns = columnsBuilder.Length == 0 ? "*" : columnsBuilder.ToString();
 
         return new SqlServerEntityPlan(
             $"SELECT TOP (1) {columns} FROM {metadata.TableName} WHERE {metadata.KeyColumn} = {parameterName}",
@@ -210,7 +235,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
             return new ExpandedSql(sql, parameters);
 
         Dictionary<string, object?>? replacementBag = null;
-        foreach (var item in values.ToArray())
+        foreach (var item in values)
         {
             var tokenName = item.Key.TrimStart('@', ':');
             if (!TryGetEnumerableValues(item.Value, out var collection))
@@ -244,20 +269,93 @@ internal static class ForgeSqlServerProviderDirectHotPath
 
     private static string ReplaceInToken(string sql, string tokenName, string replacement)
     {
-        sql = System.Text.RegularExpressions.Regex.Replace(
-            sql,
-            $@"IN\s*\(\s*@{System.Text.RegularExpressions.Regex.Escape(tokenName)}\s*\)",
-            replacement,
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        // Regex-free hot path: recognizes both "IN @Ids" and "IN (@Ids)" forms.
+        if (string.IsNullOrEmpty(sql))
+            return sql;
 
-        sql = System.Text.RegularExpressions.Regex.Replace(
-            sql,
-            $@"IN\s+@{System.Text.RegularExpressions.Regex.Escape(tokenName)}\b",
-            replacement,
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        var token = "@" + tokenName;
+        var span = sql.AsSpan();
+        StringBuilder? builder = null;
+        var copyFrom = 0;
 
-        return sql;
+        for (var i = 0; i < span.Length; i++)
+        {
+            if (!IsInKeyword(span, i))
+                continue;
+
+            var cursor = i + 2;
+            cursor = SkipWhitespace(span, cursor);
+
+            var hasOpenParen = cursor < span.Length && span[cursor] == '(';
+            if (hasOpenParen)
+                cursor = SkipWhitespace(span, cursor + 1);
+
+            if (!TokenMatches(span, cursor, token))
+                continue;
+
+            var tokenEnd = cursor + token.Length;
+            if (tokenEnd < span.Length && IsIdentifierChar(span[tokenEnd]))
+                continue;
+
+            var replaceEnd = tokenEnd;
+            if (hasOpenParen)
+            {
+                replaceEnd = SkipWhitespace(span, replaceEnd);
+                if (replaceEnd >= span.Length || span[replaceEnd] != ')')
+                    continue;
+                replaceEnd++;
+            }
+
+            builder ??= new StringBuilder(sql.Length + replacement.Length);
+            builder.Append(sql, copyFrom, i - copyFrom);
+            builder.Append(replacement);
+            copyFrom = replaceEnd;
+            i = replaceEnd - 1;
+        }
+
+        if (builder is null)
+            return sql;
+
+        builder.Append(sql, copyFrom, sql.Length - copyFrom);
+        return builder.ToString();
     }
+
+    private static bool IsInKeyword(ReadOnlySpan<char> span, int index)
+    {
+        if (index + 1 >= span.Length)
+            return false;
+
+        if ((span[index] != 'I' && span[index] != 'i') || (span[index + 1] != 'N' && span[index + 1] != 'n'))
+            return false;
+
+        var before = index == 0 ? '\0' : span[index - 1];
+        var after = index + 2 >= span.Length ? '\0' : span[index + 2];
+        return !IsIdentifierChar(before) && !IsIdentifierChar(after);
+    }
+
+    private static int SkipWhitespace(ReadOnlySpan<char> span, int index)
+    {
+        while (index < span.Length && char.IsWhiteSpace(span[index]))
+            index++;
+        return index;
+    }
+
+    private static bool TokenMatches(ReadOnlySpan<char> span, int index, string token)
+    {
+        if (index < 0 || index + token.Length > span.Length)
+            return false;
+
+        for (var i = 0; i < token.Length; i++)
+        {
+            if (char.ToUpperInvariant(span[index + i]) != char.ToUpperInvariant(token[i]))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsIdentifierChar(char ch)
+        => char.IsLetterOrDigit(ch) || ch == '_' || ch == '@' || ch == ':';
 
     private static Dictionary<string, object?> ExtractParameterBag(object parameters)
     {
@@ -278,13 +376,16 @@ internal static class ForgeSqlServerProviderDirectHotPath
         if (IsScalar(parameters.GetType()))
             return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
-        var binderProperties = parameters.GetType()
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.GetIndexParameters().Length == 0 && p.CanRead);
+        var sourceProperties = parameters.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        var result = new Dictionary<string, object?>(sourceProperties.Length, StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < sourceProperties.Length; i++)
+        {
+            var property = sourceProperties[i];
+            if (property.GetIndexParameters().Length != 0 || !property.CanRead)
+                continue;
 
-        var result = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-        foreach (var property in binderProperties)
             result[property.Name] = property.GetValue(parameters);
+        }
 
         return result;
     }
@@ -479,27 +580,41 @@ internal static class ForgeSqlServerProviderDirectHotPath
 
     private static string[] ExtractParameterNames(string sql)
     {
-        // Hot-path scanner: avoids Regex allocations for every new SQL shape.
+        // Hot-path scanner: avoids Regex/LINQ allocations for every new SQL shape.
         if (string.IsNullOrEmpty(sql) || sql.IndexOf('@') < 0)
             return Array.Empty<string>();
 
         var names = new List<string>(4);
-        ReadOnlySpan<char> span = sql.AsSpan();
+        var span = sql.AsSpan();
         for (var i = 0; i < span.Length; i++)
         {
             if (span[i] != '@')
                 continue;
             if (i + 1 < span.Length && span[i + 1] == '@')
                 continue;
+
             var start = i;
             i++;
             if (i >= span.Length || !(char.IsLetter(span[i]) || span[i] == '_'))
                 continue;
+
             while (i < span.Length && (char.IsLetterOrDigit(span[i]) || span[i] == '_'))
                 i++;
-            var name = sql.Substring(start, i - start);
-            if (!names.Any(x => string.Equals(x, name, StringComparison.OrdinalIgnoreCase)))
-                names.Add(name);
+
+            var exists = false;
+            var candidate = span.Slice(start, i - start);
+            for (var n = 0; n < names.Count; n++)
+            {
+                if (!candidate.Equals(names[n].AsSpan(), StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                exists = true;
+                break;
+            }
+
+            if (!exists)
+                names.Add(candidate.ToString());
+
             i--;
         }
 

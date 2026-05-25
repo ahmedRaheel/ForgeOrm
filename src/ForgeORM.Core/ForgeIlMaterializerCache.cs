@@ -217,17 +217,45 @@ internal static class ForgeIlMaterializerCache
         il.Emit(OpCodes.Ldarg_0);
         il.Emit(OpCodes.Ldc_I4, ordinal);
 
-        var getFieldValue = typeof(DbDataReader)
-            .GetMethod(nameof(DbDataReader.GetFieldValue))!
-            .MakeGenericMethod(valueType);
+        var typedGetter = TryGetTypedDbDataReaderGetter(valueType);
+        if (typedGetter is not null)
+        {
+            il.Emit(OpCodes.Callvirt, typedGetter);
+        }
+        else
+        {
+            var getFieldValue = typeof(DbDataReader)
+                .GetMethod(nameof(DbDataReader.GetFieldValue))!
+                .MakeGenericMethod(valueType);
 
-        il.Emit(OpCodes.Callvirt, getFieldValue);
+            il.Emit(OpCodes.Callvirt, getFieldValue);
+        }
 
         if (nullableUnderlying is not null)
         {
             var ctor = finalType.GetConstructor(new[] { nullableUnderlying })!;
             il.Emit(OpCodes.Newobj, ctor);
         }
+    }
+
+    private static MethodInfo? TryGetTypedDbDataReaderGetter(Type valueType)
+    {
+        valueType = Nullable.GetUnderlyingType(valueType) ?? valueType;
+
+        if (valueType == typeof(int)) return typeof(DbDataReader).GetMethod(nameof(DbDataReader.GetInt32), new[] { typeof(int) });
+        if (valueType == typeof(long)) return typeof(DbDataReader).GetMethod(nameof(DbDataReader.GetInt64), new[] { typeof(int) });
+        if (valueType == typeof(short)) return typeof(DbDataReader).GetMethod(nameof(DbDataReader.GetInt16), new[] { typeof(int) });
+        if (valueType == typeof(byte)) return typeof(DbDataReader).GetMethod(nameof(DbDataReader.GetByte), new[] { typeof(int) });
+        if (valueType == typeof(bool)) return typeof(DbDataReader).GetMethod(nameof(DbDataReader.GetBoolean), new[] { typeof(int) });
+        if (valueType == typeof(string)) return typeof(DbDataReader).GetMethod(nameof(DbDataReader.GetString), new[] { typeof(int) });
+        if (valueType == typeof(decimal)) return typeof(DbDataReader).GetMethod(nameof(DbDataReader.GetDecimal), new[] { typeof(int) });
+        if (valueType == typeof(double)) return typeof(DbDataReader).GetMethod(nameof(DbDataReader.GetDouble), new[] { typeof(int) });
+        if (valueType == typeof(float)) return typeof(DbDataReader).GetMethod(nameof(DbDataReader.GetFloat), new[] { typeof(int) });
+        if (valueType == typeof(Guid)) return typeof(DbDataReader).GetMethod(nameof(DbDataReader.GetGuid), new[] { typeof(int) });
+        if (valueType == typeof(DateTime)) return typeof(DbDataReader).GetMethod(nameof(DbDataReader.GetDateTime), new[] { typeof(int) });
+        if (valueType == typeof(char)) return typeof(DbDataReader).GetMethod(nameof(DbDataReader.GetChar), new[] { typeof(int) });
+
+        return null;
     }
 
 

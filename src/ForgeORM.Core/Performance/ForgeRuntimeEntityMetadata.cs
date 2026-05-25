@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Text;
 using ForgeORM.Abstractions;
 
 namespace ForgeORM.Core.Performance;
@@ -54,21 +55,74 @@ public static class ForgeRuntimeEntityMetadataCache
     private static ForgeRuntimeEntityPlan Build(Type type)
     {
         var table = type.GetCustomAttribute<ForgeTableAttribute>()?.Name ?? type.Name;
+        var sourceProperties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        var buffer = new ForgeRuntimePropertyPlan[sourceProperties.Length];
+        var count = 0;
 
-        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(x => x.CanRead && ForgeMaterializer.IsScalar(x.PropertyType))
-            .Select(CreatePropertyPlan)
-            .ToArray();
+        for (var i = 0; i < sourceProperties.Length; i++)
+        {
+            var property = sourceProperties[i];
+            if (!property.CanRead || !ForgeMaterializer.IsScalar(property.PropertyType))
+                continue;
 
-        var key = properties.FirstOrDefault(x => x.IsKey)
-                  ?? properties.FirstOrDefault(x => x.PropertyName.Equals("Id", StringComparison.OrdinalIgnoreCase));
+            buffer[count++] = CreatePropertyPlan(property);
+        }
 
-        var insertable = properties.Where(x => !x.IsKey && !x.IsComputed).ToArray();
-        var updateable = properties.Where(x => !x.IsKey && !x.IsComputed).ToArray();
-        var selectColumns = properties.Length == 0 ? "*" : string.Join(", ", properties.Select(x => x.ColumnName));
-        var insertColumns = string.Join(", ", insertable.Select(x => x.ColumnName));
-        var insertValues = string.Join(", ", insertable.Select(x => "@" + x.PropertyName));
-        var updateSet = string.Join(", ", updateable.Select(x => $"{x.ColumnName} = @{x.PropertyName}"));
+        var properties = new ForgeRuntimePropertyPlan[count];
+        if (count != 0)
+            Array.Copy(buffer, properties, count);
+
+        ForgeRuntimePropertyPlan? key = null;
+        for (var i = 0; i < properties.Length; i++)
+        {
+            if (properties[i].IsKey)
+            {
+                key = properties[i];
+                break;
+            }
+        }
+
+        if (key is null)
+        {
+            for (var i = 0; i < properties.Length; i++)
+            {
+                if (!properties[i].PropertyName.Equals("Id", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                key = properties[i];
+                break;
+            }
+        }
+
+        var selectColumns = BuildSelectColumns(properties);
+        var insertColumns = new StringBuilder(properties.Length * 16);
+        var insertValues = new StringBuilder(properties.Length * 16);
+        var updateSet = new StringBuilder(properties.Length * 24);
+        var insertableCount = 0;
+        var updateableCount = 0;
+
+        for (var i = 0; i < properties.Length; i++)
+        {
+            var property = properties[i];
+            if (property.IsKey || property.IsComputed)
+                continue;
+
+            if (insertColumns.Length != 0)
+            {
+                insertColumns.Append(", ");
+                insertValues.Append(", ");
+            }
+
+            insertColumns.Append(property.ColumnName);
+            insertValues.Append('@').Append(property.PropertyName);
+            insertableCount++;
+
+            if (updateSet.Length != 0)
+                updateSet.Append(", ");
+
+            updateSet.Append(property.ColumnName).Append(" = @").Append(property.PropertyName);
+            updateableCount++;
+        }
 
         return new ForgeRuntimeEntityPlan
         {
@@ -77,10 +131,27 @@ public static class ForgeRuntimeEntityMetadataCache
             Properties = properties,
             Key = key,
             SelectColumnsSql = selectColumns,
-            InsertSql = insertable.Length == 0 ? $"-- No insertable columns for {type.Name}" : $"INSERT INTO {table} ({insertColumns}) VALUES ({insertValues});",
+            InsertSql = insertableCount == 0 ? $"-- No insertable columns for {type.Name}" : $"INSERT INTO {table} ({insertColumns}) VALUES ({insertValues});",
             UpdateSql = key is null ? $"-- No key for {type.Name}" : $"UPDATE {table} SET {updateSet} WHERE {key.ColumnName} = @{key.PropertyName};",
             DeleteSql = key is null ? $"-- No key for {type.Name}" : $"DELETE FROM {table} WHERE {key.ColumnName} = @{key.PropertyName};"
         };
+    }
+
+    private static string BuildSelectColumns(ForgeRuntimePropertyPlan[] properties)
+    {
+        if (properties.Length == 0)
+            return "*";
+
+        var builder = new StringBuilder(properties.Length * 16);
+        for (var i = 0; i < properties.Length; i++)
+        {
+            if (builder.Length != 0)
+                builder.Append(", ");
+
+            builder.Append(properties[i].ColumnName);
+        }
+
+        return builder.ToString();
     }
 
     private static ForgeRuntimePropertyPlan CreatePropertyPlan(PropertyInfo property)

@@ -259,12 +259,28 @@ public static class ForgeSourceGeneratedRegistry
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryGetProvider(Type type, out IForgeSourceGeneratedAccessorProvider provider)
     {
-        provider = ProviderByType.GetOrAdd(type, static t =>
+        if (ProviderByType.TryGetValue(type, out var cached))
         {
-            lock (Gate)
-                return Providers.FirstOrDefault(x => x.CanHandle(t));
-        })!;
+            provider = cached!;
+            return provider is not null;
+        }
 
+        IForgeSourceGeneratedAccessorProvider? found = null;
+        lock (Gate)
+        {
+            for (var i = 0; i < Providers.Count; i++)
+            {
+                var candidate = Providers[i];
+                if (!candidate.CanHandle(type))
+                    continue;
+
+                found = candidate;
+                break;
+            }
+        }
+
+        ProviderByType[type] = found;
+        provider = found!;
         return provider is not null;
     }
 

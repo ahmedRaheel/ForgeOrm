@@ -27,7 +27,7 @@ public static class ForgeDbConnectionExtensions
     {
         EnsureOpen(connection);
         return ForgePerformancePipeline.QueryAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds)
-            .AsTask().GetAwaiter().GetResult();
+            .GetAwaiter().GetResult();
     }
 
     /// <summary>
@@ -63,7 +63,7 @@ public static class ForgeDbConnectionExtensions
     {
         EnsureOpen(connection);
         return ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds)
-            .AsTask().GetAwaiter().GetResult();
+            .GetAwaiter().GetResult();
     }
 
     /// <summary>
@@ -128,7 +128,7 @@ public static class ForgeDbConnectionExtensions
     {
         EnsureOpen(connection);
         return ForgePerformancePipeline.SingleOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds)
-            .AsTask().GetAwaiter().GetResult();
+            .GetAwaiter().GetResult();
     }
 
     /// <summary>
@@ -163,7 +163,7 @@ public static class ForgeDbConnectionExtensions
     {
         EnsureOpen(connection);
         return ForgePerformancePipeline.ExecuteAsync(connection, sql, parameters, transaction, commandType, timeoutSeconds)
-            .AsTask().GetAwaiter().GetResult();
+            .GetAwaiter().GetResult();
     }
 
     /// <summary>
@@ -198,7 +198,7 @@ public static class ForgeDbConnectionExtensions
     {
         EnsureOpen(connection);
         return ForgePerformancePipeline.ExecuteScalarAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds)
-            .AsTask().GetAwaiter().GetResult();
+            .GetAwaiter().GetResult();
     }
 
     /// <summary>

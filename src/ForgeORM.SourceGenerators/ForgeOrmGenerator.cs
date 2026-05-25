@@ -107,7 +107,8 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         {
             sb.AppendLine("        if (typeof(T).FullName == \"" + Escape(type.ToDisplayString()) + "\")");
             sb.AppendLine("        {");
-            sb.AppendLine("            readerFunc = (Func<DbDataReader, T>)(object)CreateReader_" + Safe(type) + "(reader);");
+            sb.AppendLine("            var objectReader = CreateReader_" + Safe(type) + "(reader);");
+            sb.AppendLine("            readerFunc = r => (T)objectReader(r);");
             sb.AppendLine("            return true;");
             sb.AppendLine("        }");
         }
@@ -125,7 +126,8 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("        binder = GetBinder(type);");
         sb.AppendLine("        return true;");
         sb.AppendLine("    }");
-        sb.AppendLine();        sb.AppendLine("    public bool TryGetTypedBinder<T>(out IForgeParameterBinder<T>? binder)");
+        sb.AppendLine();
+        sb.AppendLine("    public bool TryGetTypedBinder<T>(out IForgeParameterBinder<T>? binder)");
         sb.AppendLine("    {");
         foreach (var type in entityTypes)
         {

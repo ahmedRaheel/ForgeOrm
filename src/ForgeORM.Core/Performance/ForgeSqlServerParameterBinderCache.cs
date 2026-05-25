@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Text;
 using Microsoft.Data.SqlClient;
 
 namespace ForgeORM.Core.Performance;
@@ -10,14 +11,42 @@ internal static class ForgeSqlServerParameterBinderCache
     private static readonly ConcurrentDictionary<SqlServerParameterBinderKey, Action<SqlCommand, object>> Cache = new();
 
     public static Action<SqlCommand, object> GetOrAdd(Type parameterType, string[] parameterNames)
-        => Cache.GetOrAdd(new SqlServerParameterBinderKey(parameterType, string.Join("|", parameterNames.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))),
+        => Cache.GetOrAdd(new SqlServerParameterBinderKey(parameterType, BuildParameterNameKey(parameterNames)),
             key => Build(parameterType, parameterNames));
+
+    private static string BuildParameterNameKey(string[] parameterNames)
+    {
+        if (parameterNames.Length == 0)
+            return string.Empty;
+
+        var copy = new string[parameterNames.Length];
+        Array.Copy(parameterNames, copy, parameterNames.Length);
+        Array.Sort(copy, StringComparer.OrdinalIgnoreCase);
+
+        var builder = new StringBuilder(copy.Length * 12);
+        for (var i = 0; i < copy.Length; i++)
+        {
+            if (builder.Length != 0)
+                builder.Append('|');
+
+            builder.Append(copy[i]);
+        }
+
+        return builder.ToString();
+    }
 
     private static Action<SqlCommand, object> Build(Type parameterType, string[] parameterNames)
     {
-        var properties = parameterType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanRead)
-            .ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
+        var sourceProperties = parameterType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        var properties = new Dictionary<string, PropertyInfo>(sourceProperties.Length, StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < sourceProperties.Length; i++)
+        {
+            var property = sourceProperties[i];
+            if (!property.CanRead || property.GetIndexParameters().Length != 0)
+                continue;
+
+            properties[property.Name] = property;
+        }
 
         var method = new DynamicMethod(
             $"ForgeORM_SqlServerBind_{parameterType.Name}_{Guid.NewGuid():N}",

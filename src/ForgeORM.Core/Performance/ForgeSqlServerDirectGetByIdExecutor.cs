@@ -1,4 +1,5 @@
 using System.Data;
+using System.Text;
 using Microsoft.Data.SqlClient;
 using ForgeORM.Abstractions;
 
@@ -91,7 +92,17 @@ internal static class ForgeSqlServerDirectGetByIdExecutor<T>
 
         public static ExecutorPlan Create(ForgeEntityMetadata metadata)
         {
-            var key = metadata.Properties.FirstOrDefault(x => x.IsKey || string.Equals(x.ColumnName, metadata.KeyColumn, StringComparison.OrdinalIgnoreCase));
+            ForgePropertyMetadata? key = null;
+            for (var i = 0; i < metadata.Properties.Count; i++)
+            {
+                var property = metadata.Properties[i];
+                if (property.IsKey || string.Equals(property.ColumnName, metadata.KeyColumn, StringComparison.OrdinalIgnoreCase))
+                {
+                    key = property;
+                    break;
+                }
+            }
+
             var keyType = key?.PropertyType ?? typeof(object);
             var parameterName = "@" + metadata.KeyColumn;
             var sql = BuildSql(metadata);
@@ -100,13 +111,20 @@ internal static class ForgeSqlServerDirectGetByIdExecutor<T>
 
         private static string BuildSql(ForgeEntityMetadata metadata)
         {
-            var columns = metadata.Properties.Count == 0
-                ? "*"
-                : string.Join(", ", metadata.Properties.Where(p => !string.IsNullOrWhiteSpace(p.ColumnName)).Select(p => p.ColumnName));
+            var builder = new StringBuilder(metadata.Properties.Count * 24);
+            for (var i = 0; i < metadata.Properties.Count; i++)
+            {
+                var columnName = metadata.Properties[i].ColumnName;
+                if (string.IsNullOrWhiteSpace(columnName))
+                    continue;
 
-            if (string.IsNullOrWhiteSpace(columns))
-                columns = "*";
+                if (builder.Length != 0)
+                    builder.Append(", ");
 
+                builder.Append(columnName);
+            }
+
+            var columns = builder.Length == 0 ? "*" : builder.ToString();
             return $"SELECT TOP (1) {columns} FROM {metadata.TableName} WHERE {metadata.KeyColumn} = @{metadata.KeyColumn}";
         }
 

@@ -44,19 +44,32 @@ internal static class ForgeIlAccessors
     private static PropertyAccessorPlan BuildPlan(Type type)
     {
         var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-        var accessors = properties
-            .Select(p => new ForgePropertyAccessor(
-                p,
-                p.Name,
-                p.PropertyType,
-                p.CanRead ? Getter(p) : null,
-                p.CanWrite ? Setter(p) : null))
-            .ToArray();
+        if (properties.Length == 0)
+        {
+            return new PropertyAccessorPlan(
+                type,
+                Array.Empty<ForgePropertyAccessor>(),
+                new Dictionary<string, ForgePropertyAccessor>(0, StringComparer.OrdinalIgnoreCase));
+        }
 
-        return new PropertyAccessorPlan(
-            type,
-            accessors,
-            accessors.ToDictionary(x => x.Name, x => x, StringComparer.OrdinalIgnoreCase));
+        var accessors = new ForgePropertyAccessor[properties.Length];
+        var byName = new Dictionary<string, ForgePropertyAccessor>(properties.Length, StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 0; i < properties.Length; i++)
+        {
+            var property = properties[i];
+            var accessor = new ForgePropertyAccessor(
+                property,
+                property.Name,
+                property.PropertyType,
+                property.CanRead ? Getter(property) : null,
+                property.CanWrite ? Setter(property) : null);
+
+            accessors[i] = accessor;
+            byName[property.Name] = accessor;
+        }
+
+        return new PropertyAccessorPlan(type, accessors, byName);
     }
 
     private static Func<object, object?> BuildGetter(PropertyInfo property)

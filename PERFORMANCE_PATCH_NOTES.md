@@ -14,3 +14,32 @@ Applied in this ZIP:
 10. Existing ValueTask-based hot APIs remain preserved and the direct SQL Server async query path uses ValueTask-based source-generated executors when registered.
 
 Note: I could not run `dotnet build` in this environment because the .NET SDK is not installed in the sandbox. The patch was applied directly to source files and brace/syntax structure was checked textually.
+
+## Allocation patch v2 — typed key hot path
+
+Merged additional Query_By_Id allocation fixes focused on the remaining ~17.3 KB allocation profile:
+
+- Added typed SQL Server direct GetById executor overloads: `Execute<TKey>` and `ExecuteAsync<TKey>`.
+- Added per-entity + per-key-type static executor plan cache via `TypedPlanCache<TKey>`.
+- Added provider-direct typed API: `ForgeSqlServerProviderDirectHotPath.GetById<T,TKey>` and async equivalent.
+- Updated `ForgeDb.GetById<T,TKey>` to call the typed provider-direct path instead of the object-key overload.
+- Added typed `Find<T,TKey>` / `FindAsync<T,TKey>` benchmark APIs so `Find<Order,int>(id)` avoids object-key boxing at the public API and executor dispatch level.
+- Kept object overloads for compatibility, but benchmark hot paths should prefer typed-key overloads.
+
+Recommended benchmark target:
+
+```csharp
+[Benchmark]
+public Order? ForgeORM_Query_By_Id()
+{
+    return _db.Find<Order, int>(_id);
+    // or: return _db.GetById<Order, int>(_id);
+}
+```
+
+Avoid this in the benchmark path because it boxes the key before ForgeORM can help:
+
+```csharp
+_db.Find<Order>(_id);
+_db.GetById<Order>(_id);
+```

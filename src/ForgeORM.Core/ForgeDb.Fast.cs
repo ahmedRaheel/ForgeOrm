@@ -36,6 +36,34 @@ public partial class ForgeDb
     }
 
     /// <summary>
+    /// Fast primary-key lookup path with a typed key. This avoids object-key boxing in the public benchmark path.
+    /// </summary>
+    public T? Find<T, TKey>(TKey id, int? timeoutSeconds = null)
+    {
+        var metadata = _metadata.Resolve<T>();
+
+        if (IsSqlServerProvider())
+            return ForgeSqlServerDirectGetByIdExecutor<T>.Execute(_connectionString, metadata, id);
+
+        var c = Provider.BuildGetById(metadata, id!);
+        return ForgeFrameworkExecutionPolicy.FirstOrDefault<T, ForgeIdParameter<TKey>>(Provider, _connectionString, c.CommandText, ForgeIdParameter<TKey>.Create(id), timeoutSeconds);
+    }
+
+    /// <summary>
+    /// Fast primary-key lookup path with a typed key. This avoids object-key boxing in the public benchmark path.
+    /// </summary>
+    public async ValueTask<T?> FindAsync<T, TKey>(TKey id, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+    {
+        var metadata = _metadata.Resolve<T>();
+
+        if (IsSqlServerProvider())
+            return await ForgeSqlServerDirectGetByIdExecutor<T>.ExecuteAsync(_connectionString, metadata, id, cancellationToken).ConfigureAwait(false);
+
+        var c = Provider.BuildGetById(metadata, id!);
+        return await ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T, ForgeIdParameter<TKey>>(Provider, _connectionString, c.CommandText, ForgeIdParameter<TKey>.Create(id), timeoutSeconds, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Fast raw SQL list path. Skips expression translation and navigation processing.
     /// </summary>
     public IReadOnlyList<T> QueryFast<T>(string sql, object? parameters = null, int? timeoutSeconds = null)

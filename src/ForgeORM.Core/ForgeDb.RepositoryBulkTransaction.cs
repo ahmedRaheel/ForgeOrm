@@ -43,7 +43,7 @@ public partial class ForgeDb
     {
         var metadata = _metadata.Resolve<T>();
         if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-            return ForgeSqlServerProviderDirectHotPath.GetById<T>(_connectionString, metadata, id!);
+            return ForgeSqlServerProviderDirectHotPath.GetById<T, TKey>(_connectionString, metadata, id);
 
         var c = Provider.BuildGetById(metadata, id!);
         return ForgeFrameworkExecutionPolicy.FirstOrDefault<T, ForgeIdParameter<TKey>>(Provider, _connectionString, c.CommandText, ForgeIdParameter<TKey>.Create(id), timeoutSeconds: null);
@@ -54,7 +54,7 @@ public partial class ForgeDb
     {
         var metadata = _metadata.Resolve<T>();
         if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-            return await ForgeSqlServerProviderDirectHotPath.GetByIdAsync<T>(_connectionString, metadata, id!, cancellationToken).ConfigureAwait(false);
+            return await ForgeSqlServerProviderDirectHotPath.GetByIdAsync<T, TKey>(_connectionString, metadata, id, cancellationToken).ConfigureAwait(false);
 
         var c = Provider.BuildGetById(metadata, id!);
         return await ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T, ForgeIdParameter<TKey>>(Provider, _connectionString, c.CommandText, ForgeIdParameter<TKey>.Create(id), timeoutSeconds: null, cancellationToken).ConfigureAwait(false);

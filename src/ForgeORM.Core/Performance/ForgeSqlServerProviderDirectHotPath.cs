@@ -28,7 +28,13 @@ internal static class ForgeSqlServerProviderDirectHotPath
     public static T? GetById<T>(string connectionString, ForgeEntityMetadata metadata, object id)
         => ForgeSqlServerDirectGetByIdExecutor<T>.Execute(connectionString, metadata, id);
 
+    public static T? GetById<T, TKey>(string connectionString, ForgeEntityMetadata metadata, TKey id)
+        => ForgeSqlServerDirectGetByIdExecutor<T>.Execute(connectionString, metadata, id);
+
     public static ValueTask<T?> GetByIdAsync<T>(string connectionString, ForgeEntityMetadata metadata, object id, CancellationToken cancellationToken)
+        => ForgeSqlServerDirectGetByIdExecutor<T>.ExecuteAsync(connectionString, metadata, id, cancellationToken);
+
+    public static ValueTask<T?> GetByIdAsync<T, TKey>(string connectionString, ForgeEntityMetadata metadata, TKey id, CancellationToken cancellationToken)
         => ForgeSqlServerDirectGetByIdExecutor<T>.ExecuteAsync(connectionString, metadata, id, cancellationToken);
 
     public static async ValueTask<T?> QueryFirstOrDefaultAsync<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)

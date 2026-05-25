@@ -27,7 +27,7 @@ public static class ForgeAdo
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the T operation.</returns>
     public static IReadOnlyList<T> Query<T>(DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null)
-        => ForgePerformancePipeline.Query<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds);
+        => QueryAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds).GetAwaiter().GetResult();
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -101,7 +101,7 @@ public static class ForgeAdo
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the Execute operation.</returns>
     public static int Execute(DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null)
-      => ForgePerformancePipeline.Execute(connection, sql, parameters, transaction, commandType, timeoutSeconds);
+      => ExecuteAsync(connection, sql, parameters, transaction, commandType, timeoutSeconds).GetAwaiter().GetResult();
     /// <summary>
     /// Executes the ExecuteAsync operation.
     /// </summary>
@@ -137,7 +137,7 @@ public static class ForgeAdo
     /// <param name="timeoutSeconds">The timeoutSeconds value.</param>
     /// <returns>The result of the T operation.</returns>
     public static T? ExecuteScalar<T>(DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null)
-      => ForgePerformancePipeline.ExecuteScalar<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds);
+      => ExecuteScalarAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds).GetAwaiter().GetResult();
 
     /// <summary>
     /// Executes the T operation.

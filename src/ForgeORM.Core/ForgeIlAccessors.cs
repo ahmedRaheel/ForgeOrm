@@ -175,15 +175,3 @@ internal static class ForgeIlAccessors
         return new string(chars);
     }
 }
-
-internal sealed record PropertyAccessorPlan(
-    Type Type,
-    IReadOnlyList<ForgePropertyAccessor> Properties,
-    IReadOnlyDictionary<string, ForgePropertyAccessor> ByName);
-
-internal sealed record ForgePropertyAccessor(
-    PropertyInfo Property,
-    string Name,
-    Type PropertyType,
-    Func<object, object?>? Getter,
-    Action<object, object?>? Setter);

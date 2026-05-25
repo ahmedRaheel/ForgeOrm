@@ -2,7 +2,6 @@ using System.Buffers;
 using ForgeORM.Core;
 using ForgeORM.Core.Search;
 using ForgeORM.DataFrame;
-
 public static class AdvancedDbSurfaceEndpoints
 {
     public static IEndpointRouteBuilder MapAdvancedDbSurfaceSamples(this IEndpointRouteBuilder app)
@@ -155,17 +154,4 @@ public static class AdvancedDbSurfaceEndpoints
 
         return app;
     }
-}
-
-public sealed record OrderApproval;
-public sealed record OrderApprovalRequest(int OrderId);
-public sealed record RecalculateCustomerScore(int CustomerId);
-public sealed record PriceRuleResult(decimal Price = 0m, string Currency = "USD", string Rule = "Default");
-public sealed class OrderDto
-{
-    public int Id { get; set; }
-    public int CustomerId { get; set; }
-    public string OrderNo { get; set; } = string.Empty;
-    public decimal GrandTotal { get; set; }
-    public DateTimeOffset CreatedAt { get; set; }
 }

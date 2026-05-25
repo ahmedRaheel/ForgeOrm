@@ -29,16 +29,3 @@ public static class ForgeCompiledQueryCache
         return ForgeFastHash.FingerprintSql(value);
     }
 }
-
-public readonly record struct ForgeCompiledQueryKey(
-    string Provider,
-    string ResultType,
-    string? ParameterType,
-    string QueryFingerprint);
-
-public sealed record ForgeCompiledQueryPlan(
-    string Sql,
-    Type ResultType,
-    Type? ParameterType,
-    string Provider,
-    string QueryFingerprint);

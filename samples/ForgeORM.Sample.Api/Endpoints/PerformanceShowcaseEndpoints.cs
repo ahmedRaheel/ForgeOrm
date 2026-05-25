@@ -1,5 +1,4 @@
 using ForgeORM.Core;
-
 public static class PerformanceShowcaseEndpoints
 {
     public static IEndpointRouteBuilder MapPerformanceShowcaseEndpoints(this IEndpointRouteBuilder app)
@@ -31,10 +30,4 @@ public static class PerformanceShowcaseEndpoints
 
         return app;
     }
-}
-
-public sealed class OrderSearchRequest
-{
-    public int CustomerId { get; set; }
-    public string Status { get; set; } = "Paid";
 }

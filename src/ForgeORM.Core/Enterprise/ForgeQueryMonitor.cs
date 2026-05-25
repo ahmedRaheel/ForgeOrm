@@ -3,15 +3,6 @@ using System.Diagnostics;
 
 namespace ForgeORM.Core;
 
-public sealed record ForgeQueryMetricV2(
-    string SqlHash,
-    string? QueryTag,
-    TimeSpan Duration,
-    int? Rows,
-    bool Success,
-    string? Error,
-    DateTimeOffset TimestampUtc);
-
 /// <summary>
 /// Lightweight in-process query monitor for slow query dashboards, heatmaps, and diagnostics.
 /// </summary>

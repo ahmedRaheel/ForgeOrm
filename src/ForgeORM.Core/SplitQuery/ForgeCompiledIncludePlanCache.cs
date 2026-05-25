@@ -3,13 +3,6 @@ using System.Reflection;
 
 namespace ForgeORM.Core;
 
-internal sealed record ForgeCompiledIncludePlan(
-    Type RootType,
-    IReadOnlyList<PropertyInfo> Includes,
-    bool UseSplitQuery,
-    bool UseIdentityResolution,
-    string Fingerprint);
-
 internal static class ForgeCompiledIncludePlanCache
 {
     private static readonly ConcurrentDictionary<string, ForgeCompiledIncludePlan> Plans = new(StringComparer.Ordinal);

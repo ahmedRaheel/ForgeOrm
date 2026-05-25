@@ -61,6 +61,3 @@ public static class ForgeGeneratedSqlCache
         return name.Contains('.') ? string.Join('.', name.Split('.').Select(x => '[' + x.Replace("]", "]]") + ']')) : '[' + name.Replace("]", "]]") + ']';
     }
 }
-
-public readonly record struct ForgeGeneratedSqlKey(Type EntityType, string ProviderName);
-public sealed record ForgeGeneratedSqlPlan(string SelectById, string SelectAll, string Insert, string Update, string Delete);

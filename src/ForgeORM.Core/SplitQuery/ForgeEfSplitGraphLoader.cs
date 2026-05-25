@@ -447,10 +447,3 @@ internal static class ForgeEfSplitGraphLoader
     private static string NormalizeName(string name)
         => new(name.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 }
-
-internal sealed record ForgeEfEntityShape(
-    Type EntityType,
-    string TableName,
-    IReadOnlyList<PropertyInfo> KeyProperties,
-    IReadOnlyList<PropertyInfo> ScalarProperties,
-    string ColumnList);

@@ -83,7 +83,3 @@ internal static class ForgePerformanceCommandPlanCache
         return names.Count == 0 ? Array.Empty<string>() : names.ToArray();
     }
 }
-
-internal readonly record struct ForgePerformanceCommandPlanKey(string ProviderName, CommandType CommandType, string ParameterType, string SqlFingerprint);
-
-internal sealed record ForgePerformanceCommandPlan(string ProviderName, string Sql, CommandType CommandType, Type? ParameterType, string[] ParameterNames);

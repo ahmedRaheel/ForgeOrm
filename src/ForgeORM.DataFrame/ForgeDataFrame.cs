@@ -890,5 +890,3 @@ public sealed class ForgeDataFrame
             values.Select(v => v is null or DBNull ? null : v.ToString()));
     }
 }
-
-public enum ForgeJoinKind { Inner, Left, Right, Full }

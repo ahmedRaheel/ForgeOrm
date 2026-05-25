@@ -265,11 +265,16 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
             ns.Contains(".Projections.", StringComparison.Ordinal))
             return Properties(type).Any(IsSupportedGeneratedProperty);
 
-        return type.Name.EndsWith("Dto", StringComparison.OrdinalIgnoreCase) ||
-               type.Name.EndsWith("Record", StringComparison.OrdinalIgnoreCase) ||
-               type.Name.EndsWith("Projection", StringComparison.OrdinalIgnoreCase)
-            ? Properties(type).Any(IsSupportedGeneratedProperty)
-            : false;
+        if (type.Name.EndsWith("Attribute", StringComparison.OrdinalIgnoreCase) ||
+            type.Name.EndsWith("Exception", StringComparison.OrdinalIgnoreCase) ||
+            type.Name.EndsWith("Options", StringComparison.OrdinalIgnoreCase) ||
+            type.Name.EndsWith("Settings", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        // Performance default: generate materializers for any public app/benchmark DTO/entity shape
+        // with supported scalar columns. This prevents SourceGenerated mode from silently falling
+        // back to MSIL just because the user's benchmark model is not under a .Models namespace.
+        return Properties(type).Any(IsSupportedGeneratedProperty);
     }
 
     private static bool IsSupportedGeneratedProperty(IPropertySymbol p)
@@ -325,7 +330,7 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         var ctorParamProps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         sb.AppendLine();
-        sb.AppendLine("    private static Func<DbDataReader, object> CreateReader_" + safe + "(DbDataReader reader)");
+        sb.AppendLine("    private static Func<DbDataReader, " + full + "> CreateReader_" + safe + "(DbDataReader reader)");
         sb.AppendLine("    {");
         foreach (var p in props)
         {

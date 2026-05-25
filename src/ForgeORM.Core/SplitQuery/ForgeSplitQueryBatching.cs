@@ -4,8 +4,6 @@ using Microsoft.Data.SqlClient;
 
 namespace ForgeORM.Core;
 
-internal sealed record ForgeSplitIdFilter(string Predicate, object Parameters);
-
 internal static class ForgeSplitQueryBatching
 {
     public const int DefaultInlineParameterLimit = 1800;

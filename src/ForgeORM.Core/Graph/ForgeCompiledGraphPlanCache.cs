@@ -36,6 +36,3 @@ public static class ForgeCompiledGraphPlanCache
             .FirstOrDefault();
     }
 }
-
-public sealed record ForgeCompiledGraphPlan(ForgeRuntimeEntityPlan Root, IReadOnlyList<ForgeCompiledGraphCollectionPlan> ChildCollections);
-public sealed record ForgeCompiledGraphCollectionPlan(string PropertyName, Type? ElementType);

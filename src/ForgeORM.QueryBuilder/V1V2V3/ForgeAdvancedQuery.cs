@@ -228,5 +228,3 @@ public sealed class ForgeAdvancedQuery<T>
         _ => throw new NotSupportedException($"Operator {type} is not supported.")
     };
 }
-
-public sealed record ForgeAdvancedRenderedQuery(string Sql, object? Parameters);

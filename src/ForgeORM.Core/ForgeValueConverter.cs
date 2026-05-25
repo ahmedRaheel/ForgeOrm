@@ -252,30 +252,3 @@ internal static class ForgeValueConverter
         return ForgeRuntimeAccessorCache.DefaultValue(type);
     }
 }
-
-public enum ForgeEnumStorage
-{
-    String = 0,
-    Number = 1
-}
-
-[AttributeUsage(AttributeTargets.Enum)]
-public sealed class ForgeEnumStorageAttribute : Attribute
-{
-    /// <summary>
-    /// Executes the ForgeEnumStorageAttribute operation.
-    /// </summary>
-    /// <param name="storage">The storage value.</param>
-    /// <returns>The result of the ForgeEnumStorageAttribute operation.</returns>
-    public ForgeEnumStorage Storage { get; }
-
-    /// <summary>
-    /// Executes the ForgeEnumStorageAttribute operation.
-    /// </summary>
-    /// <param name="storage">The storage value.</param>
-    /// <returns>The result of the ForgeEnumStorageAttribute operation.</returns>
-    public ForgeEnumStorageAttribute(ForgeEnumStorage storage)
-    {
-        Storage = storage;
-    }
-}

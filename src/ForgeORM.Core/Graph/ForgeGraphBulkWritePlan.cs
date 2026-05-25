@@ -11,10 +11,3 @@ public sealed record ForgeGraphBulkWritePlan(
     string Provider,
     ForgeBulkStrategy Strategy,
     IReadOnlyList<ForgeGraphBulkNode> Nodes);
-
-public sealed record ForgeGraphBulkNode(
-    Type EntityType,
-    string TableName,
-    string? ParentKeyColumn,
-    string? ForeignKeyColumn,
-    int EstimatedRows);

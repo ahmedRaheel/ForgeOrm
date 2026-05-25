@@ -19,5 +19,3 @@ public static class ForgeExpressionSqlPlanCache
     private static string Fingerprint(string text)
         => ForgeFastHash.FingerprintSql(text);
 }
-
-public readonly record struct ForgeExpressionSqlKey(Type EntityType, string ProviderName, string ExpressionFingerprint);

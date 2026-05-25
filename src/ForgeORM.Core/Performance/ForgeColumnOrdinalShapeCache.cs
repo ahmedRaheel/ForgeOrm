@@ -64,27 +64,3 @@ public static class ForgeColumnOrdinalShapeCache
         return new string(buffer[..index]);
     }
 }
-
-public readonly record struct ForgeColumnShapeKey(string ProviderName, Type TargetType, string ShapeFingerprint);
-
-public readonly record struct DbDataReaderColumnShape(string Name, Type ClrType, string DbTypeName, bool AllowDBNull);
-
-public sealed record DbDataReaderShape(string ProviderName, Type TargetType, DbDataReaderColumnShape[] Columns)
-{
-    public static DbDataReaderShape From(Type targetType, DbDataReader reader)
-    {
-        var columns = new DbDataReaderColumnShape[reader.FieldCount];
-        System.Data.DataTable? schema = null;
-        try { schema = reader.GetSchemaTable(); } catch { }
-
-        for (var i = 0; i < reader.FieldCount; i++)
-        {
-            var dbTypeName = string.Empty;
-            var allowNull = true;
-            try { dbTypeName = reader.GetDataTypeName(i) ?? string.Empty; } catch { }
-            try { allowNull = schema is not null && i < schema.Rows.Count && schema.Rows[i]["AllowDBNull"] is bool b ? b : true; } catch { }
-            columns[i] = new DbDataReaderColumnShape(reader.GetName(i), reader.GetFieldType(i), dbTypeName, allowNull);
-        }
-        return new DbDataReaderShape(reader.GetType().FullName ?? reader.GetType().Name, targetType, columns);
-    }
-}

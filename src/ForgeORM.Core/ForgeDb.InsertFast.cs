@@ -183,12 +183,3 @@ public partial class ForgeDb
         }
     }
 }
-
-internal sealed class ForgeCompiledInsertPlan
-{
-    public required string Sql { get; init; }
-
-    public required PropertyInfo[] Properties { get; init; }
-
-    public required Func<object, object?>[] Getters { get; init; }
-}

@@ -61,17 +61,3 @@ public static class ForgeEfStyleSplitQueryExtensions
     internal static ForgeEfSplitQueryOptions GetEfSplitOptions<T>(IForgeQuery<T> query)
         => Options.TryGetValue(query, out var options) ? options : ForgeEfSplitQueryOptions.Default;
 }
-
-internal enum ForgeEfSplitQueryMode
-{
-    SplitQuery,
-    SingleQueryRequested
-}
-
-internal sealed class ForgeEfSplitQueryOptions
-{
-    public static readonly ForgeEfSplitQueryOptions Default = new();
-    public ForgeEfSplitQueryMode Mode { get; set; } = ForgeEfSplitQueryMode.SplitQuery;
-    public bool UseIdentityResolution { get; set; }
-    public List<LambdaExpression> ThenIncludes { get; } = [];
-}

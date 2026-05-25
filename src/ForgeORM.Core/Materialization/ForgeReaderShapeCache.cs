@@ -42,10 +42,3 @@ public static class ForgeReaderShapeCache
         return new ForgeReaderShape(resultType, ordinals);
     }
 }
-
-public sealed record ForgeReaderShape(Type ResultType, IReadOnlyDictionary<string, int> Ordinals)
-{
-    public bool TryGetOrdinal(string columnName, out int ordinal)
-        => Ordinals.TryGetValue(columnName, out ordinal)
-           || Ordinals.TryGetValue(ForgeColumnOrdinalShapeCache.Normalize(columnName), out ordinal);
-}

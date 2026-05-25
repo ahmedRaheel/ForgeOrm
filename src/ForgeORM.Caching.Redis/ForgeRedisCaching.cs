@@ -111,7 +111,7 @@ public sealed class ForgeDistributedQueryCache : IForgeQueryCache
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the RemoveAsync operation.</returns>
     public ValueTask RemoveAsync(string key, CancellationToken cancellationToken = default)
-        => _cache.RemoveAsync(BuildKey(key), cancellationToken);
+        => new( _cache.RemoveAsync(BuildKey(key), cancellationToken));
 
     /// <summary>
     /// Executes the T operation.

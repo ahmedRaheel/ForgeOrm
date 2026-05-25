@@ -561,13 +561,11 @@ public static class ForgeAdo
 
     private static Action<DbCommand, object> BuildParameterWriter(Type type)
     {
-        if (ForgeSourceGeneratedRegistry.ShouldUseSourceGenerated &&
-            ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider) &&
-            provider.TryGetBinder(type, out var generatedBinder) &&
-            generatedBinder is not null)
-        {
+        if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
+            && ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider)
+            && provider.TryGetBinder(type, out var generatedBinder)
+            && generatedBinder is not null)
             return generatedBinder;
-        }
 
         if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGeneratedStrict)
             throw new InvalidOperationException($"No ForgeORM source-generated parameter binder was registered for {type.FullName}.");

@@ -13,6 +13,143 @@ namespace ForgeORM.Core.Performance;
 /// </summary>
 public static class ForgePerformancePipeline
 {
+
+    public static IReadOnlyList<T> Query<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters = null,
+        DbTransaction? transaction = null,
+        CommandType commandType = CommandType.Text,
+        int? timeoutSeconds = null)
+    {
+        var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SequentialAccess);
+        using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
+
+        if (connection.State != ConnectionState.Open)
+            connection.Open();
+
+        return ExecuteReaderList(command, plan, ForgeCommandOperation.Query, EstimateCapacity(sql));
+    }
+
+    public static IReadOnlyList<T> Query<T, TParameters>(
+        DbConnection connection,
+        string sql,
+        TParameters parameters,
+        DbTransaction? transaction = null,
+        CommandType commandType = CommandType.Text,
+        int? timeoutSeconds = null)
+    {
+        var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SequentialAccess);
+        using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
+
+        if (connection.State != ConnectionState.Open)
+            connection.Open();
+
+        return ExecuteReaderList(command, plan, ForgeCommandOperation.Query, EstimateCapacity(sql));
+    }
+
+    public static T? FirstOrDefault<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters = null,
+        DbTransaction? transaction = null,
+        CommandType commandType = CommandType.Text,
+        int? timeoutSeconds = null)
+    {
+        var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
+        using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
+
+        if (connection.State != ConnectionState.Open)
+            connection.Open();
+
+        return ExecuteReaderSingle(command, plan, ForgeCommandOperation.FirstOrDefault, requireSingle: false);
+    }
+
+    public static T? FirstOrDefault<T, TParameters>(
+        DbConnection connection,
+        string sql,
+        TParameters parameters,
+        DbTransaction? transaction = null,
+        CommandType commandType = CommandType.Text,
+        int? timeoutSeconds = null)
+    {
+        var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
+        using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
+
+        if (connection.State != ConnectionState.Open)
+            connection.Open();
+
+        return ExecuteReaderSingle(command, plan, ForgeCommandOperation.FirstOrDefault, requireSingle: false);
+    }
+
+    public static T? SingleOrDefault<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters = null,
+        DbTransaction? transaction = null,
+        CommandType commandType = CommandType.Text,
+        int? timeoutSeconds = null)
+    {
+        var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SequentialAccess);
+        using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
+
+        if (connection.State != ConnectionState.Open)
+            connection.Open();
+
+        return ExecuteReaderSingle(command, plan, ForgeCommandOperation.SingleOrDefault, requireSingle: true);
+    }
+
+    public static T? SingleOrDefault<T, TParameters>(
+        DbConnection connection,
+        string sql,
+        TParameters parameters,
+        DbTransaction? transaction = null,
+        CommandType commandType = CommandType.Text,
+        int? timeoutSeconds = null)
+    {
+        var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SequentialAccess);
+        using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
+
+        if (connection.State != ConnectionState.Open)
+            connection.Open();
+
+        return ExecuteReaderSingle(command, plan, ForgeCommandOperation.SingleOrDefault, requireSingle: true);
+    }
+
+    public static int Execute(
+        DbConnection connection,
+        string sql,
+        object? parameters = null,
+        DbTransaction? transaction = null,
+        CommandType commandType = CommandType.Text,
+        int? timeoutSeconds = null)
+    {
+        var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<int>(connection, sql, parameters, commandType, CommandBehavior.Default);
+        using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
+
+        if (connection.State != ConnectionState.Open)
+            connection.Open();
+
+        return command.ExecuteNonQuery();
+    }
+
+    public static T? ExecuteScalar<T>(
+        DbConnection connection,
+        string sql,
+        object? parameters = null,
+        DbTransaction? transaction = null,
+        CommandType commandType = CommandType.Text,
+        int? timeoutSeconds = null)
+    {
+        var plan = ForgeCompiledExecutionPlanCache.GetOrAdd<T>(connection, sql, parameters, commandType, CommandBehavior.SingleResult);
+        using var command = CreateCommand(connection, plan, parameters, transaction, timeoutSeconds);
+
+        if (connection.State != ConnectionState.Open)
+            connection.Open();
+
+        return ForgeScalarConverter.To<T>(command.ExecuteScalar());
+    }
+
     public static async ValueTask<IReadOnlyList<T>> QueryAsync<T>(
         DbConnection connection,
         string sql,
@@ -299,6 +436,42 @@ public static class ForgePerformancePipeline
         return new ForgePagedResult<T> { Items = rows, Page = request.Page, PageSize = request.PageSize, TotalRecords = total };
     }
 
+
+
+    private static IReadOnlyList<T> ExecuteReaderList<T>(
+        DbCommand command,
+        ForgeCompiledQueryPlan<T> plan,
+        ForgeCommandOperation operation,
+        int capacity)
+    {
+        using var reader = command.ExecuteReader(plan.Behavior);
+        var materializer = plan.Materializer ??= ForgeCompiledReaderResolver.GetReader<T>(reader);
+        var rows = new List<T>(capacity);
+
+        while (reader.Read())
+            rows.Add(materializer(reader));
+
+        return rows;
+    }
+
+    private static T? ExecuteReaderSingle<T>(
+        DbCommand command,
+        ForgeCompiledQueryPlan<T> plan,
+        ForgeCommandOperation operation,
+        bool requireSingle)
+    {
+        using var reader = command.ExecuteReader(plan.Behavior);
+        if (!reader.Read())
+            return default;
+
+        var materializer = plan.Materializer ??= ForgeCompiledReaderResolver.GetReader<T>(reader);
+        var first = materializer(reader);
+
+        if (requireSingle && reader.Read())
+            throw new InvalidOperationException("Sequence contains more than one element.");
+
+        return first;
+    }
 
     private static async ValueTask<IReadOnlyList<T>> ExecuteReaderListAsync<T>(
         DbCommand command,

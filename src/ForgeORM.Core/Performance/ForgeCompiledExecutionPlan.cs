@@ -36,7 +36,7 @@ internal static class ForgeCompiledExecutionPlanCache
         var provider = connection.GetType().FullName ?? connection.GetType().Name;
         var parameterType = parameters?.GetType();
         var sqlHash = ForgeFastHash.HashSql(sql);
-        var key = new ForgeCompiledExecutionPlanKey(provider, typeof(T), parameterType, commandType, behavior, ForgeSourceGeneratedRegistry.CompilationMode, sqlHash);
+        var key = new ForgeCompiledExecutionPlanKey(provider, typeof(T), parameterType, commandType, behavior, sqlHash);
         return (ForgeCompiledQueryPlan<T>)Cache.GetOrAdd(key, _ => new ForgeCompiledQueryPlan<T>
         {
             Sql = sql,
@@ -105,7 +105,6 @@ internal readonly record struct ForgeCompiledExecutionPlanKey(
     Type? ParameterType,
     CommandType CommandType,
     CommandBehavior Behavior,
-    ForgeOrmCompilationMode CompilationMode,
     ulong SqlFingerprint);
 
 /// <summary>
@@ -128,8 +127,8 @@ internal static class ForgeParameterBinderCompiler
         if (parameterType is null)
             return static (_, _) => { };
 
-        if (ForgeSourceGeneratedRegistry.ShouldUseSourceGenerated &&
-            ForgeSourceGeneratedRegistry.TryGetProvider(parameterType, out var provider))
+        if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
+            && ForgeSourceGeneratedRegistry.TryGetProvider(parameterType, out var provider))
         {
             var typedBinder = TryCreateTypedGeneratedBinder(provider, parameterType);
             if (typedBinder is not null)
@@ -144,9 +143,6 @@ internal static class ForgeParameterBinderCompiler
                 };
             }
         }
-
-        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGeneratedStrict)
-            throw new InvalidOperationException($"No ForgeORM source-generated parameter binder was registered for {parameterType.FullName}.");
 
         if (IsScalar(parameterType))
             return (command, value) => BindScalar(command, value, sqlNames);

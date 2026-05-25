@@ -20,37 +20,31 @@ internal static class ForgeIlMaterializerCache
     public static Func<DbDataReader, T> GetOrCreate<T>(DbDataReader reader)
     {
         var type = typeof(T);
-        var mode = ForgeSourceGeneratedRegistry.CompilationMode;
-
-        if (ForgeSourceGeneratedRegistry.ShouldUseSourceGenerated &&
-            ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider) &&
-            provider.TryCreateReader<T>(reader, out var sourceReader) &&
-            sourceReader is not null)
+        if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
+            && ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider)
+            && provider.TryCreateReader<T>(reader, out var sourceReader)
+            && sourceReader is not null)
         {
             return sourceReader;
         }
 
-        if (mode == ForgeOrmCompilationMode.SourceGeneratedStrict)
+        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGeneratedStrict)
             throw new InvalidOperationException($"No ForgeORM source-generated reader was registered for {type.FullName}.");
 
-        var key = mode + "|" + ForgeReaderShapeCache.CreateKey(type, reader);
+        var key = ForgeReaderShapeCache.CreateKey(type, reader);
         return (Func<DbDataReader, T>)Cache.GetOrAdd(key, _ => CreateMaterializer<T>(reader));
     }
 
     public static Func<DbDataReader, object> GetOrCreate(Type type, DbDataReader reader)
     {
-        var mode = ForgeSourceGeneratedRegistry.CompilationMode;
-
-        if (ForgeSourceGeneratedRegistry.ShouldUseSourceGenerated &&
-            ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider))
-        {
+        if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
+            && ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider))
             return provider.GetReader(type, reader);
-        }
 
-        if (mode == ForgeOrmCompilationMode.SourceGeneratedStrict)
+        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGeneratedStrict)
             throw new InvalidOperationException($"No ForgeORM source-generated reader was registered for {type.FullName}.");
 
-        var key = mode + "|" + ForgeReaderShapeCache.CreateKey(type, reader);
+        var key = ForgeReaderShapeCache.CreateKey(type, reader);
         return (Func<DbDataReader, object>)ObjectCache.GetOrAdd(key, _ => CreateObjectMaterializer(type, reader));
     }
 

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>ForgeORM.RuntimeEmit</PackageId>
+    <Title>ForgeORM.RuntimeEmit</Title>
+    <Description>Runtime MSIL DynamicMethod compilation support for ForgeORM zero-reflection hot paths.</Description>
+    <Version>1.3.7</Version>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ForgeORM.Core\ForgeORM.Core.csproj" />
+  </ItemGroup>
+</Project>

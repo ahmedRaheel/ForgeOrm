@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <PackageId>ForgeORM.Studio.Api</PackageId>
+         <Version>1.3.7</Version>
+    <Authors>Raheel Ahmed</Authors>
+    <Company>Forge Ecosystem</Company>
+    <RepositoryUrl>https://github.com/ahmedraheel/ForgeORM</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>forgeorm-icon.png</PackageIcon>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <Title>ForgeORM.Studio.Api</Title>
+    <Description>ForgeORM Studio API for ERD designer, query visualizer, API testing, SaaS management and monitoring dashboards.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ForgeORM.Abstractions\ForgeORM.Abstractions.csproj" />
+    <ProjectReference Include="..\ForgeORM.Core\ForgeORM.Core.csproj" />
+    <ProjectReference Include="..\ForgeORM.Analytics\ForgeORM.Analytics.csproj" />
+    <ProjectReference Include="..\ForgeORM.Intelligence\ForgeORM.Intelligence.csproj" />
+    <ProjectReference Include="..\ForgeORM.Caching.Redis\ForgeORM.Caching.Redis.csproj" />
+    <ProjectReference Include="..\ForgeORM.Telemetry\ForgeORM.Telemetry.csproj" />
+    <ProjectReference Include="..\ForgeORM.Security\ForgeORM.Security.csproj" />
+    <ProjectReference Include="..\ForgeORM.VectorSearch\ForgeORM.VectorSearch.csproj" />
+    <ProjectReference Include="..\ForgeORM.AI.Advanced\ForgeORM.AI.Advanced.csproj" />
+    <ProjectReference Include="..\ForgeORM.Rag\ForgeORM.Rag.csproj" />
+    <ProjectReference Include="..\ForgeORM.Workflow\ForgeORM.Workflow.csproj" />
+    <ProjectReference Include="..\ForgeORM.EventSourcing\ForgeORM.EventSourcing.csproj" />
+    <ProjectReference Include="..\ForgeORM.Realtime\ForgeORM.Realtime.csproj" />
+    <ProjectReference Include="..\ForgeORM.AI.Agents\ForgeORM.AI.Agents.csproj" />
+    <ProjectReference Include="..\ForgeORM.LowCode\ForgeORM.LowCode.csproj" />
+    <ProjectReference Include="..\ForgeORM.Cloud\ForgeORM.Cloud.csproj" />
+    <ProjectReference Include="..\ForgeORM.Identity\ForgeORM.Identity.csproj" />
+    <ProjectReference Include="..\ForgeORM.Sync\ForgeORM.Sync.csproj" />
+    <ProjectReference Include="..\ForgeORM.Marketplace\ForgeORM.Marketplace.csproj" />
+    <ProjectReference Include="..\ForgeORM.DataVirtualization\ForgeORM.DataVirtualization.csproj" />
+    <ProjectReference Include="..\ForgeORM.TimeTravel\ForgeORM.TimeTravel.csproj" />
+    <ProjectReference Include="..\ForgeORM.Observability.AI\ForgeORM.Observability.AI.csproj" />
+    <ProjectReference Include="..\ForgeORM.AI.Memory\ForgeORM.AI.Memory.csproj" />
+    <PackageReference Include="Swashbuckle.AspNetCore"  />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\assets\forgeorm-icon.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

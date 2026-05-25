@@ -39,17 +39,7 @@ internal static class ForgeSqlServerDirectMaterializerCache
     }
 
     private static string CreateKey(Type type, SqlDataReader reader)
-    {
-        var parts = new string[(reader.FieldCount * 2) + 1];
-        parts[0] = type.FullName ?? type.Name;
-        var index = 1;
-        for (var i = 0; i < reader.FieldCount; i++)
-        {
-            parts[index++] = Normalize(reader.GetName(i));
-            parts[index++] = reader.GetFieldType(i).FullName ?? reader.GetFieldType(i).Name;
-        }
-        return string.Join('|', parts);
-    }
+        => ForgeReaderShapeCache.CreateKey(type, reader);
 
     private static Func<SqlDataReader, T> Build<T>(SqlDataReader reader)
     {
@@ -57,7 +47,7 @@ internal static class ForgeSqlServerDirectMaterializerCache
         var actualType = Nullable.GetUnderlyingType(targetType) ?? targetType;
 
         var method = new DynamicMethod(
-            $"ForgeORM_SqlServerDirect_{Sanitize(actualType.FullName ?? actualType.Name)}_{Guid.NewGuid():N}",
+            $"ForgeORM_SqlServerDirect_{Sanitize(actualType.FullName ?? actualType.Name)}",
             targetType,
             new[] { typeof(SqlDataReader) },
             typeof(ForgeSqlServerDirectMaterializerCache).Module,
@@ -88,21 +78,14 @@ internal static class ForgeSqlServerDirectMaterializerCache
             il.Emit(OpCodes.Stloc, entity);
         }
 
-        var constructorParameterNames = ctorPlan.ParameterNames;
-        var properties = actualType
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanWrite && Support.IsScalarColumn(p))
-            .Where(p => !constructorParameterNames.Contains(Normalize(p.Name)))
-            .Select(p => new { Property = p, Column = Normalize(p.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? p.Name) })
-            .GroupBy(x => x.Column, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First().Property, StringComparer.OrdinalIgnoreCase);
+        var properties = BuildWritableScalarProperties(actualType, ctorPlan.ParameterNames);
 
         var isDbNull = typeof(SqlDataReader).GetMethod(nameof(SqlDataReader.IsDBNull), new[] { typeof(int) })!;
 
         for (var ordinal = 0; ordinal < reader.FieldCount; ordinal++)
         {
-            var column = Normalize(reader.GetName(ordinal));
-            if (!properties.TryGetValue(column, out var property))
+            var column = reader.GetName(ordinal);
+            if (!TryFindMappedProperty(properties, column, out var property))
                 continue;
 
             var setter = property.SetMethod;
@@ -180,26 +163,31 @@ internal static class ForgeSqlServerDirectMaterializerCache
 
     private static ConstructorPlan CreateConstructorPlan(Type type, SqlDataReader reader)
     {
-        var columns = Enumerable.Range(0, reader.FieldCount)
-            .ToDictionary(i => Normalize(reader.GetName(i)), i => i, StringComparer.OrdinalIgnoreCase);
+        var constructors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
+        if (constructors.Length == 0)
+            return EmptyConstructorPlan();
 
-        var constructors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
-            .OrderByDescending(c => c.GetParameters().Length)
-            .ToArray();
+        Array.Sort(constructors, static (left, right) =>
+            right.GetParameters().Length.CompareTo(left.GetParameters().Length));
 
-        foreach (var ctor in constructors)
+        for (var c = 0; c < constructors.Length; c++)
         {
+            var ctor = constructors[c];
             var parameters = ctor.GetParameters();
             if (parameters.Length == 0)
                 continue;
 
             var bindings = new ConstructorParameterBinding[parameters.Length];
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var ok = true;
+
             for (var i = 0; i < parameters.Length; i++)
             {
                 var parameter = parameters[i];
                 var normalized = Normalize(parameter.Name ?? string.Empty);
-                if (columns.TryGetValue(normalized, out var ordinal))
+                names.Add(normalized);
+                var ordinal = FindOrdinal(reader, normalized);
+                if (ordinal >= 0)
                 {
                     bindings[i] = new ConstructorParameterBinding(parameter.ParameterType, ordinal, HasColumn: true);
                 }
@@ -215,10 +203,24 @@ internal static class ForgeSqlServerDirectMaterializerCache
             }
 
             if (ok)
-                return new ConstructorPlan(ctor, bindings, parameters.Select(p => Normalize(p.Name ?? string.Empty)).ToHashSet(StringComparer.OrdinalIgnoreCase));
+                return new ConstructorPlan(ctor, bindings, names);
         }
 
-        return new ConstructorPlan(null, Array.Empty<ConstructorParameterBinding>(), new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        return EmptyConstructorPlan();
+    }
+
+    private static ConstructorPlan EmptyConstructorPlan()
+        => new(null, Array.Empty<ConstructorParameterBinding>(), new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+
+    private static int FindOrdinal(SqlDataReader reader, string normalizedColumn)
+    {
+        for (var i = 0; i < reader.FieldCount; i++)
+        {
+            if (string.Equals(Normalize(reader.GetName(i)), normalizedColumn, StringComparison.OrdinalIgnoreCase))
+                return i;
+        }
+
+        return -1;
     }
 
     private static void EmitConstructorArguments(ILGenerator il, ConstructorPlan plan)
@@ -256,6 +258,63 @@ internal static class ForgeSqlServerDirectMaterializerCache
         }
     }
 
+
+    private readonly struct MappedProperty
+    {
+        public readonly string ColumnName;
+        public readonly PropertyInfo Property;
+
+        public MappedProperty(string columnName, PropertyInfo property)
+        {
+            ColumnName = columnName;
+            Property = property;
+        }
+    }
+
+    private static MappedProperty[] BuildWritableScalarProperties(Type type, HashSet<string> constructorParameterNames)
+    {
+        var source = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        if (source.Length == 0)
+            return Array.Empty<MappedProperty>();
+
+        var buffer = new MappedProperty[source.Length];
+        var count = 0;
+        for (var i = 0; i < source.Length; i++)
+        {
+            var property = source[i];
+            if (!property.CanWrite || !Support.IsScalarColumn(property) || constructorParameterNames.Contains(Normalize(property.Name)))
+                continue;
+
+            var columnAttribute = property.GetCustomAttribute<ForgeColumnAttribute>();
+            buffer[count++] = new MappedProperty(columnAttribute?.Name ?? property.Name, property);
+        }
+
+        if (count == 0)
+            return Array.Empty<MappedProperty>();
+
+        if (count == buffer.Length)
+            return buffer;
+
+        var result = new MappedProperty[count];
+        Array.Copy(buffer, result, count);
+        return result;
+    }
+
+    private static bool TryFindMappedProperty(MappedProperty[] properties, string columnName, out PropertyInfo property)
+    {
+        var normalized = Normalize(columnName);
+        for (var i = 0; i < properties.Length; i++)
+        {
+            if (string.Equals(Normalize(properties[i].ColumnName), normalized, StringComparison.OrdinalIgnoreCase))
+            {
+                property = properties[i].Property;
+                return true;
+            }
+        }
+
+        property = null!;
+        return false;
+    }
     private static bool IsNullable(Type type) => !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
 
     private static string Normalize(string name)
@@ -275,7 +334,13 @@ internal static class ForgeSqlServerDirectMaterializerCache
 
     private static string Sanitize(string value)
     {
-        var chars = value.Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray();
+        var chars = value.ToCharArray();
+        for (var i = 0; i < chars.Length; i++)
+        {
+            if (!char.IsLetterOrDigit(chars[i]))
+                chars[i] = '_';
+        }
+
         return new string(chars);
     }
 

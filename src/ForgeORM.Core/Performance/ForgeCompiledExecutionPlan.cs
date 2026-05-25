@@ -144,16 +144,37 @@ internal static class ForgeParameterBinderCompiler
             }
         }
 
+        if (parameterType.IsGenericType && parameterType.GetGenericTypeDefinition() == typeof(ForgeIdParameter<>))
+            return CreateForgeIdBinder(parameterType, sqlNames);
+
+        if (parameterType.IsGenericType && parameterType.GetGenericTypeDefinition() == typeof(ForgeNamedParameter<>))
+            return CreateForgeNamedBinder(parameterType);
+
         if (IsScalar(parameterType))
             return (command, value) => BindScalar(command, value, sqlNames);
 
         if (typeof(System.Collections.IDictionary).IsAssignableFrom(parameterType))
             return BindDictionary;
 
-        var props = parameterType.GetProperties(BindingFlags.Instance | BindingFlags.Public)
-            .Where(p => p.GetIndexParameters().Length == 0 && p.GetMethod is not null)
-            .Select(p => new ForgeParameterProperty(p.Name, CompileGetter(parameterType, p), p.PropertyType, p))
-            .ToArray();
+        var sourceProperties = parameterType.GetProperties(BindingFlags.Instance | BindingFlags.Public);
+        var propertyBuffer = new ForgeParameterProperty[sourceProperties.Length];
+        var propertyCount = 0;
+        for (var i = 0; i < sourceProperties.Length; i++)
+        {
+            var property = sourceProperties[i];
+            if (property.GetIndexParameters().Length != 0 || property.GetMethod is null)
+                continue;
+
+            propertyBuffer[propertyCount++] = new ForgeParameterProperty(
+                property.Name,
+                CompileGetter(parameterType, property),
+                property.PropertyType,
+                property);
+        }
+
+        var props = propertyCount == propertyBuffer.Length
+            ? propertyBuffer
+            : CopyProperties(propertyBuffer, propertyCount);
 
         return (command, value) =>
         {
@@ -181,6 +202,55 @@ internal static class ForgeParameterBinderCompiler
         };
     }
 
+
+    private static ForgeParameterProperty[] CopyProperties(ForgeParameterProperty[] source, int count)
+    {
+        if (count == 0)
+            return Array.Empty<ForgeParameterProperty>();
+
+        var result = new ForgeParameterProperty[count];
+        Array.Copy(source, result, count);
+        return result;
+    }
+
+    private static Action<DbCommand, object?> CreateForgeIdBinder(Type parameterType, string[] sqlNames)
+    {
+        var valueType = parameterType.GetGenericArguments()[0];
+        var method = typeof(ForgeParameterBinderCompiler)
+            .GetMethod(nameof(CreateForgeIdBinderTyped), BindingFlags.NonPublic | BindingFlags.Static)!
+            .MakeGenericMethod(valueType);
+
+        return (Action<DbCommand, object?>)method.Invoke(null, new object[] { sqlNames })!;
+    }
+
+    private static Action<DbCommand, object?> CreateForgeIdBinderTyped<TKey>(string[] sqlNames)
+    {
+        var parameterName = sqlNames.Length == 0 ? "Id" : sqlNames[0];
+        return (command, value) =>
+        {
+            if (value is ForgeIdParameter<TKey> typed)
+                Add(command, parameterName, typed.Id, typeof(TKey));
+        };
+    }
+
+    private static Action<DbCommand, object?> CreateForgeNamedBinder(Type parameterType)
+    {
+        var valueType = parameterType.GetGenericArguments()[0];
+        var method = typeof(ForgeParameterBinderCompiler)
+            .GetMethod(nameof(CreateForgeNamedBinderTyped), BindingFlags.NonPublic | BindingFlags.Static)!
+            .MakeGenericMethod(valueType);
+
+        return (Action<DbCommand, object?>)method.Invoke(null, Array.Empty<object>())!;
+    }
+
+    private static Action<DbCommand, object?> CreateForgeNamedBinderTyped<TValue>()
+    {
+        return (command, value) =>
+        {
+            if (value is ForgeNamedParameter<TValue> typed)
+                Add(command, typed.Name, typed.Value, typeof(TValue));
+        };
+    }
     private static Action<DbCommand, object?>? TryCreateTypedGeneratedBinder(IForgeSourceGeneratedAccessorProvider provider, Type parameterType)
     {
         var method = typeof(ForgeParameterBinderCompiler)

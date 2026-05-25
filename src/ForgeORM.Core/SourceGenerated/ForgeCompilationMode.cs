@@ -265,7 +265,6 @@ public static class ForgeSourceGeneratedRegistry
             return provider is not null;
         }
 
-        IForgeSourceGeneratedAccessorProvider? found = null;
         lock (Gate)
         {
             for (var i = 0; i < Providers.Count; i++)
@@ -274,14 +273,15 @@ public static class ForgeSourceGeneratedRegistry
                 if (!candidate.CanHandle(type))
                     continue;
 
-                found = candidate;
-                break;
+                ProviderByType[type] = candidate;
+                provider = candidate;
+                return true;
             }
-        }
 
-        ProviderByType[type] = found;
-        provider = found!;
-        return provider is not null;
+            ProviderByType[type] = null;
+            provider = null!;
+            return false;
+        }
     }
 
     /// <summary>Attempts to execute a full source-generated provider-neutral first-row query.</summary>

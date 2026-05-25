@@ -12,10 +12,6 @@ public partial class ForgeDb
     public T? Find<T>(object id, int? timeoutSeconds = null)
     {
         var metadata = _metadata.Resolve<T>();
-
-        if (IsSqlServerProvider())
-            return ForgeSqlServerDirectGetByIdExecutor<T>.Execute(_connectionString, metadata, id);
-
         var c = Provider.BuildGetById(metadata, id);
         return ForgeFrameworkExecutionPolicy.FirstOrDefault<T, ForgeIdParameter<object?>>(Provider, _connectionString, c.CommandText, ForgeIdParameter<object?>.Create(id), timeoutSeconds);
     }
@@ -27,10 +23,6 @@ public partial class ForgeDb
     public async ValueTask<T?> FindAsync<T>(object id, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         var metadata = _metadata.Resolve<T>();
-
-        if (IsSqlServerProvider())
-            return await ForgeSqlServerDirectGetByIdExecutor<T>.ExecuteAsync(_connectionString, metadata, id, cancellationToken).ConfigureAwait(false);
-
         var c = Provider.BuildGetById(metadata, id);
         return await ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T, ForgeIdParameter<object?>>(Provider, _connectionString, c.CommandText, ForgeIdParameter<object?>.Create(id), timeoutSeconds, cancellationToken).ConfigureAwait(false);
     }
@@ -65,13 +57,6 @@ public partial class ForgeDb
     public async ValueTask<T?> QueryFirstFastAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
     {
         return await ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T>(Provider, _connectionString, sql, parameters, timeoutSeconds, cancellationToken);
-    }
-
-    private bool IsSqlServerProvider()
-    {
-        var name = Provider.ProviderName ?? Provider.GetType().FullName ?? string.Empty;
-        return name.Contains("SqlServer", StringComparison.OrdinalIgnoreCase)
-            || name.Contains("SqlClient", StringComparison.OrdinalIgnoreCase);
     }
 
 }

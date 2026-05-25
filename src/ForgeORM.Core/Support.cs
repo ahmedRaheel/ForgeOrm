@@ -1156,7 +1156,7 @@ internal sealed class ForgeSplitQuery<TParent> : IForgeSplitQuery<TParent>
     }
 }
 
-public  sealed partial class ForgeTransaction : IForgeTransaction
+internal sealed class ForgeTransaction : IForgeTransaction
 {
     private readonly DbConnection _connection;
     private readonly DbTransaction _transaction;

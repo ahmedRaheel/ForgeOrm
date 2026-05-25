@@ -573,7 +573,7 @@ public static class ForgeAdo
         var props = ParameterPropertyCache.GetOrAdd(type, BuildParameterProperties);
 
         var method = new DynamicMethod(
-            $"ForgeORM_BindParameters_{type.Name}",
+            $"ForgeORM_BindParameters_{type.Name}_{Guid.NewGuid():N}",
             typeof(void),
             new[] { typeof(DbCommand), typeof(object) },
             typeof(ForgeAdo),
@@ -616,34 +616,10 @@ public static class ForgeAdo
 
     private static ParameterProperty[] BuildParameterProperties(Type type)
     {
-        var source = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-        if (source.Length == 0)
-            return Array.Empty<ParameterProperty>();
-
-        var buffer = new ParameterProperty[source.Length];
-        var count = 0;
-        for (var i = 0; i < source.Length; i++)
-        {
-            var property = source[i];
-            if (!property.CanRead || !IsBindableParameterProperty(property))
-                continue;
-
-            buffer[count++] = new ParameterProperty(
-                property.Name,
-                property.PropertyType,
-                property,
-                BuildParameterGetter(type, property));
-        }
-
-        if (count == 0)
-            return Array.Empty<ParameterProperty>();
-
-        if (count == buffer.Length)
-            return buffer;
-
-        var result = new ParameterProperty[count];
-        Array.Copy(buffer, result, count);
-        return result;
+        return type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanRead && IsBindableParameterProperty(p))
+            .Select(p => new ParameterProperty(p.Name, p.PropertyType, p, BuildParameterGetter(type, p)))
+            .ToArray();
     }
 
     private static Func<object, object?> BuildParameterGetter(Type declaringType, PropertyInfo property)
@@ -667,37 +643,15 @@ public static class ForgeAdo
 
     private static int EstimateCapacity(string sql)
     {
-        if (TryReadPositiveIntAfter(sql.AsSpan(), "FETCH NEXT".AsSpan(), out var take))
+        var match = Regex.Match(sql, @"FETCH\s+NEXT\s+(\d+)\s+ROWS", RegexOptions.IgnoreCase);
+        if (match.Success && int.TryParse(match.Groups[1].Value, out var take))
             return Math.Clamp(take, 4, 1024);
 
-        if (TryReadPositiveIntAfter(sql.AsSpan(), "TOP".AsSpan(), out var topCount))
+        var top = Regex.Match(sql, @"TOP\s*\(?\s*(\d+)\s*\)?", RegexOptions.IgnoreCase);
+        if (top.Success && int.TryParse(top.Groups[1].Value, out var topCount))
             return Math.Clamp(topCount, 1, 1024);
 
-        if (TryReadPositiveIntAfter(sql.AsSpan(), "LIMIT".AsSpan(), out var limit))
-            return Math.Clamp(limit, 4, 1024);
-
         return 16;
-    }
-
-    private static bool TryReadPositiveIntAfter(ReadOnlySpan<char> source, ReadOnlySpan<char> token, out int value)
-    {
-        value = 0;
-        var index = source.IndexOf(token, StringComparison.OrdinalIgnoreCase);
-        if (index < 0)
-            return false;
-
-        index += token.Length;
-        while (index < source.Length && (char.IsWhiteSpace(source[index]) || source[index] == '('))
-            index++;
-
-        var start = index;
-        while (index < source.Length && char.IsDigit(source[index]))
-        {
-            value = checked((value * 10) + (source[index] - '0'));
-            index++;
-        }
-
-        return index > start && value > 0;
     }
 
     private static object? NormalizeParameterValue(object? value)

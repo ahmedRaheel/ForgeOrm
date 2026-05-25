@@ -9,13 +9,15 @@ namespace ForgeORM.Core;
 /// <summary>
 /// Dapper-style MSIL materializer cache.
 /// One DynamicMethod is emitted per entity type + result column shape and reused for every row.
-/// No PropertyInfo.SetValue, no Activator hot path, no per-row reflection.
-/// Enums are stored/read as their numeric underlying type.
+/// SourceGenerated mode uses registered generated readers first; RuntimeEmit uses this MSIL path.
 /// </summary>
 internal static class ForgeIlMaterializerCache
 {
-    private static readonly ConcurrentDictionary<string, Delegate> Cache = new(StringComparer.Ordinal);
-    private static readonly ConcurrentDictionary<string, Delegate> ObjectCache = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<ForgeMaterializerCacheKey, Delegate> Cache = new();
+    private static readonly ConcurrentDictionary<ForgeMaterializerCacheKey, Delegate> ObjectCache = new();
+
+    private static readonly MethodInfo DbReaderIsDbNull = typeof(DbDataReader).GetMethod(nameof(DbDataReader.IsDBNull), new[] { typeof(int) })!;
+    private static readonly MethodInfo DbReaderGetFieldValue = typeof(DbDataReader).GetMethod(nameof(DbDataReader.GetFieldValue), new[] { typeof(int) })!;
 
     public static Func<DbDataReader, T> GetOrCreate<T>(DbDataReader reader)
     {
@@ -31,17 +33,15 @@ internal static class ForgeIlMaterializerCache
                     return sourceReader;
 
                 if (mode == ForgeOrmCompilationMode.SourceGeneratedStrict)
-                    throw new InvalidOperationException(
-                        $"SourceGeneratedStrict failed for {type.FullName}. Provider was registered, but TryCreateReader returned {created} and reader was {(sourceReader is null ? "null" : "not null")}.");
+                    throw new InvalidOperationException($"SourceGeneratedStrict failed. Provider was registered for {type.FullName}, but TryCreateReader returned {created} and reader was {(sourceReader is null ? "null" : "not null")}.");
             }
             else if (mode == ForgeOrmCompilationMode.SourceGeneratedStrict)
             {
-                throw new InvalidOperationException(
-                    $"SourceGeneratedStrict failed. No source-generated provider was registered for {type.FullName}. Ensure the generated assembly is referenced and its ModuleInitializer ran.");
+                throw new InvalidOperationException($"SourceGeneratedStrict failed. No source-generated provider was registered for {type.FullName}.");
             }
         }
 
-        var key = mode + "|" + ForgeReaderShapeCache.CreateKey(type, reader);
+        var key = ForgeMaterializerCacheKey.Create(type, reader, ForgeOrmCompilationMode.RuntimeEmit);
         return (Func<DbDataReader, T>)Cache.GetOrAdd(key, _ => CreateMaterializer<T>(reader));
     }
 
@@ -54,29 +54,11 @@ internal static class ForgeIlMaterializerCache
                 return provider.GetReader(type, reader);
 
             if (mode == ForgeOrmCompilationMode.SourceGeneratedStrict)
-                throw new InvalidOperationException(
-                    $"SourceGeneratedStrict failed. No source-generated provider was registered for {type.FullName}. Ensure the generated assembly is referenced and its ModuleInitializer ran.");
+                throw new InvalidOperationException($"SourceGeneratedStrict failed. No source-generated provider was registered for {type.FullName}.");
         }
 
-        var key = mode + "|" + ForgeReaderShapeCache.CreateKey(type, reader);
+        var key = ForgeMaterializerCacheKey.Create(type, reader, ForgeOrmCompilationMode.RuntimeEmit);
         return (Func<DbDataReader, object>)ObjectCache.GetOrAdd(key, _ => CreateObjectMaterializer(type, reader));
-    }
-
-    private static string CreateKey(Type type, DbDataReader reader)
-    {
-        // Built once per execution, then hits ConcurrentDictionary for repeated query shapes.
-        // Include field types to avoid reusing a plan where same names have different DB types.
-        var parts = new string[(reader.FieldCount * 2) + 1];
-        parts[0] = type.FullName ?? type.Name;
-
-        var index = 1;
-        for (var i = 0; i < reader.FieldCount; i++)
-        {
-            parts[index++] = reader.GetName(i);
-            parts[index++] = reader.GetFieldType(i).FullName ?? reader.GetFieldType(i).Name;
-        }
-
-        return string.Join('|', parts);
     }
 
     private static Func<DbDataReader, T> CreateMaterializer<T>(DbDataReader reader)
@@ -104,7 +86,7 @@ internal static class ForgeIlMaterializerCache
 
         if (constructorPlan.Constructor is not null && constructorPlan.Parameters.Length > 0)
         {
-            EmitConstructorArguments(il, constructorPlan, reader);
+            EmitConstructorArguments(il, constructorPlan);
             il.Emit(OpCodes.Newobj, constructorPlan.Constructor);
             il.Emit(OpCodes.Stloc, entity);
         }
@@ -117,32 +99,23 @@ internal static class ForgeIlMaterializerCache
             il.Emit(OpCodes.Stloc, entity);
         }
 
-        var properties = BuildWritableScalarProperties(actualType, constructorPlan.ParameterNames);
-        var isDbNull = typeof(DbDataReader).GetMethod(nameof(DbDataReader.IsDBNull), new[] { typeof(int) })!;
-
-        for (var ordinal = 0; ordinal < reader.FieldCount; ordinal++)
+        var bindings = CreatePropertyBindings(actualType, reader, constructorPlan.ParameterNames);
+        for (var i = 0; i < bindings.Length; i++)
         {
-            var columnName = reader.GetName(ordinal);
-            if (!TryFindMappedProperty(properties, columnName, out var property))
-                continue;
-
+            var binding = bindings[i];
+            var property = binding.Property;
             var setter = property.SetMethod;
-            if (setter is null)
-                continue;
+            if (setter is null) continue;
 
             var endLabel = il.DefineLabel();
-
-            // if (reader.IsDBNull(ordinal)) goto end;
             il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldc_I4, ordinal);
-            il.Emit(OpCodes.Callvirt, isDbNull);
+            il.Emit(OpCodes.Ldc_I4, binding.Ordinal);
+            il.Emit(OpCodes.Callvirt, DbReaderIsDbNull);
             il.Emit(OpCodes.Brtrue_S, endLabel);
 
-            // entity.Property = reader.GetFieldValue<TColumn>(ordinal)
             il.Emit(OpCodes.Ldloc, entity);
-            EmitReadValueForProperty(il, property.PropertyType, ordinal);
+            EmitReadValueForProperty(il, property.PropertyType, binding.Ordinal);
             il.Emit(OpCodes.Callvirt, setter);
-
             il.MarkLabel(endLabel);
         }
 
@@ -152,16 +125,192 @@ internal static class ForgeIlMaterializerCache
         return (Func<DbDataReader, T>)method.CreateDelegate(typeof(Func<DbDataReader, T>));
     }
 
+    private static Func<DbDataReader, object> CreateObjectMaterializer(Type runtimeType, DbDataReader reader)
+    {
+        var method = new DynamicMethod(
+            name: $"ForgeORM_Materialize_Object_{SanitizeName(runtimeType.FullName ?? runtimeType.Name)}",
+            returnType: typeof(object),
+            parameterTypes: new[] { typeof(DbDataReader) },
+            m: typeof(ForgeIlMaterializerCache).Module,
+            skipVisibility: true);
+
+        var il = method.GetILGenerator();
+
+        if (ForgeMaterializer.IsScalar(runtimeType))
+        {
+            EmitReadValue(il, typeof(object), runtimeType, 0);
+            if (runtimeType.IsValueType) il.Emit(OpCodes.Box, runtimeType);
+            il.Emit(OpCodes.Ret);
+            return (Func<DbDataReader, object>)method.CreateDelegate(typeof(Func<DbDataReader, object>));
+        }
+
+        var constructorPlan = CreateConstructorPlan(runtimeType, reader);
+        var entity = il.DeclareLocal(runtimeType);
+
+        if (constructorPlan.Constructor is not null && constructorPlan.Parameters.Length > 0)
+        {
+            EmitConstructorArguments(il, constructorPlan);
+            il.Emit(OpCodes.Newobj, constructorPlan.Constructor);
+            il.Emit(OpCodes.Stloc, entity);
+        }
+        else
+        {
+            var ctor = runtimeType.GetConstructor(Type.EmptyTypes)
+                ?? throw new InvalidOperationException($"{runtimeType.FullName} must have either a parameterless constructor or a constructor whose parameter names match result columns for MSIL/record materialization.");
+            il.Emit(OpCodes.Newobj, ctor);
+            il.Emit(OpCodes.Stloc, entity);
+        }
+
+        var bindings = CreatePropertyBindings(runtimeType, reader, constructorPlan.ParameterNames);
+        for (var i = 0; i < bindings.Length; i++)
+        {
+            var binding = bindings[i];
+            var property = binding.Property;
+            var setter = property.SetMethod;
+            if (setter is null) continue;
+
+            var endLabel = il.DefineLabel();
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldc_I4, binding.Ordinal);
+            il.Emit(OpCodes.Callvirt, DbReaderIsDbNull);
+            il.Emit(OpCodes.Brtrue_S, endLabel);
+
+            il.Emit(OpCodes.Ldloc, entity);
+            EmitReadValueForProperty(il, property.PropertyType, binding.Ordinal);
+            il.Emit(OpCodes.Callvirt, setter);
+            il.MarkLabel(endLabel);
+        }
+
+        il.Emit(OpCodes.Ldloc, entity);
+        if (runtimeType.IsValueType) il.Emit(OpCodes.Box, runtimeType);
+        il.Emit(OpCodes.Ret);
+        return (Func<DbDataReader, object>)method.CreateDelegate(typeof(Func<DbDataReader, object>));
+    }
+
+    private static PropertyBinding[] CreatePropertyBindings(Type type, DbDataReader reader, string[] constructorParameterNames)
+    {
+        var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        var temp = new PropertyBinding[props.Length];
+        var count = 0;
+
+        for (var p = 0; p < props.Length; p++)
+        {
+            var property = props[p];
+            if (!property.CanWrite || !Support.IsScalarColumn(property)) continue;
+            if (ContainsName(constructorParameterNames, property.Name)) continue;
+
+            var columnName = property.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? property.Name;
+            var ordinal = FindOrdinal(reader, columnName);
+            if (ordinal < 0 && !string.Equals(columnName, property.Name, StringComparison.OrdinalIgnoreCase))
+                ordinal = FindOrdinal(reader, property.Name);
+            if (ordinal < 0) continue;
+
+            temp[count++] = new PropertyBinding(property, ordinal);
+        }
+
+        if (count == temp.Length) return temp;
+        var result = new PropertyBinding[count];
+        Array.Copy(temp, result, count);
+        return result;
+    }
+
+    private static ConstructorPlan CreateConstructorPlan(Type type, DbDataReader reader)
+    {
+        var constructors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
+        SortConstructorsByParameterCountDescending(constructors);
+
+        for (var c = 0; c < constructors.Length; c++)
+        {
+            var constructor = constructors[c];
+            var parameters = constructor.GetParameters();
+            if (parameters.Length == 0) continue;
+
+            var ordinals = new int[parameters.Length];
+            var names = new string[parameters.Length];
+            var matched = 0;
+            var ok = true;
+
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                var parameter = parameters[i];
+                var parameterName = parameter.Name ?? string.Empty;
+                names[i] = parameterName;
+                var ordinal = FindOrdinal(reader, parameterName);
+                ordinals[i] = ordinal;
+
+                if (ordinal >= 0) { matched++; continue; }
+                if (parameter.HasDefaultValue || IsNullable(parameter.ParameterType)) continue;
+                ok = false;
+                break;
+            }
+
+            if (ok && matched > 0)
+                return new ConstructorPlan(constructor, parameters, ordinals, names);
+        }
+
+        return new ConstructorPlan(null, Array.Empty<ParameterInfo>(), Array.Empty<int>(), Array.Empty<string>());
+    }
+
+    private static void SortConstructorsByParameterCountDescending(ConstructorInfo[] constructors)
+    {
+        for (var i = 1; i < constructors.Length; i++)
+        {
+            var item = constructors[i];
+            var itemCount = item.GetParameters().Length;
+            var j = i - 1;
+            while (j >= 0 && constructors[j].GetParameters().Length < itemCount)
+            {
+                constructors[j + 1] = constructors[j];
+                j--;
+            }
+            constructors[j + 1] = item;
+        }
+    }
+
+    private static void EmitConstructorArguments(ILGenerator il, ConstructorPlan plan)
+    {
+        for (var i = 0; i < plan.Parameters.Length; i++)
+        {
+            var parameter = plan.Parameters[i];
+            var parameterType = parameter.ParameterType;
+            var ordinal = plan.Ordinals[i];
+            var endLabel = il.DefineLabel();
+            var nullLabel = il.DefineLabel();
+            var local = il.DeclareLocal(parameterType);
+
+            if (ordinal < 0)
+            {
+                EmitDefaultValue(il, parameterType);
+                continue;
+            }
+
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldc_I4, ordinal);
+            il.Emit(OpCodes.Callvirt, DbReaderIsDbNull);
+            il.Emit(OpCodes.Brtrue_S, nullLabel);
+
+            EmitReadValueForProperty(il, parameterType, ordinal);
+            il.Emit(OpCodes.Stloc, local);
+            il.Emit(OpCodes.Br_S, endLabel);
+
+            il.MarkLabel(nullLabel);
+            il.Emit(OpCodes.Ldloca_S, local);
+            il.Emit(OpCodes.Initobj, parameterType);
+
+            il.MarkLabel(endLabel);
+            il.Emit(OpCodes.Ldloc, local);
+        }
+    }
+
     private static void EmitScalarReturn<T>(ILGenerator il, Type targetType, Type actualType)
     {
-        var isDbNull = typeof(DbDataReader).GetMethod(nameof(DbDataReader.IsDBNull), new[] { typeof(int) })!;
         var notNull = il.DefineLabel();
         var end = il.DefineLabel();
         var result = il.DeclareLocal(targetType);
 
         il.Emit(OpCodes.Ldarg_0);
         il.Emit(OpCodes.Ldc_I4_0);
-        il.Emit(OpCodes.Callvirt, isDbNull);
+        il.Emit(OpCodes.Callvirt, DbReaderIsDbNull);
         il.Emit(OpCodes.Brfalse_S, notNull);
 
         il.Emit(OpCodes.Ldloca_S, result);
@@ -181,7 +330,6 @@ internal static class ForgeIlMaterializerCache
     {
         var underlyingNullable = Nullable.GetUnderlyingType(propertyType);
         var valueType = underlyingNullable ?? propertyType;
-
         EmitReadValue(il, propertyType, valueType, ordinal);
     }
 
@@ -189,277 +337,25 @@ internal static class ForgeIlMaterializerCache
     {
         var nullableUnderlying = Nullable.GetUnderlyingType(finalType);
 
-        // Never call GetFieldValue<TEnum>() directly. SQL may store enums as strings or ints.
-        // Route enum materialization through ForgeEnumReader so records and classes behave the same.
         if (valueType.IsEnum)
         {
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldc_I4, ordinal);
-
-            if (nullableUnderlying is not null)
-            {
-                var nullableEnumReader = typeof(ForgeEnumReader)
-                    .GetMethod(nameof(ForgeEnumReader.ReadNullableEnum))!
-                    .MakeGenericMethod(valueType);
-                il.Emit(OpCodes.Call, nullableEnumReader);
-            }
-            else
-            {
-                var enumReader = typeof(ForgeEnumReader)
-                    .GetMethod(nameof(ForgeEnumReader.ReadEnum))!
-                    .MakeGenericMethod(valueType);
-                il.Emit(OpCodes.Call, enumReader);
-            }
-
+            var enumMethod = typeof(ForgeEnumReader)
+                .GetMethod(nullableUnderlying is null ? nameof(ForgeEnumReader.ReadEnum) : nameof(ForgeEnumReader.ReadNullableEnum))!
+                .MakeGenericMethod(valueType);
+            il.Emit(OpCodes.Call, enumMethod);
             return;
         }
 
         il.Emit(OpCodes.Ldarg_0);
         il.Emit(OpCodes.Ldc_I4, ordinal);
-
-        var getFieldValue = typeof(DbDataReader)
-            .GetMethod(nameof(DbDataReader.GetFieldValue))!
-            .MakeGenericMethod(valueType);
-
-        il.Emit(OpCodes.Callvirt, getFieldValue);
+        il.Emit(OpCodes.Callvirt, DbReaderGetFieldValue.MakeGenericMethod(valueType));
 
         if (nullableUnderlying is not null)
         {
             var ctor = finalType.GetConstructor(new[] { nullableUnderlying })!;
             il.Emit(OpCodes.Newobj, ctor);
-        }
-    }
-
-
-    private static Func<DbDataReader, object> CreateObjectMaterializer(Type runtimeType, DbDataReader reader)
-    {
-        var method = new DynamicMethod(
-            name: $"ForgeORM_Materialize_Object_{SanitizeName(runtimeType.FullName ?? runtimeType.Name)}",
-            returnType: typeof(object),
-            parameterTypes: new[] { typeof(DbDataReader) },
-            m: typeof(ForgeIlMaterializerCache).Module,
-            skipVisibility: true);
-
-        var il = method.GetILGenerator();
-
-        if (ForgeMaterializer.IsScalar(runtimeType))
-        {
-            EmitReadValue(il, typeof(object), runtimeType, 0);
-            if (runtimeType.IsValueType)
-                il.Emit(OpCodes.Box, runtimeType);
-            il.Emit(OpCodes.Ret);
-            return (Func<DbDataReader, object>)method.CreateDelegate(typeof(Func<DbDataReader, object>));
-        }
-
-        var constructorPlan = CreateConstructorPlan(runtimeType, reader);
-        var entity = il.DeclareLocal(runtimeType);
-
-        if (constructorPlan.Constructor is not null && constructorPlan.Parameters.Length > 0)
-        {
-            EmitConstructorArguments(il, constructorPlan, reader);
-            il.Emit(OpCodes.Newobj, constructorPlan.Constructor);
-            il.Emit(OpCodes.Stloc, entity);
-        }
-        else
-        {
-            var ctor = runtimeType.GetConstructor(Type.EmptyTypes)
-                ?? throw new InvalidOperationException($"{runtimeType.FullName} must have either a parameterless constructor or a constructor whose parameter names match result columns for MSIL/record materialization.");
-
-            il.Emit(OpCodes.Newobj, ctor);
-            il.Emit(OpCodes.Stloc, entity);
-        }
-
-        var properties = BuildWritableScalarProperties(runtimeType, constructorPlan.ParameterNames);
-        var isDbNull = typeof(DbDataReader).GetMethod(nameof(DbDataReader.IsDBNull), new[] { typeof(int) })!;
-
-        for (var ordinal = 0; ordinal < reader.FieldCount; ordinal++)
-        {
-            var columnName = reader.GetName(ordinal);
-            if (!TryFindMappedProperty(properties, columnName, out var property))
-                continue;
-
-            var setter = property.SetMethod;
-            if (setter is null)
-                continue;
-
-            var endLabel = il.DefineLabel();
-            il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldc_I4, ordinal);
-            il.Emit(OpCodes.Callvirt, isDbNull);
-            il.Emit(OpCodes.Brtrue_S, endLabel);
-
-            il.Emit(OpCodes.Ldloc, entity);
-            EmitReadValueForProperty(il, property.PropertyType, ordinal);
-            il.Emit(OpCodes.Callvirt, setter);
-            il.MarkLabel(endLabel);
-        }
-
-        il.Emit(OpCodes.Ldloc, entity);
-        if (runtimeType.IsValueType)
-            il.Emit(OpCodes.Box, runtimeType);
-        il.Emit(OpCodes.Ret);
-        return (Func<DbDataReader, object>)method.CreateDelegate(typeof(Func<DbDataReader, object>));
-    }
-
-
-    private readonly struct ForgeMappedProperty
-    {
-        public readonly string ColumnName;
-        public readonly PropertyInfo Property;
-
-        public ForgeMappedProperty(string columnName, PropertyInfo property)
-        {
-            ColumnName = columnName;
-            Property = property;
-        }
-    }
-
-    private static ForgeMappedProperty[] BuildWritableScalarProperties(Type type, HashSet<string> constructorParameterNames)
-    {
-        var source = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-        if (source.Length == 0)
-            return Array.Empty<ForgeMappedProperty>();
-
-        var buffer = new ForgeMappedProperty[source.Length];
-        var count = 0;
-
-        for (var i = 0; i < source.Length; i++)
-        {
-            var property = source[i];
-            if (!property.CanWrite || !Support.IsScalarColumn(property) || constructorParameterNames.Contains(property.Name))
-                continue;
-
-            var columnAttribute = property.GetCustomAttribute<ForgeColumnAttribute>();
-            buffer[count++] = new ForgeMappedProperty(columnAttribute?.Name ?? property.Name, property);
-        }
-
-        if (count == 0)
-            return Array.Empty<ForgeMappedProperty>();
-
-        if (count == buffer.Length)
-            return buffer;
-
-        var result = new ForgeMappedProperty[count];
-        Array.Copy(buffer, result, count);
-        return result;
-    }
-
-    private static bool TryFindMappedProperty(ForgeMappedProperty[] properties, string columnName, out PropertyInfo property)
-    {
-        for (var i = 0; i < properties.Length; i++)
-        {
-            if (string.Equals(properties[i].ColumnName, columnName, StringComparison.OrdinalIgnoreCase))
-            {
-                property = properties[i].Property;
-                return true;
-            }
-        }
-
-        property = null!;
-        return false;
-    }
-
-    private sealed record ForgeConstructorPlan(
-        ConstructorInfo? Constructor,
-        ParameterInfo[] Parameters,
-        int[] Ordinals,
-        HashSet<string> ParameterNames);
-
-    private static ForgeConstructorPlan CreateConstructorPlan(Type type, DbDataReader reader)
-    {
-        var columns = new Dictionary<string, int>(reader.FieldCount, StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < reader.FieldCount; i++)
-            columns[reader.GetName(i)] = i;
-
-        var constructors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
-        if (constructors.Length == 0)
-            return EmptyConstructorPlan();
-
-        Array.Sort(constructors, static (left, right) =>
-            right.GetParameters().Length.CompareTo(left.GetParameters().Length));
-
-        for (var c = 0; c < constructors.Length; c++)
-        {
-            var constructor = constructors[c];
-            var parameters = constructor.GetParameters();
-            if (parameters.Length == 0)
-                continue;
-
-            var ordinals = new int[parameters.Length];
-            var matched = 0;
-            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            for (var i = 0; i < parameters.Length; i++)
-            {
-                var parameterName = parameters[i].Name ?? string.Empty;
-                names.Add(parameterName);
-
-                if (columns.TryGetValue(parameterName, out var ordinal))
-                {
-                    ordinals[i] = ordinal;
-                    matched++;
-                }
-                else
-                {
-                    ordinals[i] = -1;
-                }
-            }
-
-            if (matched > 0 || AllParametersHaveDefaults(parameters))
-                return new ForgeConstructorPlan(constructor, parameters, ordinals, names);
-        }
-
-        return EmptyConstructorPlan();
-    }
-
-    private static ForgeConstructorPlan EmptyConstructorPlan()
-        => new(null, Array.Empty<ParameterInfo>(), Array.Empty<int>(), new HashSet<string>(StringComparer.OrdinalIgnoreCase));
-
-    private static bool AllParametersHaveDefaults(ParameterInfo[] parameters)
-    {
-        for (var i = 0; i < parameters.Length; i++)
-        {
-            if (!parameters[i].HasDefaultValue)
-                return false;
-        }
-
-        return true;
-    }
-
-    private static void EmitConstructorArguments(ILGenerator il, ForgeConstructorPlan plan, DbDataReader reader)
-    {
-        var isDbNull = typeof(DbDataReader).GetMethod(nameof(DbDataReader.IsDBNull), new[] { typeof(int) })!;
-
-        for (var i = 0; i < plan.Parameters.Length; i++)
-        {
-            var parameter = plan.Parameters[i];
-            var parameterType = parameter.ParameterType;
-            var ordinal = plan.Ordinals[i];
-            var endLabel = il.DefineLabel();
-            var nullLabel = il.DefineLabel();
-            var local = il.DeclareLocal(parameterType);
-
-            if (ordinal < 0)
-            {
-                EmitDefaultValue(il, parameterType);
-                continue;
-            }
-
-            il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldc_I4, ordinal);
-            il.Emit(OpCodes.Callvirt, isDbNull);
-            il.Emit(OpCodes.Brtrue_S, nullLabel);
-
-            EmitReadValueForProperty(il, parameterType, ordinal);
-            il.Emit(OpCodes.Stloc, local);
-            il.Emit(OpCodes.Br_S, endLabel);
-
-            il.MarkLabel(nullLabel);
-            il.Emit(OpCodes.Ldloca_S, local);
-            il.Emit(OpCodes.Initobj, parameterType);
-
-            il.MarkLabel(endLabel);
-            il.Emit(OpCodes.Ldloc, local);
         }
     }
 
@@ -478,19 +374,84 @@ internal static class ForgeIlMaterializerCache
         }
     }
 
+    private static int FindOrdinal(DbDataReader reader, string name)
+    {
+        for (var i = 0; i < reader.FieldCount; i++)
+            if (ColumnEquals(reader.GetName(i), name))
+                return i;
+        return -1;
+    }
+
+    private static bool ColumnEquals(string left, string right)
+    {
+        var li = 0;
+        var ri = 0;
+        while (true)
+        {
+            while (li < left.Length && IsIgnored(left[li])) li++;
+            while (ri < right.Length && IsIgnored(right[ri])) ri++;
+            if (li >= left.Length || ri >= right.Length)
+                return li >= left.Length && ri >= right.Length;
+            if (char.ToUpperInvariant(left[li]) != char.ToUpperInvariant(right[ri]))
+                return false;
+            li++;
+            ri++;
+        }
+    }
+
+    private static bool ContainsName(string[] names, string name)
+    {
+        for (var i = 0; i < names.Length; i++)
+            if (ColumnEquals(names[i], name)) return true;
+        return false;
+    }
+
+    private static bool IsIgnored(char c) => c == '_' || c == '-' || c == ' ' || c == '[' || c == ']' || c == '"';
+
+    private static bool IsNullable(Type type) => !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
+
     private static string SanitizeName(string value)
     {
         var chars = value.ToCharArray();
         for (var i = 0; i < chars.Length; i++)
-        {
-            if (!char.IsLetterOrDigit(chars[i]))
-                chars[i] = '_';
-        }
-
+            if (!char.IsLetterOrDigit(chars[i])) chars[i] = '_';
         return new string(chars);
     }
-    
+
+    private readonly record struct PropertyBinding(PropertyInfo Property, int Ordinal);
+    private sealed record ConstructorPlan(ConstructorInfo? Constructor, ParameterInfo[] Parameters, int[] Ordinals, string[] ParameterNames);
 }
+
+internal readonly record struct ForgeMaterializerCacheKey(Type Type, ForgeOrmCompilationMode Mode, ulong ShapeHash)
+{
+    public static ForgeMaterializerCacheKey Create(Type type, DbDataReader reader, ForgeOrmCompilationMode mode)
+    {
+        unchecked
+        {
+            var hash = 1469598103934665603UL;
+            for (var i = 0; i < reader.FieldCount; i++)
+            {
+                Add(ref hash, reader.GetName(i));
+                var fieldType = reader.GetFieldType(i);
+                hash ^= (ulong)fieldType.TypeHandle.GetHashCode();
+                hash *= 1099511628211UL;
+            }
+            return new ForgeMaterializerCacheKey(type, mode, hash);
+        }
+    }
+
+    private static void Add(ref ulong hash, string value)
+    {
+        for (var i = 0; i < value.Length; i++)
+        {
+            var c = value[i];
+            if (c == '_' || c == '-' || c == ' ' || c == '[' || c == ']' || c == '"') continue;
+            hash ^= char.ToUpperInvariant(c);
+            hash *= 1099511628211UL;
+        }
+    }
+}
+
 internal static class Support
 {
     public static bool IsScalarColumn(PropertyInfo property)
@@ -547,10 +508,6 @@ internal static class Support
     public static string ResolveScalarColumns(Type type)
     {
         var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-        if (properties.Length == 0)
-            return "*";
-
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var columns = new List<string>(properties.Length);
 
         for (var i = 0; i < properties.Length; i++)
@@ -560,7 +517,15 @@ internal static class Support
                 continue;
 
             var column = property.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? property.Name;
-            if (seen.Add(column))
+            var exists = false;
+            for (var c = 0; c < columns.Count; c++)
+            {
+                if (!string.Equals(columns[c], column, StringComparison.OrdinalIgnoreCase)) continue;
+                exists = true;
+                break;
+            }
+
+            if (!exists)
                 columns.Add(column);
         }
 
@@ -572,33 +537,18 @@ internal static class Support
         bool includeIdentity = false)
     {
         var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-        if (properties.Length == 0)
-            return Array.Empty<PropertyInfo>();
-
-        var buffer = new PropertyInfo[properties.Length];
-        var count = 0;
+        var result = new List<PropertyInfo>(properties.Length);
 
         for (var i = 0; i < properties.Length; i++)
         {
             var property = properties[i];
-            if (!property.CanRead || !IsScalarColumn(property))
-                continue;
-
-            if (!includeIdentity && IsIdentityColumn(property))
-                continue;
-
-            buffer[count++] = property;
+            if (!property.CanRead) continue;
+            if (!IsScalarColumn(property)) continue;
+            if (!includeIdentity && IsIdentityColumn(property)) continue;
+            result.Add(property);
         }
 
-        if (count == 0)
-            return Array.Empty<PropertyInfo>();
-
-        if (count == buffer.Length)
-            return buffer;
-
-        var result = new PropertyInfo[count];
-        Array.Copy(buffer, result, count);
-        return result;
+        return result.Count == 0 ? Array.Empty<PropertyInfo>() : result.ToArray();
     }
 
     public static bool IsIdentityColumn(PropertyInfo property)
@@ -607,9 +557,9 @@ internal static class Support
             return true;
 
         var attributes = property.GetCustomAttributes();
-        foreach (var attribute in attributes)
+        for (var i = 0; i < attributes.Length; i++)
         {
-            if (attribute.GetType().Name.Contains("Key", StringComparison.OrdinalIgnoreCase))
+            if (attributes[i].GetType().Name.Contains("Key", StringComparison.OrdinalIgnoreCase))
                 return true;
         }
 

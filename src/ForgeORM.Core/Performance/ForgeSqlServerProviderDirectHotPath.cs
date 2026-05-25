@@ -185,13 +185,25 @@ internal static class ForgeSqlServerProviderDirectHotPath
 
     private static SqlServerEntityPlan BuildGetByIdPlan(ForgeEntityMetadata metadata)
     {
-        var key = metadata.Properties.FirstOrDefault(x => string.Equals(x.ColumnName, metadata.KeyColumn, StringComparison.OrdinalIgnoreCase) || x.IsKey);
+        ForgePropertyMetadata? key = null;
+        var columnBuilder = new System.Text.StringBuilder(metadata.Properties.Count * 16);
+
+        for (var i = 0; i < metadata.Properties.Count; i++)
+        {
+            var property = metadata.Properties[i];
+            if (key is null && (property.IsKey || string.Equals(property.ColumnName, metadata.KeyColumn, StringComparison.OrdinalIgnoreCase)))
+                key = property;
+
+            if (property.IsComputed || string.IsNullOrWhiteSpace(property.ColumnName))
+                continue;
+
+            if (columnBuilder.Length > 0)
+                columnBuilder.Append(", ");
+            columnBuilder.Append(property.ColumnName);
+        }
+
+        var columns = columnBuilder.Length == 0 ? "*" : columnBuilder.ToString();
         var parameterName = "@" + metadata.KeyColumn;
-        var columns = metadata.Properties.Count == 0
-            ? "*"
-            : string.Join(", ", metadata.Properties.Where(p => !p.IsComputed && !string.IsNullOrWhiteSpace(p.ColumnName)).Select(p => p.ColumnName));
-        if (string.IsNullOrWhiteSpace(columns))
-            columns = "*";
 
         return new SqlServerEntityPlan(
             $"SELECT TOP (1) {columns} FROM {metadata.TableName} WHERE {metadata.KeyColumn} = {parameterName}",
@@ -244,19 +256,23 @@ internal static class ForgeSqlServerProviderDirectHotPath
 
     private static string ReplaceInToken(string sql, string tokenName, string replacement)
     {
-        sql = System.Text.RegularExpressions.Regex.Replace(
-            sql,
-            $@"IN\s*\(\s*@{System.Text.RegularExpressions.Regex.Escape(tokenName)}\s*\)",
-            replacement,
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        var token = "@" + tokenName;
+        var index = sql.IndexOf(token, StringComparison.OrdinalIgnoreCase);
+        if (index < 0)
+            return sql;
 
-        sql = System.Text.RegularExpressions.Regex.Replace(
-            sql,
-            $@"IN\s+@{System.Text.RegularExpressions.Regex.Escape(tokenName)}\b",
-            replacement,
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        var start = index;
+        while (start > 0 && char.IsWhiteSpace(sql[start - 1])) start--;
 
-        return sql;
+        var inStart = start - 2;
+        if (inStart >= 0 && sql.AsSpan(inStart, 2).Equals("IN".AsSpan(), StringComparison.OrdinalIgnoreCase))
+        {
+            var before = inStart == 0 ? '\0' : sql[inStart - 1];
+            if (!char.IsLetterOrDigit(before) && before != '_')
+                return sql[..inStart] + "IN " + replacement + sql[(index + token.Length)..];
+        }
+
+        return sql.Replace(token, replacement, StringComparison.OrdinalIgnoreCase);
     }
 
     private static Dictionary<string, object?> ExtractParameterBag(object parameters)
@@ -278,13 +294,14 @@ internal static class ForgeSqlServerProviderDirectHotPath
         if (IsScalar(parameters.GetType()))
             return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
-        var binderProperties = parameters.GetType()
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.GetIndexParameters().Length == 0 && p.CanRead);
-
-        var result = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-        foreach (var property in binderProperties)
+        var properties = parameters.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        var result = new Dictionary<string, object?>(properties.Length, StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < properties.Length; i++)
+        {
+            var property = properties[i];
+            if (!property.CanRead || property.GetIndexParameters().Length != 0) continue;
             result[property.Name] = property.GetValue(parameters);
+        }
 
         return result;
     }
@@ -498,7 +515,14 @@ internal static class ForgeSqlServerProviderDirectHotPath
             while (i < span.Length && (char.IsLetterOrDigit(span[i]) || span[i] == '_'))
                 i++;
             var name = sql.Substring(start, i - start);
-            if (!names.Any(x => string.Equals(x, name, StringComparison.OrdinalIgnoreCase)))
+            var exists = false;
+            for (var n = 0; n < names.Count; n++)
+            {
+                if (!string.Equals(names[n], name, StringComparison.OrdinalIgnoreCase)) continue;
+                exists = true;
+                break;
+            }
+            if (!exists)
                 names.Add(name);
             i--;
         }

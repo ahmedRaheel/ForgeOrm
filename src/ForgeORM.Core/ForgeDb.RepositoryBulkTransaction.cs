@@ -15,9 +15,6 @@ public partial class ForgeDb
     public T? GetById<T>(object id)
     {
         var metadata = _metadata.Resolve<T>();
-        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-            return ForgeSqlServerProviderDirectHotPath.GetById<T>(_connectionString, metadata, id);
-
         var c = Provider.BuildGetById(metadata, id);
         return ForgeFrameworkExecutionPolicy.FirstOrDefault<T, ForgeIdParameter<object?>>(Provider, _connectionString, c.CommandText, ForgeIdParameter<object?>.Create(id), timeoutSeconds: null);
     }
@@ -31,9 +28,6 @@ public partial class ForgeDb
     public async ValueTask<T?> GetByIdAsync<T>(object id, CancellationToken cancellationToken = default)
     {
         var metadata = _metadata.Resolve<T>();
-        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-            return await ForgeSqlServerProviderDirectHotPath.GetByIdAsync<T>(_connectionString, metadata, id, cancellationToken).ConfigureAwait(false);
-
         var c = Provider.BuildGetById(metadata, id);
         return await ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T, ForgeIdParameter<object?>>(Provider, _connectionString, c.CommandText, ForgeIdParameter<object?>.Create(id), timeoutSeconds: null, cancellationToken).ConfigureAwait(false);
     }
@@ -42,9 +36,6 @@ public partial class ForgeDb
     public T? GetById<T, TKey>(TKey id)
     {
         var metadata = _metadata.Resolve<T>();
-        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-            return ForgeSqlServerProviderDirectHotPath.GetById<T>(_connectionString, metadata, id!);
-
         var c = Provider.BuildGetById(metadata, id!);
         return ForgeFrameworkExecutionPolicy.FirstOrDefault<T, ForgeIdParameter<TKey>>(Provider, _connectionString, c.CommandText, ForgeIdParameter<TKey>.Create(id), timeoutSeconds: null);
     }
@@ -53,9 +44,6 @@ public partial class ForgeDb
     public async ValueTask<T?> GetByIdAsync<T, TKey>(TKey id, CancellationToken cancellationToken = default)
     {
         var metadata = _metadata.Resolve<T>();
-        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
-            return await ForgeSqlServerProviderDirectHotPath.GetByIdAsync<T>(_connectionString, metadata, id!, cancellationToken).ConfigureAwait(false);
-
         var c = Provider.BuildGetById(metadata, id!);
         return await ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T, ForgeIdParameter<TKey>>(Provider, _connectionString, c.CommandText, ForgeIdParameter<TKey>.Create(id), timeoutSeconds: null, cancellationToken).ConfigureAwait(false);
     }

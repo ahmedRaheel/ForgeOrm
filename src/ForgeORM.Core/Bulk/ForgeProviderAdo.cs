@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Data.Common;
-using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -13,11 +12,36 @@ internal static class ForgeProviderAdo
 {
     internal static class PropertyCache<T>
     {
-        public static readonly (PropertyInfo Info, string ParamName, Type DeclaredType)[] Properties =
-            typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => p.CanRead && IsScalar(p.PropertyType))
-                .Select(p => (p, "@" + p.Name, p.PropertyType))
-                .ToArray();
+        public static readonly (PropertyInfo Info, string ParamName, Type DeclaredType)[] Properties = Build();
+
+        private static (PropertyInfo Info, string ParamName, Type DeclaredType)[] Build()
+        {
+            var source = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            if (source.Length == 0)
+                return Array.Empty<(PropertyInfo Info, string ParamName, Type DeclaredType)>();
+
+            var buffer = new (PropertyInfo Info, string ParamName, Type DeclaredType)[source.Length];
+            var count = 0;
+
+            for (var i = 0; i < source.Length; i++)
+            {
+                var property = source[i];
+                if (!property.CanRead || !IsScalar(property.PropertyType))
+                    continue;
+
+                buffer[count++] = (property, "@" + property.Name, property.PropertyType);
+            }
+
+            if (count == 0)
+                return Array.Empty<(PropertyInfo Info, string ParamName, Type DeclaredType)>();
+
+            if (count == buffer.Length)
+                return buffer;
+
+            var result = new (PropertyInfo Info, string ParamName, Type DeclaredType)[count];
+            Array.Copy(buffer, result, count);
+            return result;
+        }
     }
 
     public static ValueTask<int> ExecuteManyAsync<T>(

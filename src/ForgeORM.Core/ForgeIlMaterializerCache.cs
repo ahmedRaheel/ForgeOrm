@@ -71,7 +71,7 @@ internal static class ForgeIlMaterializerCache
         var actualType = Nullable.GetUnderlyingType(targetType) ?? targetType;
 
         var method = new DynamicMethod(
-            name: $"ForgeORM_Materialize_{SanitizeName(actualType.FullName ?? actualType.Name)}_{Guid.NewGuid():N}",
+            name: $"ForgeORM_Materialize_{SanitizeName(actualType.FullName ?? actualType.Name)}",
             returnType: targetType,
             parameterTypes: new[] { typeof(DbDataReader) },
             m: typeof(ForgeIlMaterializerCache).Module,
@@ -103,22 +103,13 @@ internal static class ForgeIlMaterializerCache
             il.Emit(OpCodes.Stloc, entity);
         }
 
-        var constructorParameterNames = constructorPlan.ParameterNames;
-        var properties = actualType
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanWrite && Support.IsScalarColumn(p))
-            .Where(p => !constructorParameterNames.Contains(p.Name))
-            .ToDictionary(
-                p => p.GetCustomAttribute<ForgeORM.Abstractions.ForgeColumnAttribute>()?.Name ?? p.Name,
-                p => p,
-                StringComparer.OrdinalIgnoreCase);
-
+        var properties = BuildWritableScalarProperties(actualType, constructorPlan.ParameterNames);
         var isDbNull = typeof(DbDataReader).GetMethod(nameof(DbDataReader.IsDBNull), new[] { typeof(int) })!;
 
         for (var ordinal = 0; ordinal < reader.FieldCount; ordinal++)
         {
             var columnName = reader.GetName(ordinal);
-            if (!properties.TryGetValue(columnName, out var property))
+            if (!TryFindMappedProperty(properties, columnName, out var property))
                 continue;
 
             var setter = property.SetMethod;
@@ -229,7 +220,7 @@ internal static class ForgeIlMaterializerCache
     private static Func<DbDataReader, object> CreateObjectMaterializer(Type runtimeType, DbDataReader reader)
     {
         var method = new DynamicMethod(
-            name: $"ForgeORM_Materialize_Object_{SanitizeName(runtimeType.FullName ?? runtimeType.Name)}_{Guid.NewGuid():N}",
+            name: $"ForgeORM_Materialize_Object_{SanitizeName(runtimeType.FullName ?? runtimeType.Name)}",
             returnType: typeof(object),
             parameterTypes: new[] { typeof(DbDataReader) },
             m: typeof(ForgeIlMaterializerCache).Module,
@@ -264,22 +255,13 @@ internal static class ForgeIlMaterializerCache
             il.Emit(OpCodes.Stloc, entity);
         }
 
-        var constructorParameterNames = constructorPlan.ParameterNames;
-        var properties = runtimeType
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanWrite && Support.IsScalarColumn(p))
-            .Where(p => !constructorParameterNames.Contains(p.Name))
-            .ToDictionary(
-                p => p.GetCustomAttribute<ForgeORM.Abstractions.ForgeColumnAttribute>()?.Name ?? p.Name,
-                p => p,
-                StringComparer.OrdinalIgnoreCase);
-
+        var properties = BuildWritableScalarProperties(runtimeType, constructorPlan.ParameterNames);
         var isDbNull = typeof(DbDataReader).GetMethod(nameof(DbDataReader.IsDBNull), new[] { typeof(int) })!;
 
         for (var ordinal = 0; ordinal < reader.FieldCount; ordinal++)
         {
             var columnName = reader.GetName(ordinal);
-            if (!properties.TryGetValue(columnName, out var property))
+            if (!TryFindMappedProperty(properties, columnName, out var property))
                 continue;
 
             var setter = property.SetMethod;
@@ -306,6 +288,63 @@ internal static class ForgeIlMaterializerCache
     }
 
 
+    private readonly struct ForgeMappedProperty
+    {
+        public readonly string ColumnName;
+        public readonly PropertyInfo Property;
+
+        public ForgeMappedProperty(string columnName, PropertyInfo property)
+        {
+            ColumnName = columnName;
+            Property = property;
+        }
+    }
+
+    private static ForgeMappedProperty[] BuildWritableScalarProperties(Type type, HashSet<string> constructorParameterNames)
+    {
+        var source = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        if (source.Length == 0)
+            return Array.Empty<ForgeMappedProperty>();
+
+        var buffer = new ForgeMappedProperty[source.Length];
+        var count = 0;
+
+        for (var i = 0; i < source.Length; i++)
+        {
+            var property = source[i];
+            if (!property.CanWrite || !Support.IsScalarColumn(property) || constructorParameterNames.Contains(property.Name))
+                continue;
+
+            var columnAttribute = property.GetCustomAttribute<ForgeColumnAttribute>();
+            buffer[count++] = new ForgeMappedProperty(columnAttribute?.Name ?? property.Name, property);
+        }
+
+        if (count == 0)
+            return Array.Empty<ForgeMappedProperty>();
+
+        if (count == buffer.Length)
+            return buffer;
+
+        var result = new ForgeMappedProperty[count];
+        Array.Copy(buffer, result, count);
+        return result;
+    }
+
+    private static bool TryFindMappedProperty(ForgeMappedProperty[] properties, string columnName, out PropertyInfo property)
+    {
+        for (var i = 0; i < properties.Length; i++)
+        {
+            if (string.Equals(properties[i].ColumnName, columnName, StringComparison.OrdinalIgnoreCase))
+            {
+                property = properties[i].Property;
+                return true;
+            }
+        }
+
+        property = null!;
+        return false;
+    }
+
     private sealed record ForgeConstructorPlan(
         ConstructorInfo? Constructor,
         ParameterInfo[] Parameters,
@@ -314,18 +353,24 @@ internal static class ForgeIlMaterializerCache
 
     private static ForgeConstructorPlan CreateConstructorPlan(Type type, DbDataReader reader)
     {
-        var columns = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var columns = new Dictionary<string, int>(reader.FieldCount, StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < reader.FieldCount; i++)
             columns[reader.GetName(i)] = i;
 
-        var constructors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
-            .Where(c => c.GetParameters().Length > 0)
-            .OrderByDescending(c => c.GetParameters().Length)
-            .ToArray();
+        var constructors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
+        if (constructors.Length == 0)
+            return EmptyConstructorPlan();
 
-        foreach (var constructor in constructors)
+        Array.Sort(constructors, static (left, right) =>
+            right.GetParameters().Length.CompareTo(left.GetParameters().Length));
+
+        for (var c = 0; c < constructors.Length; c++)
         {
+            var constructor = constructors[c];
             var parameters = constructor.GetParameters();
+            if (parameters.Length == 0)
+                continue;
+
             var ordinals = new int[parameters.Length];
             var matched = 0;
             var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -334,6 +379,7 @@ internal static class ForgeIlMaterializerCache
             {
                 var parameterName = parameters[i].Name ?? string.Empty;
                 names.Add(parameterName);
+
                 if (columns.TryGetValue(parameterName, out var ordinal))
                 {
                     ordinals[i] = ordinal;
@@ -345,15 +391,25 @@ internal static class ForgeIlMaterializerCache
                 }
             }
 
-            // Record/constructor DTO support: prefer constructors where all parameters are present.
-            // If some projection columns are missing, ForgeORM still constructs the record using default values.
-            // This supports DTOs like ProductListItem where BrandName/CategoryName may be absent in a specific query.
-            // A constructor must match at least one result column to avoid choosing an unrelated constructor.
-            if (matched > 0 || parameters.All(p => p.HasDefaultValue))
+            if (matched > 0 || AllParametersHaveDefaults(parameters))
                 return new ForgeConstructorPlan(constructor, parameters, ordinals, names);
         }
 
-        return new ForgeConstructorPlan(null, Array.Empty<ParameterInfo>(), Array.Empty<int>(), new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        return EmptyConstructorPlan();
+    }
+
+    private static ForgeConstructorPlan EmptyConstructorPlan()
+        => new(null, Array.Empty<ParameterInfo>(), Array.Empty<int>(), new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+
+    private static bool AllParametersHaveDefaults(ParameterInfo[] parameters)
+    {
+        for (var i = 0; i < parameters.Length; i++)
+        {
+            if (!parameters[i].HasDefaultValue)
+                return false;
+        }
+
+        return true;
     }
 
     private static void EmitConstructorArguments(ILGenerator il, ForgeConstructorPlan plan, DbDataReader reader)
@@ -476,39 +532,74 @@ internal static class Support
 
     public static string ResolveScalarColumns(Type type)
     {
-        var columns = type
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(IsScalarColumn)
-            .Select(x => x.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? x.Name)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        if (properties.Length == 0)
+            return "*";
 
-        return columns.Length == 0
-            ? "*"
-            : string.Join(", ", columns);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var columns = new List<string>(properties.Length);
+
+        for (var i = 0; i < properties.Length; i++)
+        {
+            var property = properties[i];
+            if (!IsScalarColumn(property))
+                continue;
+
+            var column = property.GetCustomAttribute<ForgeColumnAttribute>()?.Name ?? property.Name;
+            if (seen.Add(column))
+                columns.Add(column);
+        }
+
+        return columns.Count == 0 ? "*" : string.Join(", ", columns);
     }
 
     public static PropertyInfo[] GetScalarProperties(
         Type type,
         bool includeIdentity = false)
     {
-        return type
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(x => x.CanRead)
-            .Where(IsScalarColumn)
-            .Where(x => includeIdentity || !IsIdentityColumn(x))
-            .ToArray();
+        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        if (properties.Length == 0)
+            return Array.Empty<PropertyInfo>();
+
+        var buffer = new PropertyInfo[properties.Length];
+        var count = 0;
+
+        for (var i = 0; i < properties.Length; i++)
+        {
+            var property = properties[i];
+            if (!property.CanRead || !IsScalarColumn(property))
+                continue;
+
+            if (!includeIdentity && IsIdentityColumn(property))
+                continue;
+
+            buffer[count++] = property;
+        }
+
+        if (count == 0)
+            return Array.Empty<PropertyInfo>();
+
+        if (count == buffer.Length)
+            return buffer;
+
+        var result = new PropertyInfo[count];
+        Array.Copy(buffer, result, count);
+        return result;
     }
 
     public static bool IsIdentityColumn(PropertyInfo property)
     {
-        return property.Name.Equals(
-                   "Id",
-                   StringComparison.OrdinalIgnoreCase)
-               || property.GetCustomAttributes()
-                   .Any(x => x.GetType().Name.Contains(
-                       "Key",
-                       StringComparison.OrdinalIgnoreCase));
+        if (property.Name.Equals("Id", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var attributes = property.GetCustomAttributes();
+        foreach (var attribute in attributes)
+        {
+            if (attribute.GetType().Name.Contains("Key", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     public static object? NormalizeParameterValue(object? value)

@@ -228,6 +228,15 @@ public static class ForgeSourceGeneratedRegistry
 
     public static ForgeOrmCompilationMode CompilationMode { get; set; } = ForgeOrmCompilationMode.Auto;
 
+    /// <summary>True when the selected mode allows source-generated readers/binders/executors.</summary>
+    public static bool ShouldUseSourceGenerated => CompilationMode != ForgeOrmCompilationMode.RuntimeEmit;
+
+    /// <summary>True when missing generated artifacts must fail instead of falling back to MSIL/provider runtime paths.</summary>
+    public static bool IsStrictSourceGenerated => CompilationMode == ForgeOrmCompilationMode.SourceGeneratedStrict;
+
+    /// <summary>True when RuntimeEmit/MSIL fallback is allowed for the selected mode.</summary>
+    public static bool AllowsRuntimeEmitFallback => CompilationMode is ForgeOrmCompilationMode.Auto or ForgeOrmCompilationMode.RuntimeEmit or ForgeOrmCompilationMode.SourceGenerated;
+
     /// <summary>True when at least one entity metadata map has been registered by generated code.</summary>
     public static bool HasGeneratedMetadata => !MetadataByType.IsEmpty;
 
@@ -279,7 +288,7 @@ public static class ForgeSourceGeneratedRegistry
         CancellationToken cancellationToken,
         out ValueTask<T?> result)
     {
-        if (CompilationMode == ForgeOrmCompilationMode.RuntimeEmit || !TryGetProvider(typeof(T), out var provider))
+        if (!ShouldUseSourceGenerated || !TryGetProvider(typeof(T), out var provider))
         {
             result = default;
             return false;
@@ -299,7 +308,7 @@ public static class ForgeSourceGeneratedRegistry
         CancellationToken cancellationToken,
         out ValueTask<IReadOnlyList<T>> result)
     {
-        if (CompilationMode == ForgeOrmCompilationMode.RuntimeEmit || !TryGetProvider(typeof(T), out var provider))
+        if (!ShouldUseSourceGenerated || !TryGetProvider(typeof(T), out var provider))
         {
             result = default;
             return false;
@@ -319,7 +328,7 @@ public static class ForgeSourceGeneratedRegistry
         CancellationToken cancellationToken,
         out ValueTask<T?> result)
     {
-        if (CompilationMode == ForgeOrmCompilationMode.RuntimeEmit || !TryGetProvider(typeof(T), out var provider))
+        if (!ShouldUseSourceGenerated || !TryGetProvider(typeof(T), out var provider))
         {
             result = default;
             return false;
@@ -339,7 +348,7 @@ public static class ForgeSourceGeneratedRegistry
         CancellationToken cancellationToken,
         out ValueTask<int> result)
     {
-        if (CompilationMode == ForgeOrmCompilationMode.RuntimeEmit || !TryGetProvider(typeof(T), out var provider))
+        if (!ShouldUseSourceGenerated || !TryGetProvider(typeof(T), out var provider))
         {
             result = default;
             return false;
@@ -357,7 +366,7 @@ public static class ForgeSourceGeneratedRegistry
         CancellationToken cancellationToken,
         out ValueTask<T?> result)
     {
-        if (CompilationMode == ForgeOrmCompilationMode.RuntimeEmit)
+        if (!ShouldUseSourceGenerated)
         {
             result = default;
             return false;

@@ -26,7 +26,8 @@ public static class ForgeDbConnectionExtensions
     public static IReadOnlyList<T> Query<T>(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null)
     {
         EnsureOpen(connection);
-        return ForgePerformancePipeline.Query<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds);
+        return ForgePerformancePipeline.QueryAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds)
+            .AsTask().GetAwaiter().GetResult();
     }
 
     /// <summary>
@@ -61,7 +62,8 @@ public static class ForgeDbConnectionExtensions
     public static T? QueryFirstOrDefault<T>(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null)
     {
         EnsureOpen(connection);
-        return ForgePerformancePipeline.FirstOrDefault<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds);
+        return ForgePerformancePipeline.FirstOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds)
+            .AsTask().GetAwaiter().GetResult();
     }
 
     /// <summary>
@@ -125,7 +127,8 @@ public static class ForgeDbConnectionExtensions
     public static T? QuerySingleOrDefault<T>(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null)
     {
         EnsureOpen(connection);
-        return ForgePerformancePipeline.SingleOrDefault<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds);
+        return ForgePerformancePipeline.SingleOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds)
+            .AsTask().GetAwaiter().GetResult();
     }
 
     /// <summary>
@@ -159,7 +162,8 @@ public static class ForgeDbConnectionExtensions
     public static int Execute(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null)
     {
         EnsureOpen(connection);
-        return ForgePerformancePipeline.Execute(connection, sql, parameters, transaction, commandType, timeoutSeconds);
+        return ForgePerformancePipeline.ExecuteAsync(connection, sql, parameters, transaction, commandType, timeoutSeconds)
+            .AsTask().GetAwaiter().GetResult();
     }
 
     /// <summary>
@@ -193,7 +197,8 @@ public static class ForgeDbConnectionExtensions
     public static T? ExecuteScalar<T>(this DbConnection connection, string sql, object? parameters = null, DbTransaction? transaction = null, CommandType commandType = CommandType.Text, int? timeoutSeconds = null)
     {
         EnsureOpen(connection);
-        return ForgePerformancePipeline.ExecuteScalar<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds);
+        return ForgePerformancePipeline.ExecuteScalarAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds)
+            .AsTask().GetAwaiter().GetResult();
     }
 
     /// <summary>

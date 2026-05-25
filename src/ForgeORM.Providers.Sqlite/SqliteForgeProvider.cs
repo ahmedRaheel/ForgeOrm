@@ -1,6 +1,7 @@
 using System.Data.Common;
 using System.Reflection;
 using ForgeORM.Abstractions;
+using ForgeORM.Core;
 using Microsoft.Data.Sqlite;
 
 namespace ForgeORM.Providers.Sqlite;
@@ -32,7 +33,7 @@ public sealed class SqliteForgeProvider : IForgeDatabaseProvider
     /// <param name="e">The e value.</param>
     /// <param name="id">The id value.</param>
     /// <returns>The result of the BuildGetById operation.</returns>
-    public ForgeCommand BuildGetById(ForgeEntityMetadata e, object id) => ForgeCommand.Text($"SELECT * FROM {e.TableName} WHERE {e.KeyColumn} = {Dialect.Parameter("Id")}", new { Id = id });
+    public ForgeCommand BuildGetById(ForgeEntityMetadata e, object id) => ForgeCommand.Text($"SELECT * FROM {e.TableName} WHERE {e.KeyColumn} = {Dialect.Parameter("Id")}", ForgeIdParameter<object?>.Create(id));
     /// <summary>
     /// Executes the BuildGetByCode operation.
     /// </summary>
@@ -67,7 +68,7 @@ public sealed class SqliteForgeProvider : IForgeDatabaseProvider
     /// <param name="e">The e value.</param>
     /// <param name="id">The id value.</param>
     /// <returns>The result of the BuildDelete operation.</returns>
-    public ForgeCommand BuildDelete(ForgeEntityMetadata e, object id) => ForgeCommand.Text($"DELETE FROM {e.TableName} WHERE {e.KeyColumn} = {Dialect.Parameter("Id")}", new { Id = id });
+    public ForgeCommand BuildDelete(ForgeEntityMetadata e, object id) => ForgeCommand.Text($"DELETE FROM {e.TableName} WHERE {e.KeyColumn} = {Dialect.Parameter("Id")}", ForgeIdParameter<object?>.Create(id));
     /// <summary>
     /// Executes the BuildPage operation.
     /// </summary>
@@ -157,13 +158,13 @@ internal static class BulkFallback
     /// <param name="rows">The rows value.</param>
     /// <param name="ct">The ct value.</param>
     /// <returns>The result of the T operation.</returns>
-    public static async ValueTask InsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken ct)
+    public static ValueTask InsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken ct)
     {
         var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead && IsScalar(p.PropertyType)).ToList();
         var columns = string.Join(", ", props.Select(p => p.Name));
         var values = string.Join(", ", props.Select(p => "@" + p.Name));
         var sql = $"INSERT INTO {tableName} ({columns}) VALUES ({values})";
-        await ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
+        return ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
     }
 
     /// <summary>
@@ -176,12 +177,12 @@ internal static class BulkFallback
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="ct">The ct value.</param>
     /// <returns>The result of the T operation.</returns>
-    public static async ValueTask UpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken ct)
+    public static ValueTask UpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken ct)
     {
         var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead && IsScalar(p.PropertyType) && !p.Name.Equals(keyColumn, StringComparison.OrdinalIgnoreCase)).ToList();
         var set = string.Join(", ", props.Select(p => p.Name + " = @" + p.Name));
         var sql = $"UPDATE {tableName} SET {set} WHERE {keyColumn} = @{keyColumn}";
-       await ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
+        return ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
     }
     private static bool IsScalar(Type type)
     {

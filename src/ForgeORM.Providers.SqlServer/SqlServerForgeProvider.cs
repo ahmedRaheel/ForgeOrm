@@ -1,6 +1,7 @@
 using System.Data.Common;
 using System.Reflection;
 using ForgeORM.Abstractions;
+using ForgeORM.Core;
 using Microsoft.Data.SqlClient;
 
 namespace ForgeORM.Providers.SqlServer;
@@ -33,7 +34,7 @@ public sealed class SqlServerForgeProvider : IForgeDatabaseProvider
     /// <param name="e">The e value.</param>
     /// <param name="id">The id value.</param>
     /// <returns>The result of the BuildGetById operation.</returns>
-    public ForgeCommand BuildGetById(ForgeEntityMetadata e, object id) => ForgeCommand.Text($"SELECT * FROM {e.TableName} WHERE {e.KeyColumn} = {Dialect.Parameter("Id")}", new { Id = id });
+    public ForgeCommand BuildGetById(ForgeEntityMetadata e, object id) => ForgeCommand.Text($"SELECT * FROM {e.TableName} WHERE {e.KeyColumn} = {Dialect.Parameter("Id")}", ForgeIdParameter<object?>.Create(id));
     /// <summary>
     /// Executes the BuildGetByCode operation.
     /// </summary>
@@ -68,7 +69,7 @@ public sealed class SqlServerForgeProvider : IForgeDatabaseProvider
     /// <param name="e">The e value.</param>
     /// <param name="id">The id value.</param>
     /// <returns>The result of the BuildDelete operation.</returns>
-    public ForgeCommand BuildDelete(ForgeEntityMetadata e, object id) => ForgeCommand.Text($"DELETE FROM {e.TableName} WHERE {e.KeyColumn} = {Dialect.Parameter("Id")}", new { Id = id });
+    public ForgeCommand BuildDelete(ForgeEntityMetadata e, object id) => ForgeCommand.Text($"DELETE FROM {e.TableName} WHERE {e.KeyColumn} = {Dialect.Parameter("Id")}", ForgeIdParameter<object?>.Create(id));
     /// <summary>
     /// Executes the BuildPage operation.
     /// </summary>

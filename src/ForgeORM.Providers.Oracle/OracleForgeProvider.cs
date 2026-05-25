@@ -1,5 +1,4 @@
 using ForgeORM.Abstractions;
-using ForgeORM.Core;
 using Oracle.ManagedDataAccess.Client;
 using System.Collections.Concurrent;
 using System.Data;
@@ -38,7 +37,7 @@ public sealed class OracleForgeProvider : IForgeDatabaseProvider
     /// <param name="e">The e value.</param>
     /// <param name="id">The id value.</param>
     /// <returns>The result of the BuildGetById operation.</returns>
-    public ForgeCommand BuildGetById(ForgeEntityMetadata e, object id) => ForgeCommand.Text($"SELECT * FROM {e.TableName} WHERE {e.KeyColumn} = {Dialect.Parameter("Id")}", ForgeIdParameter<object?>.Create(id));
+    public ForgeCommand BuildGetById(ForgeEntityMetadata e, object id) => ForgeCommand.Text($"SELECT * FROM {e.TableName} WHERE {e.KeyColumn} = {Dialect.Parameter("Id")}", new { Id = id });
     /// <summary>
     /// Executes the BuildGetByCode operation.
     /// </summary>
@@ -75,7 +74,7 @@ public sealed class OracleForgeProvider : IForgeDatabaseProvider
     /// <param name="e">The e value.</param>
     /// <param name="id">The id value.</param>
     /// <returns>The result of the BuildDelete operation.</returns>
-    public ForgeCommand BuildDelete(ForgeEntityMetadata e, object id) => ForgeCommand.Text($"DELETE FROM {e.TableName} WHERE {e.KeyColumn} = {Dialect.Parameter("Id")}", ForgeIdParameter<object?>.Create(id));
+    public ForgeCommand BuildDelete(ForgeEntityMetadata e, object id) => ForgeCommand.Text($"DELETE FROM {e.TableName} WHERE {e.KeyColumn} = {Dialect.Parameter("Id")}", new { Id = id });
     /// <summary>
     /// Executes the BuildPage operation.
     /// </summary>
@@ -172,7 +171,7 @@ internal static class BulkFallback
         var columns = string.Join(", ", props.Select(p => p.Name));
         var values = string.Join(", ", props.Select(p => "@" + p.Name));
         var sql = $"INSERT INTO {tableName} ({columns}) VALUES ({values})";
-        return ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
+        await ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
     }
 
     /// <summary>

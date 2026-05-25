@@ -39,7 +39,7 @@ internal abstract class ForgeBulkExecutorBase : IForgeProviderBulkExecutor
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        await using var command = connection.CreateCommand();
+        using var command = connection.CreateCommand();
         command.CommandText = sql;
         command.CommandType = CommandType.Text;
 

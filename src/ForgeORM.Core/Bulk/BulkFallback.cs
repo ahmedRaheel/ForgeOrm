@@ -2,7 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data.Common;
-using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -28,8 +28,22 @@ internal static class BulkFallback
             if (props.Length == 0)
                 throw new InvalidOperationException($"Type {key.Type.Name} has no valid scalar properties to insert.");
 
-            var columns = string.Join(", ", props.Select(p => p.Info.Name));
-            var values = string.Join(", ", props.Select(p => p.ParamName));
+            var capacity = key.Table.Length + (props.Length * 32) + 32;
+            var columns = new StringBuilder(capacity);
+            var values = new StringBuilder(capacity);
+
+            for (var i = 0; i < props.Length; i++)
+            {
+                if (i > 0)
+                {
+                    columns.Append(", ");
+                    values.Append(", ");
+                }
+
+                columns.Append(props[i].Info.Name);
+                values.Append(props[i].ParamName);
+            }
+
             return $"INSERT INTO {key.Table} ({columns}) VALUES ({values})";
         });
 
@@ -50,15 +64,26 @@ internal static class BulkFallback
         var sql = UpdateSqlStatementCache.GetOrAdd((typeof(T), tableName, keyColumn), static key =>
         {
             var (type, table, pk) = key;
-            var props = ForgeProviderAdo.PropertyCache<T>.Properties
-                .Where(p => !p.Info.Name.Equals(pk, StringComparison.OrdinalIgnoreCase))
-                .Select(p => p.Info.Name)
-                .ToArray();
+            var props = ForgeProviderAdo.PropertyCache<T>.Properties;
+            var set = new StringBuilder(table.Length + (props.Length * 32) + 32);
+            var count = 0;
 
-            if (props.Length == 0)
+            for (var i = 0; i < props.Length; i++)
+            {
+                var name = props[i].Info.Name;
+                if (name.Equals(pk, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (count > 0)
+                    set.Append(", ");
+
+                set.Append(name).Append(" = @").Append(name);
+                count++;
+            }
+
+            if (count == 0)
                 throw new InvalidOperationException($"Type {type.Name} has no valid properties to update.");
 
-            var set = string.Join(", ", props.Select(p => $"{p} = @{p}"));
             return $"UPDATE {table} SET {set} WHERE {pk} = @{pk}";
         });
 

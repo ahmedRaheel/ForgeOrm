@@ -191,6 +191,9 @@ internal static class ForgeSqlServerDirectGetByIdExecutor<T>
             Sql = sql;
             ParameterName = parameterName;
             KeyType = keyType;
+            _bindParameter = typeof(TKey) == typeof(object)
+                ? (command, value) => ForgeSqlServerProviderDirectHotPath.AddTypedParameter(command, parameterName, value, value?.GetType() ?? keyType)
+                : ForgeSqlServerParameterShape<TKey>.CreateBinder(parameterName);
         }
 
         public string Sql { get; }
@@ -216,8 +219,10 @@ internal static class ForgeSqlServerDirectGetByIdExecutor<T>
             return new ExecutorPlan<TKey>(sql, parameterName, keyType);
         }
 
+        private readonly Action<SqlCommand, TKey> _bindParameter;
+
         public void BindParameter(SqlCommand command, TKey id)
-            => ForgeSqlServerProviderDirectHotPath.AddTypedParameter(command, ParameterName, id, typeof(TKey));
+            => _bindParameter(command, id);
 
         public T Materialize(SqlDataReader reader)
         {

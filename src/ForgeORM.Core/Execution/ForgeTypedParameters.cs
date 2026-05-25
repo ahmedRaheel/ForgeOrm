@@ -32,3 +32,15 @@ public readonly struct ForgeNamedParameter<TValue>
     public string Name { get; }
     public TValue Value { get; }
 }
+
+/// <summary>
+/// Allocation-free primary-key argument used by SQL Server direct and compiled-query paths.
+/// It avoids object?[], List&lt;object&gt;, IReadOnlyList&lt;object&gt; and anonymous parameter bags for by-id execution.
+/// </summary>
+public readonly struct QueryByIdArgs<TKey>
+{
+    public QueryByIdArgs(TKey id) => Id = id;
+
+    /// <summary>Primary-key value.</summary>
+    public TKey Id { get; }
+}

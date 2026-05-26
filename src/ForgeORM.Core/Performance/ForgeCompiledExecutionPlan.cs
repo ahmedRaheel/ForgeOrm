@@ -127,6 +127,23 @@ internal static class ForgeParameterBinderCompiler
         if (parameterType is null)
             return static (_, _) => { };
 
+        if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
+            && ForgeSourceGeneratedRegistry.TryGetProvider(parameterType, out var provider))
+        {
+            var typedBinder = TryCreateTypedGeneratedBinder(provider, parameterType);
+            if (typedBinder is not null)
+                return typedBinder;
+
+            if (provider.TryGetBinder(parameterType, out var generated) && generated is not null)
+            {
+                return (command, value) =>
+                {
+                    if (value is not null)
+                        generated(command, value);
+                };
+            }
+        }
+
         if (parameterType.IsGenericType && parameterType.GetGenericTypeDefinition() == typeof(ForgeIdParameter<>))
             return CreateForgeIdBinder(parameterType, sqlNames);
 

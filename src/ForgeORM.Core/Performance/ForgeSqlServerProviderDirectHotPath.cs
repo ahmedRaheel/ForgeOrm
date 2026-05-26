@@ -21,7 +21,6 @@ internal static class ForgeSqlServerProviderDirectHotPath
     private static readonly ConcurrentDictionary<Type, SqlServerEntityPlan> GetByIdPlans = new();
     private static readonly ConcurrentDictionary<SqlQueryPlanKey, SqlQueryPlan> QueryPlans = new();
     private static readonly ConcurrentDictionary<string, string[]> SqlParameterTokenCache = new(StringComparer.Ordinal);
-    private static readonly ConcurrentDictionary<Type, SqlDbType> SqlTypeCache = new();
 
     public static bool CanUse(IForgeDatabaseProvider provider)
         => string.Equals(provider.ProviderName, "SqlServer", StringComparison.OrdinalIgnoreCase);
@@ -34,10 +33,16 @@ internal static class ForgeSqlServerProviderDirectHotPath
 
     public static async ValueTask<T?> QueryFirstOrDefaultAsync<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
     {
+        if (ForgeSourceGeneratedRegistry.TryExecuteSqlServerFirstOrDefaultAsync<T>(
+                connectionString, sql, parameters, timeoutSeconds, cancellationToken, out var generated))
+        {
+            return await generated.ConfigureAwait(false);
+        }
+
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow, cancellationToken).ConfigureAwait(false);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
         var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
         return await reader.ReadAsync(cancellationToken).ConfigureAwait(false) ? materializer(reader) : default;
     }
@@ -47,39 +52,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
         using var connection = new SqlConnection(connectionString);
         connection.Open();
         using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
-        using var reader = command.ExecuteReader(CommandBehavior.SingleRow);
-        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
-        return reader.Read() ? materializer(reader) : default;
-    }
-
-    /// <summary>SQL Server direct first-row path for one typed scalar parameter. Avoids anonymous object reflection and generic DbCommand pipeline.</summary>
-    public static async ValueTask<T?> QueryFirstOrDefaultAsync<T, TKey>(string connectionString, string sql, string parameterName, TKey value, int? timeoutSeconds, CancellationToken cancellationToken)
-    {
-        await using var connection = new SqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        await using var command = connection.CreateCommand();
-        command.CommandText = sql;
-        command.CommandType = CommandType.Text;
-        if (timeoutSeconds.HasValue)
-            command.CommandTimeout = timeoutSeconds.Value;
-        AddTypedParameter(command, parameterName, value, typeof(TKey));
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow, cancellationToken).ConfigureAwait(false);
-        var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
-        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false) ? materializer(reader) : default;
-    }
-
-    /// <summary>SQL Server direct synchronous first-row path for one typed scalar parameter.</summary>
-    public static T? QueryFirstOrDefault<T, TKey>(string connectionString, string sql, string parameterName, TKey value, int? timeoutSeconds)
-    {
-        using var connection = new SqlConnection(connectionString);
-        connection.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = sql;
-        command.CommandType = CommandType.Text;
-        if (timeoutSeconds.HasValue)
-            command.CommandTimeout = timeoutSeconds.Value;
-        AddTypedParameter(command, parameterName, value, typeof(TKey));
-        using var reader = command.ExecuteReader(CommandBehavior.SingleRow);
+        using var reader = command.ExecuteReader(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess);
         var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
         return reader.Read() ? materializer(reader) : default;
     }
@@ -89,8 +62,11 @@ internal static class ForgeSqlServerProviderDirectHotPath
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
+        if (ForgeSourceGeneratedRegistry.TryExecuteQueryAsync<T>(connection, sql, parameters, null, CommandType.Text, timeoutSeconds, cancellationToken, out var generatedRows))
+            return await generatedRows.ConfigureAwait(false);
+
         await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.Default, cancellationToken).ConfigureAwait(false);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
         var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
         var rows = new List<T>(EstimateCapacity(sql));
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -102,9 +78,9 @@ internal static class ForgeSqlServerProviderDirectHotPath
     {
         using var connection = new SqlConnection(connectionString);
         connection.Open();
-        // Synchronous query intentionally keeps the direct runtime path and avoids the generic DbCommand pipeline.
+        // Synchronous query intentionally keeps the direct runtime path. Source-generated executors are async ValueTask based.
         using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
-        using var reader = command.ExecuteReader(CommandBehavior.Default);
+        using var reader = command.ExecuteReader(CommandBehavior.SequentialAccess);
         var materializer = ForgeSqlServerDirectMaterializerCache.GetOrCreate<T>(reader);
         var rows = new List<T>(EstimateCapacity(sql));
         while (reader.Read())
@@ -152,7 +128,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.Default, cancellationToken).ConfigureAwait(false);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
         var fieldCount = reader.FieldCount;
         var columnNames = new string[fieldCount];
         for (var i = 0; i < fieldCount; i++)
@@ -436,12 +412,6 @@ internal static class ForgeSqlServerProviderDirectHotPath
         if (parameters is null)
             return;
 
-        if (parameters is IForgeDirectScalarParameter directScalar)
-        {
-            AddTypedParameter(command, directScalar.Name, directScalar.BoxedValue, directScalar.ValueType);
-            return;
-        }
-
         if (IsScalar(parameters.GetType()))
         {
             if (parameterNames.Length == 0)
@@ -492,7 +462,23 @@ internal static class ForgeSqlServerProviderDirectHotPath
         if (actualType == typeof(object)) actualType = typeof(string);
         if (!parameterName.StartsWith('@')) parameterName = "@" + parameterName;
 
-        var parameter = command.Parameters.Add(parameterName, GetSqlDbType(actualType));
+        SqlParameter parameter;
+        if (actualType.IsEnum) parameter = command.Parameters.Add(parameterName, SqlDbType.NVarChar);
+        else if (actualType == typeof(int)) parameter = command.Parameters.Add(parameterName, SqlDbType.Int);
+        else if (actualType == typeof(long)) parameter = command.Parameters.Add(parameterName, SqlDbType.BigInt);
+        else if (actualType == typeof(short)) parameter = command.Parameters.Add(parameterName, SqlDbType.SmallInt);
+        else if (actualType == typeof(byte)) parameter = command.Parameters.Add(parameterName, SqlDbType.TinyInt);
+        else if (actualType == typeof(Guid)) parameter = command.Parameters.Add(parameterName, SqlDbType.UniqueIdentifier);
+        else if (actualType == typeof(decimal)) parameter = command.Parameters.Add(parameterName, SqlDbType.Decimal);
+        else if (actualType == typeof(double)) parameter = command.Parameters.Add(parameterName, SqlDbType.Float);
+        else if (actualType == typeof(float)) parameter = command.Parameters.Add(parameterName, SqlDbType.Real);
+        else if (actualType == typeof(bool)) parameter = command.Parameters.Add(parameterName, SqlDbType.Bit);
+        else if (actualType == typeof(DateTime)) parameter = command.Parameters.Add(parameterName, SqlDbType.DateTime2);
+        else if (actualType == typeof(DateTimeOffset)) parameter = command.Parameters.Add(parameterName, SqlDbType.DateTimeOffset);
+        else if (actualType == typeof(DateOnly)) parameter = command.Parameters.Add(parameterName, SqlDbType.Date);
+        else if (actualType == typeof(TimeOnly) || actualType == typeof(TimeSpan)) parameter = command.Parameters.Add(parameterName, SqlDbType.Time);
+        else if (actualType == typeof(byte[])) parameter = command.Parameters.Add(parameterName, SqlDbType.VarBinary);
+        else parameter = command.Parameters.Add(parameterName, SqlDbType.NVarChar);
 
         if (actualType.IsEnum)
             parameter.Value = value is null
@@ -507,34 +493,9 @@ internal static class ForgeSqlServerProviderDirectHotPath
     }
 
 
-
-    private static SqlDbType GetSqlDbType(Type actualType)
-        => SqlTypeCache.GetOrAdd(actualType, static type =>
-        {
-            if (type.IsEnum) return SqlDbType.NVarChar;
-            if (type == typeof(int)) return SqlDbType.Int;
-            if (type == typeof(long)) return SqlDbType.BigInt;
-            if (type == typeof(short)) return SqlDbType.SmallInt;
-            if (type == typeof(byte)) return SqlDbType.TinyInt;
-            if (type == typeof(Guid)) return SqlDbType.UniqueIdentifier;
-            if (type == typeof(decimal)) return SqlDbType.Decimal;
-            if (type == typeof(double)) return SqlDbType.Float;
-            if (type == typeof(float)) return SqlDbType.Real;
-            if (type == typeof(bool)) return SqlDbType.Bit;
-            if (type == typeof(DateTime)) return SqlDbType.DateTime2;
-            if (type == typeof(DateTimeOffset)) return SqlDbType.DateTimeOffset;
-            if (type == typeof(DateOnly)) return SqlDbType.Date;
-            if (type == typeof(TimeOnly) || type == typeof(TimeSpan)) return SqlDbType.Time;
-            if (type == typeof(byte[])) return SqlDbType.VarBinary;
-            return SqlDbType.NVarChar;
-        });
-
     private static void EnsureReferencedSqlParametersAreBound(SqlCommand command, string[] parameterNames, object? parameters)
     {
         if (parameters is null || parameterNames.Length == 0)
-            return;
-
-        if (parameters is IForgeDirectScalarParameter)
             return;
 
         if (parameters is IReadOnlyDictionary<string, object?> dictionary)

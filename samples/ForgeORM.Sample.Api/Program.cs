@@ -16,6 +16,7 @@ using ForgeORM.Caching.Redis;
 using ForgeORM.Security;
 using ForgeORM.Telemetry;
 using ForgeORM.VectorSearch;
+using ForgeORM.Sample.Api.Endpoints;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -86,4 +87,5 @@ app.MapSearchExpressionFixedEndpoints();
 app.MapForgeAiCteTempSamples();
 app.MapAdvancedDbSurfaceSamples();
 
+app.MapDataFramePandasCheatSheetEndpoints();
 app.Run();

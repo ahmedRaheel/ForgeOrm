@@ -3,44 +3,54 @@ using System.Data.Common;
 namespace ForgeORM.Core;
 
 /// <summary>
-/// Central reader resolver for every public query path. SourceGenerated is preferred, RuntimeEmit MSIL is the fallback.
-/// This keeps public methods unchanged while removing reflection/materializer branching from each call site.
+/// Central reader resolver for every public query path.
+/// RuntimeEmit means RuntimeEmit only. SourceGenerated means source-generated only.
+/// Auto means source-generated first, then provider-specific/runtime fallback.
 /// </summary>
 internal static class ForgeCompiledReaderResolver
 {
     public static Func<DbDataReader, T> GetReader<T>(DbDataReader reader)
     {
         var type = typeof(T);
+        var mode = ForgeSourceGeneratedRegistry.CompilationMode;
 
-        if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
-            && ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider)
+        if (mode == ForgeOrmCompilationMode.RuntimeEmit)
+            return ForgeIlMaterializerCache.GetOrCreate<T>(reader);
+
+        if (ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider)
             && provider.TryCreateReader<T>(reader, out var generated)
             && generated is not null)
         {
             return generated;
         }
 
+        if (mode == ForgeOrmCompilationMode.SourceGenerated || mode == ForgeOrmCompilationMode.SourceGeneratedStrict)
+            throw new InvalidOperationException($"SourceGenerated mode failed. No source-generated reader was registered for {type.FullName}. RuntimeEmit fallback is disabled because SourceGenerated was explicitly selected.");
+
+        // Auto mode only: generated reader unavailable, fallback is allowed.
         if (ForgeProviderMaterializerRegistry.TryCreateReader<T>(reader, out var providerSpecific)
             && providerSpecific is not null)
         {
             return providerSpecific;
         }
 
-        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGeneratedStrict)
-            throw new InvalidOperationException($"No ForgeORM source-generated reader was registered for {type.FullName}.");
-
         return ForgeIlMaterializerCache.GetOrCreate<T>(reader);
     }
 
     public static Func<DbDataReader, object> GetReader(Type type, DbDataReader reader)
     {
-        if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
-            && ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider))
+        var mode = ForgeSourceGeneratedRegistry.CompilationMode;
+
+        if (mode == ForgeOrmCompilationMode.RuntimeEmit)
+            return ForgeIlMaterializerCache.GetOrCreate(type, reader);
+
+        if (ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider))
             return provider.GetReader(type, reader);
 
-        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGeneratedStrict)
-            throw new InvalidOperationException($"No ForgeORM source-generated reader was registered for {type.FullName}.");
+        if (mode == ForgeOrmCompilationMode.SourceGenerated || mode == ForgeOrmCompilationMode.SourceGeneratedStrict)
+            throw new InvalidOperationException($"SourceGenerated mode failed. No source-generated reader was registered for {type.FullName}. RuntimeEmit fallback is disabled because SourceGenerated was explicitly selected.");
 
+        // Auto mode only: generated reader unavailable, fallback is allowed.
         return ForgeIlMaterializerCache.GetOrCreate(type, reader);
     }
 }

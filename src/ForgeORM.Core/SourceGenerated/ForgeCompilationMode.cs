@@ -69,10 +69,10 @@ public enum ForgeOrmCompilationMode
     /// <summary>Force runtime emit/materializer fallback and ignore source-generated providers.</summary>
     RuntimeEmit = 1,
 
-    /// <summary>Prefer source-generated artifacts globally, but do not break execution when a projection/entity was not generated.</summary>
+    /// <summary>Force source-generated artifacts and fail fast when a generated reader/binder is missing. RuntimeEmit fallback is disabled.</summary>
     SourceGenerated = 2,
 
-    /// <summary>NativeAOT/strict mode. Fail fast if any required generated artifact is missing.</summary>
+    /// <summary>NativeAOT/strict alias for SourceGenerated-only behavior. Fail fast if any required generated artifact is missing.</summary>
     SourceGeneratedStrict = 3
 }
 

@@ -20,20 +20,27 @@ internal static class ForgeSqlServerDirectMaterializerCache
 
     public static Func<SqlDataReader, T> GetOrCreate<T>(SqlDataReader reader)
     {
-        if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit)
-        {
-            if (ForgeSourceGeneratedRegistry.TryGetProvider(typeof(T), out var provider)
-                && provider.TryCreateReader<T>(reader, out var generated)
-                && generated is not null)
-            {
-                return r => generated(r);
-            }
+        var mode = ForgeSourceGeneratedRegistry.CompilationMode;
+        var type = typeof(T);
 
-            if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGeneratedStrict)
-                throw new InvalidOperationException($"No ForgeORM source-generated SQL Server direct materializer was registered for {typeof(T).FullName}.");
+        if (mode == ForgeOrmCompilationMode.RuntimeEmit)
+        {
+            var runtimeKey = CreateKey(type, reader);
+            return (Func<SqlDataReader, T>)Cache.GetOrAdd(runtimeKey, _ => Build<T>(reader));
         }
 
-        var type = typeof(T);
+        if (ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider)
+            && provider.TryCreateReader<T>(reader, out var generated)
+            && generated is not null)
+        {
+            // Generated providers expose DbDataReader delegates for portability; this adapter is created once per plan.
+            return r => generated(r);
+        }
+
+        if (mode == ForgeOrmCompilationMode.SourceGenerated || mode == ForgeOrmCompilationMode.SourceGeneratedStrict)
+            throw new InvalidOperationException($"SourceGenerated mode failed. No source-generated SQL Server direct materializer was registered for {type.FullName}. RuntimeEmit fallback is disabled because SourceGenerated was explicitly selected.");
+
+        // Auto mode only: generated reader unavailable, SQL Server RuntimeEmit fallback is allowed.
         var key = CreateKey(type, reader);
         return (Func<SqlDataReader, T>)Cache.GetOrAdd(key, _ => Build<T>(reader));
     }

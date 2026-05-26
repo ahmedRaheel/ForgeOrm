@@ -561,14 +561,15 @@ public static class ForgeAdo
 
     private static Action<DbCommand, object> BuildParameterWriter(Type type)
     {
-        if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
+        var mode = ForgeSourceGeneratedRegistry.CompilationMode;
+        if (mode != ForgeOrmCompilationMode.RuntimeEmit
             && ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider)
             && provider.TryGetBinder(type, out var generatedBinder)
             && generatedBinder is not null)
             return generatedBinder;
 
-        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGeneratedStrict)
-            throw new InvalidOperationException($"No ForgeORM source-generated parameter binder was registered for {type.FullName}.");
+        if (mode == ForgeOrmCompilationMode.SourceGenerated || mode == ForgeOrmCompilationMode.SourceGeneratedStrict)
+            throw new InvalidOperationException($"SourceGenerated mode failed. No ForgeORM source-generated parameter binder was registered for {type.FullName}. RuntimeEmit binder fallback is disabled because SourceGenerated was explicitly selected.");
 
         var props = ParameterPropertyCache.GetOrAdd(type, BuildParameterProperties);
 

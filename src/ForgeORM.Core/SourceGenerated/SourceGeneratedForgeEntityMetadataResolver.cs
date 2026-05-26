@@ -48,9 +48,10 @@ public sealed class HybridForgeEntityMetadataResolver : IForgeEntityMetadataReso
         if (ForgeSourceGeneratedRegistry.TryGetMetadata(type, out var generated))
             return _cache.GetOrAdd(type, generated);
 
-        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGeneratedStrict)
+        if (ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGenerated ||
+            ForgeSourceGeneratedRegistry.CompilationMode == ForgeOrmCompilationMode.SourceGeneratedStrict)
             throw new InvalidOperationException(
-                $"SourceGenerated mode is enabled, but no generated metadata was registered for {type.FullName}.");
+                $"SourceGenerated mode is enabled, but no generated metadata was registered for {type.FullName}. Reflection metadata fallback is disabled because SourceGenerated was explicitly selected.");
 
         return _cache.GetOrAdd(type, _reflection.Resolve(type));
     }

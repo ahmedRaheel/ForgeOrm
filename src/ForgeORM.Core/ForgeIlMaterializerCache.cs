@@ -22,25 +22,29 @@ internal static class ForgeIlMaterializerCache
         var type = typeof(T);
         var mode = ForgeSourceGeneratedRegistry.CompilationMode;
 
-        if (mode != ForgeOrmCompilationMode.RuntimeEmit)
+        if (mode == ForgeOrmCompilationMode.RuntimeEmit)
         {
-            if (ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider))
-            {
-                var created = provider.TryCreateReader<T>(reader, out var sourceReader);
-                if (created && sourceReader is not null)
-                    return sourceReader;
-
-                if (mode == ForgeOrmCompilationMode.SourceGeneratedStrict)
-                    throw new InvalidOperationException(
-                        $"SourceGeneratedStrict failed for {type.FullName}. Provider was registered, but TryCreateReader returned {created} and reader was {(sourceReader is null ? "null" : "not null")}.");
-            }
-            else if (mode == ForgeOrmCompilationMode.SourceGeneratedStrict)
-            {
-                throw new InvalidOperationException(
-                    $"SourceGeneratedStrict failed. No source-generated provider was registered for {type.FullName}. Ensure the generated assembly is referenced and its ModuleInitializer ran.");
-            }
+            var runtimeKey = mode + "|" + ForgeReaderShapeCache.CreateKey(type, reader);
+            return (Func<DbDataReader, T>)Cache.GetOrAdd(runtimeKey, _ => CreateMaterializer<T>(reader));
         }
 
+        if (ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider))
+        {
+            var created = provider.TryCreateReader<T>(reader, out var sourceReader);
+            if (created && sourceReader is not null)
+                return sourceReader;
+
+            if (mode == ForgeOrmCompilationMode.SourceGenerated || mode == ForgeOrmCompilationMode.SourceGeneratedStrict)
+                throw new InvalidOperationException(
+                    $"SourceGenerated mode failed for {type.FullName}. Provider was registered, but TryCreateReader returned {created} and reader was {(sourceReader is null ? "null" : "not null")}. RuntimeEmit fallback is disabled because SourceGenerated was explicitly selected.");
+        }
+        else if (mode == ForgeOrmCompilationMode.SourceGenerated || mode == ForgeOrmCompilationMode.SourceGeneratedStrict)
+        {
+            throw new InvalidOperationException(
+                $"SourceGenerated mode failed. No source-generated provider was registered for {type.FullName}. Ensure the generated assembly is referenced and its ModuleInitializer ran. RuntimeEmit fallback is disabled because SourceGenerated was explicitly selected.");
+        }
+
+        // Auto mode only: generated reader was not available, so RuntimeEmit is allowed as fallback.
         var key = mode + "|" + ForgeReaderShapeCache.CreateKey(type, reader);
         return (Func<DbDataReader, T>)Cache.GetOrAdd(key, _ => CreateMaterializer<T>(reader));
     }
@@ -48,16 +52,21 @@ internal static class ForgeIlMaterializerCache
     public static Func<DbDataReader, object> GetOrCreate(Type type, DbDataReader reader)
     {
         var mode = ForgeSourceGeneratedRegistry.CompilationMode;
-        if (mode != ForgeOrmCompilationMode.RuntimeEmit)
-        {
-            if (ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider))
-                return provider.GetReader(type, reader);
 
-            if (mode == ForgeOrmCompilationMode.SourceGeneratedStrict)
-                throw new InvalidOperationException(
-                    $"SourceGeneratedStrict failed. No source-generated provider was registered for {type.FullName}. Ensure the generated assembly is referenced and its ModuleInitializer ran.");
+        if (mode == ForgeOrmCompilationMode.RuntimeEmit)
+        {
+            var runtimeKey = mode + "|" + ForgeReaderShapeCache.CreateKey(type, reader);
+            return (Func<DbDataReader, object>)ObjectCache.GetOrAdd(runtimeKey, _ => CreateObjectMaterializer(type, reader));
         }
 
+        if (ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider))
+            return provider.GetReader(type, reader);
+
+        if (mode == ForgeOrmCompilationMode.SourceGenerated || mode == ForgeOrmCompilationMode.SourceGeneratedStrict)
+            throw new InvalidOperationException(
+                $"SourceGenerated mode failed. No source-generated provider was registered for {type.FullName}. Ensure the generated assembly is referenced and its ModuleInitializer ran. RuntimeEmit fallback is disabled because SourceGenerated was explicitly selected.");
+
+        // Auto mode only: generated object reader was not available, so RuntimeEmit is allowed as fallback.
         var key = mode + "|" + ForgeReaderShapeCache.CreateKey(type, reader);
         return (Func<DbDataReader, object>)ObjectCache.GetOrAdd(key, _ => CreateObjectMaterializer(type, reader));
     }

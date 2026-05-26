@@ -127,7 +127,8 @@ internal static class ForgeParameterBinderCompiler
         if (parameterType is null)
             return static (_, _) => { };
 
-        if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
+        var mode = ForgeSourceGeneratedRegistry.CompilationMode;
+        if (mode != ForgeOrmCompilationMode.RuntimeEmit
             && ForgeSourceGeneratedRegistry.TryGetProvider(parameterType, out var provider))
         {
             var typedBinder = TryCreateTypedGeneratedBinder(provider, parameterType);
@@ -143,6 +144,9 @@ internal static class ForgeParameterBinderCompiler
                 };
             }
         }
+
+        if (mode == ForgeOrmCompilationMode.SourceGenerated || mode == ForgeOrmCompilationMode.SourceGeneratedStrict)
+            throw new InvalidOperationException($"SourceGenerated mode failed. No ForgeORM source-generated parameter binder was registered for {parameterType.FullName}. RuntimeEmit/reflection binder fallback is disabled because SourceGenerated was explicitly selected.");
 
         if (parameterType.IsGenericType && parameterType.GetGenericTypeDefinition() == typeof(ForgeIdParameter<>))
             return CreateForgeIdBinder(parameterType, sqlNames);

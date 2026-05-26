@@ -29,6 +29,12 @@ internal static class ForgeSqlServerDirectMaterializerCache
             return (Func<SqlDataReader, T>)Cache.GetOrAdd(runtimeKey, _ => Build<T>(reader));
         }
 
+        if (ForgeGeneratedRegistry.TryGetSqlServerReader<T>(out var sqlServerReader))
+            return sqlServerReader;
+
+        if (ForgeGeneratedRegistry.TryGetReader<T>(out var registeredReader))
+            return r => registeredReader(r);
+
         if (ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider)
             && provider.TryCreateReader<T>(reader, out var generated)
             && generated is not null)

@@ -5,16 +5,16 @@ namespace ForgeORM.Core;
 public static class ForgeMaterializer
 {
     public static Func<DbDataReader, T> GetReader<T>(DbDataReader reader)
-        => ForgeIlMaterializerCache.GetOrCreate<T>(reader);
+        => ForgeCompiledReaderResolver.GetReader<T>(reader);
 
     public static Func<DbDataReader, object> GetReader(Type type, DbDataReader reader)
-        => ForgeIlMaterializerCache.GetOrCreate(type, reader);
+        => ForgeCompiledReaderResolver.GetReader(type, reader);
 
     public static T Map<T>(DbDataReader reader)
-        => ForgeIlMaterializerCache.GetOrCreate<T>(reader)(reader);
+        => ForgeCompiledReaderResolver.GetReader<T>(reader)(reader);
 
     public static object? Map(Type type, DbDataReader reader)
-        => ForgeIlMaterializerCache.GetOrCreate(type, reader)(reader);
+        => ForgeCompiledReaderResolver.GetReader(type, reader)(reader);
 
     public static bool IsScalar(Type type)
     {

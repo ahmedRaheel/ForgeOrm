@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Data.Common;
+using Microsoft.Data.SqlClient;
 
 namespace ForgeORM.Core;
 
@@ -11,6 +12,7 @@ namespace ForgeORM.Core;
 public static class ForgeGeneratedRegistry
 {
     private static readonly ConcurrentDictionary<Type, Delegate> Readers = new();
+    private static readonly ConcurrentDictionary<Type, Delegate> SqlServerReaders = new();
     private static readonly ConcurrentDictionary<Type, Delegate> ParameterBinders = new();
 
     /// <summary>Registers a generated reader for an entity or DTO type.</summary>
@@ -18,6 +20,13 @@ public static class ForgeGeneratedRegistry
         where T : notnull
     {
         Readers[typeof(T)] = reader ?? throw new ArgumentNullException(nameof(reader));
+    }
+
+    /// <summary>Registers a generated SQL Server direct reader for an entity or DTO type.</summary>
+    public static void RegisterSqlServerReader<T>(Func<SqlDataReader, T> reader)
+        where T : notnull
+    {
+        SqlServerReaders[typeof(T)] = reader ?? throw new ArgumentNullException(nameof(reader));
     }
 
     /// <summary>Registers a generated parameter binder for an anonymous-like request DTO or entity.</summary>
@@ -34,6 +43,32 @@ public static class ForgeGeneratedRegistry
         if (Readers.TryGetValue(typeof(T), out var value) && value is Func<DbDataReader, T> typed)
         {
             reader = typed;
+            return true;
+        }
+
+        reader = default!;
+        return false;
+    }
+
+    /// <summary>Gets a generated SQL Server direct reader when one was emitted by ForgeORM.SourceGenerators.</summary>
+    public static bool TryGetSqlServerReader<T>(out Func<SqlDataReader, T> reader)
+    {
+        if (SqlServerReaders.TryGetValue(typeof(T), out var value) && value is Func<SqlDataReader, T> typed)
+        {
+            reader = typed;
+            return true;
+        }
+
+        reader = default!;
+        return false;
+    }
+
+    /// <summary>Gets a generated object reader when the runtime only has a Type.</summary>
+    public static bool TryGetObjectReader(Type type, out Func<DbDataReader, object> reader)
+    {
+        if (Readers.TryGetValue(type, out var value))
+        {
+            reader = r => value.DynamicInvoke(r)!;
             return true;
         }
 

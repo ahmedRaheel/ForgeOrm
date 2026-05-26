@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
+using System.Reflection;
 using System.Data.Common;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -225,6 +226,7 @@ public static class ForgeSourceGeneratedRegistry
     private static readonly ConcurrentDictionary<Type, IForgeSourceGeneratedAccessorProvider?> ProviderByType = new();
     private static readonly ConcurrentDictionary<Type, ForgeEntityMetadata> MetadataByType = new();
     private static readonly object Gate = new();
+    private static int DiscoveryAttempted;
 
     public static ForgeOrmCompilationMode CompilationMode { get; set; } = ForgeOrmCompilationMode.Auto;
 
@@ -284,6 +286,69 @@ public static class ForgeSourceGeneratedRegistry
         return provider is not null;
     }
 
+    /// <summary>
+    /// Gets a generated provider and, when the provider was not registered yet, actively discovers
+    /// the generated provider emitted into the consuming assembly. This is the correct SourceGenerated
+    /// behavior: SourceGenerated means create/use generated code, not silently fall back to RuntimeEmit.
+    /// </summary>
+    public static bool TryGetOrCreateProvider(Type type, out IForgeSourceGeneratedAccessorProvider provider)
+    {
+        if (TryGetProvider(type, out provider))
+            return true;
+
+        DiscoverGeneratedProviders();
+        return TryGetProvider(type, out provider);
+    }
+
+    private static void DiscoverGeneratedProviders()
+    {
+        if (Interlocked.Exchange(ref DiscoveryAttempted, 1) == 1)
+            return;
+
+        var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+        for (var i = 0; i < assemblies.Length; i++)
+        {
+            var assembly = assemblies[i];
+            Type?[] types;
+            try
+            {
+                types = assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                types = ex.Types;
+            }
+            catch
+            {
+                continue;
+            }
+
+            for (var j = 0; j < types.Length; j++)
+            {
+                var providerType = types[j];
+                if (providerType is null || providerType.IsAbstract || providerType.IsInterface)
+                    continue;
+
+                if (!typeof(IForgeSourceGeneratedAccessorProvider).IsAssignableFrom(providerType))
+                    continue;
+
+                // The generated provider usually registers itself through ModuleInitializer.
+                // This fallback handles cases where the generated assembly is loaded but the
+                // provider was not in the registry due to project/reference configuration.
+                try
+                {
+                    if (Activator.CreateInstance(providerType) is IForgeSourceGeneratedAccessorProvider provider)
+                        Register(provider);
+                }
+                catch
+                {
+                    // Ignore bad provider candidates; SourceGenerated/Strict will still fail
+                    // with a clear error if no generated provider can handle the requested type.
+                }
+            }
+        }
+    }
+
     /// <summary>Attempts to execute a full source-generated provider-neutral first-row query.</summary>
     public static bool TryExecuteFirstOrDefaultAsync<T>(
         DbConnection connection,
@@ -295,7 +360,7 @@ public static class ForgeSourceGeneratedRegistry
         CancellationToken cancellationToken,
         out ValueTask<T?> result)
     {
-        if (CompilationMode == ForgeOrmCompilationMode.RuntimeEmit || !TryGetProvider(typeof(T), out var provider))
+        if (CompilationMode == ForgeOrmCompilationMode.RuntimeEmit || !TryGetOrCreateProvider(typeof(T), out var provider))
         {
             result = default;
             return false;
@@ -315,7 +380,7 @@ public static class ForgeSourceGeneratedRegistry
         CancellationToken cancellationToken,
         out ValueTask<IReadOnlyList<T>> result)
     {
-        if (CompilationMode == ForgeOrmCompilationMode.RuntimeEmit || !TryGetProvider(typeof(T), out var provider))
+        if (CompilationMode == ForgeOrmCompilationMode.RuntimeEmit || !TryGetOrCreateProvider(typeof(T), out var provider))
         {
             result = default;
             return false;
@@ -335,7 +400,7 @@ public static class ForgeSourceGeneratedRegistry
         CancellationToken cancellationToken,
         out ValueTask<T?> result)
     {
-        if (CompilationMode == ForgeOrmCompilationMode.RuntimeEmit || !TryGetProvider(typeof(T), out var provider))
+        if (CompilationMode == ForgeOrmCompilationMode.RuntimeEmit || !TryGetOrCreateProvider(typeof(T), out var provider))
         {
             result = default;
             return false;
@@ -355,7 +420,7 @@ public static class ForgeSourceGeneratedRegistry
         CancellationToken cancellationToken,
         out ValueTask<int> result)
     {
-        if (CompilationMode == ForgeOrmCompilationMode.RuntimeEmit || !TryGetProvider(typeof(T), out var provider))
+        if (CompilationMode == ForgeOrmCompilationMode.RuntimeEmit || !TryGetOrCreateProvider(typeof(T), out var provider))
         {
             result = default;
             return false;
@@ -379,7 +444,7 @@ public static class ForgeSourceGeneratedRegistry
             return false;
         }
 
-        if (TryGetProvider(typeof(T), out var provider) &&
+        if (TryGetOrCreateProvider(typeof(T), out var provider) &&
             provider.TryExecuteSqlServerFirstOrDefaultAsync(connectionString, sql, parameters, timeoutSeconds, cancellationToken, out result))
         {
             return true;

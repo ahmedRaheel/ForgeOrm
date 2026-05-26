@@ -107,8 +107,8 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         {
             sb.AppendLine("        if (typeof(T).FullName == \"" + Escape(type.ToDisplayString()) + "\")");
             sb.AppendLine("        {");
-            sb.AppendLine("            var objectReader = CreateReader_" + Safe(type) + "(reader);");
-            sb.AppendLine("            readerFunc = r => (T)objectReader(r);");
+            sb.AppendLine("            // Important: cast the delegate once. Do not wrap objectReader and cast per row.");
+            sb.AppendLine("            readerFunc = (Func<DbDataReader, T>)(object)CreateTypedReader_" + Safe(type) + "(reader);");
             sb.AppendLine("            return true;");
             sb.AppendLine("        }");
         }
@@ -328,6 +328,12 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
 
         sb.AppendLine();
         sb.AppendLine("    private static Func<DbDataReader, object> CreateReader_" + safe + "(DbDataReader reader)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        var typed = CreateTypedReader_" + safe + "(reader);");
+        sb.AppendLine("        return r => typed(r)!;");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine("    private static Func<DbDataReader, " + full + "> CreateTypedReader_" + safe + "(DbDataReader reader)");
         sb.AppendLine("    {");
         foreach (var p in props)
         {

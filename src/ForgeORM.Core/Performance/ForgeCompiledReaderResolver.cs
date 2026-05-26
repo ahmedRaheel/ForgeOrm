@@ -17,7 +17,10 @@ internal static class ForgeCompiledReaderResolver
         if (mode == ForgeOrmCompilationMode.RuntimeEmit)
             return ForgeIlMaterializerCache.GetOrCreate<T>(reader);
 
-        if (ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider)
+        if (ForgeGeneratedRegistry.TryGetReader<T>(out var registeredReader))
+            return registeredReader;
+
+        if (ForgeSourceGeneratedRegistry.TryGetOrCreateProvider(type, out var provider)
             && provider.TryCreateReader<T>(reader, out var generated)
             && generated is not null)
         {
@@ -44,7 +47,10 @@ internal static class ForgeCompiledReaderResolver
         if (mode == ForgeOrmCompilationMode.RuntimeEmit)
             return ForgeIlMaterializerCache.GetOrCreate(type, reader);
 
-        if (ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider))
+        if (ForgeGeneratedRegistry.TryGetObjectReader(type, out var registeredReader))
+            return registeredReader;
+
+        if (ForgeSourceGeneratedRegistry.TryGetOrCreateProvider(type, out var provider))
             return provider.GetReader(type, reader);
 
         if (mode == ForgeOrmCompilationMode.SourceGenerated || mode == ForgeOrmCompilationMode.SourceGeneratedStrict)

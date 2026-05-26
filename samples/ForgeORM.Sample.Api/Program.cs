@@ -87,5 +87,5 @@ app.MapSearchExpressionFixedEndpoints();
 app.MapForgeAiCteTempSamples();
 app.MapAdvancedDbSurfaceSamples();
 
-app.MapDataFramePandasCheatSheetEndpoints();
+//app.MapDataFramePandasCheatSheetEndpoints();
 app.Run();

@@ -183,7 +183,7 @@ public static class ForgePandasCheatSheetExtensions
 
     /// <summary>Returns distinct count for a column, equivalent to pandas nunique.</summary>
     public static int NUnique(this ForgeDataFrame frame, string column)
-        => frame.Unique(column).Count;
+        => frame.NUnique(column);
 
     /// <summary>Returns value counts for a column, equivalent to pandas value_counts.</summary>
     public static ForgeDataFrame ValueCounts(this ForgeDataFrame frame, string column, string countColumn = "Count")

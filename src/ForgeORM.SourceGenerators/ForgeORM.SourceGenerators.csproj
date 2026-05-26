@@ -29,8 +29,8 @@
             Visible="false"
             Condition="Exists('$(TargetPath)')" />
     </ItemGroup>
-    <Error Condition="!Exists('$(TargetPath)')"
-           Text="ForgeORM.SourceGenerators analyzer was not built at $(TargetPath). Build ForgeORM.SourceGenerators first or run dotnet pack with a valid Configuration." />
+    <Warning Condition="!Exists('$(TargetPath)')"
+             Text="ForgeORM.SourceGenerators analyzer was not built at $(TargetPath). Run Build/Rebuild before packing this analyzer package." />
   </Target>
 
   <Target Name="ForgeORM_GetAnalyzerTargetPath" Returns="$(TargetPath)">

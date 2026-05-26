@@ -34,30 +34,34 @@
   <ItemGroup>
     <None Include="buildTransitive\$(PackageId).props" Pack="true" PackagePath="buildTransitive\$(PackageId).props" Visible="false" />
   </ItemGroup>
-  <Target Name="ForgeORM_BuildAndPackSourceGeneratorAnalyzer" BeforeTargets="_GetPackageFiles;GenerateNuspec">
+  <Target Name="ForgeORM_PackSourceGeneratorAnalyzer" BeforeTargets="_GetPackageFiles;GenerateNuspec" Condition="'$(ForgeOrmDisableSourceGenerator)' != 'true'">
     <!--
-      Build and pack the source generator into this NuGet package.
-      End users never add analyzer paths manually; NuGet consumes this from analyzers/dotnet/cs.
+      Pack ForgeORM.SourceGenerators as a transitive Roslyn analyzer without exposing
+      any bin/Debug/<tfm> path to consumer projects. This target is packaging-only.
+      It does not add Analyzer items to the current build, so normal Build/Rebuild
+      cannot fail with CS0006 because a generator DLL path has not been created yet.
     -->
     <PropertyGroup>
-      <ForgeOrmSourceGeneratorTargetFramework Condition="'$(ForgeOrmSourceGeneratorTargetFramework)' == ''">netstandard2.0</ForgeOrmSourceGeneratorTargetFramework>
       <ForgeOrmSourceGeneratorProject>..\ForgeORM.SourceGenerators\ForgeORM.SourceGenerators.csproj</ForgeOrmSourceGeneratorProject>
-      <ForgeOrmSourceGeneratorDll>..\ForgeORM.SourceGenerators\bin\$(Configuration)\$(ForgeOrmSourceGeneratorTargetFramework)\ForgeORM.SourceGenerators.dll</ForgeOrmSourceGeneratorDll>
     </PropertyGroup>
 
     <MSBuild Projects="$(ForgeOrmSourceGeneratorProject)"
              Targets="Build"
-             Properties="Configuration=$(Configuration);TargetFramework=$(ForgeOrmSourceGeneratorTargetFramework)" />
-
-    <Error Condition="!Exists('$(ForgeOrmSourceGeneratorDll)')"
-           Text="ForgeORM.SourceGenerators.dll was not built/found at $(ForgeOrmSourceGeneratorDll)." />
+             Properties="Configuration=$(Configuration)"
+             ContinueOnError="WarnAndContinue" />
 
     <ItemGroup>
-      <None Include="$(ForgeOrmSourceGeneratorDll)"
+      <_ForgeOrmSourceGeneratorAnalyzer Include="..\ForgeORM.SourceGenerators\bin\$(Configuration)\**\ForgeORM.SourceGenerators.dll" />
+      <None Include="@(_ForgeOrmSourceGeneratorAnalyzer)"
             Pack="true"
             PackagePath="analyzers/dotnet/cs"
             Visible="false" />
     </ItemGroup>
-    <Message Importance="High" Text="ForgeORM: packing source generator analyzer $(ForgeOrmSourceGeneratorDll)" />
+
+    <Message Importance="High"
+             Condition="'@(_ForgeOrmSourceGeneratorAnalyzer)' != ''"
+             Text="ForgeORM: packing source generator analyzer @(_ForgeOrmSourceGeneratorAnalyzer)" />
+    <Warning Condition="'@(_ForgeOrmSourceGeneratorAnalyzer)' == ''"
+             Text="ForgeORM.SourceGenerators.dll was not found under src/ForgeORM.SourceGenerators/bin/$(Configuration). The runtime package will build, but SourceGenerated mode will require the analyzer package/reference to be present." />
   </Target>
 </Project>

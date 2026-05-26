@@ -267,33 +267,43 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
     {
         if (type.TypeKind is not (TypeKind.Class or TypeKind.Struct)) return false;
         if (type.TypeKind == TypeKind.Class && type.IsAbstract) return false;
-        if (type.DeclaredAccessibility != Accessibility.Public) return false;
+        if (type.IsStatic) return false;
+        if (type.DeclaredAccessibility is not (Accessibility.Public or Accessibility.Internal)) return false;
 
         var ns = type.ContainingNamespace?.ToDisplayString() ?? string.Empty;
         if (ns.StartsWith("System", StringComparison.Ordinal) ||
             ns.StartsWith("Microsoft", StringComparison.Ordinal) ||
-            ns.StartsWith("BenchmarkDotNet", StringComparison.Ordinal))
+            ns.StartsWith("BenchmarkDotNet", StringComparison.Ordinal) ||
+            ns.StartsWith("ForgeORM.SourceGenerators", StringComparison.Ordinal))
             return false;
 
+        var props = Properties(type).ToArray();
+        if (props.Length == 0 || !props.Any(IsSupportedGeneratedProperty))
+            return false;
+
+        // Explicit attributes always win.
         if (HasForgeTableAttribute(type) || HasGenerateMapperAttribute(type) || HasForgeDtoAttribute(type) || HasForgeProjectionAttribute(type))
             return true;
 
-        // Enterprise framework-level policy: generation should not require attributes for every
-        // model/projection. Convention-based generation covers common app/benchmark/sample model
-        // namespaces while avoiding random infrastructure classes.
-        if (ns.EndsWith(".Models", StringComparison.Ordinal) ||
-            ns.Contains(".Models.", StringComparison.Ordinal) ||
-            ns.EndsWith(".Dtos", StringComparison.Ordinal) ||
-            ns.Contains(".Dtos.", StringComparison.Ordinal) ||
-            ns.EndsWith(".Projections", StringComparison.Ordinal) ||
-            ns.Contains(".Projections.", StringComparison.Ordinal))
-            return Properties(type).Any(IsSupportedGeneratedProperty);
+        // User asked for zero per-entity configuration. Therefore any normal entity/DTO/projection-like
+        // type in the consuming compilation is eligible by convention. This covers Order, Product,
+        // Customer, Invoice, Payment, benchmark models, API models, records and projection DTOs without
+        // requiring DbSet registration or attributes.
+        if (HasUsableMaterializationShape(type, props))
+            return true;
 
-        return type.Name.EndsWith("Dto", StringComparison.OrdinalIgnoreCase) ||
-               type.Name.EndsWith("Record", StringComparison.OrdinalIgnoreCase) ||
-               type.Name.EndsWith("Projection", StringComparison.OrdinalIgnoreCase)
-            ? Properties(type).Any(IsSupportedGeneratedProperty)
-            : false;
+        return false;
+    }
+
+    private static bool HasUsableMaterializationShape(INamedTypeSymbol type, IPropertySymbol[] props)
+    {
+        // Parameterless construction + public/init setters.
+        if (type.InstanceConstructors.Any(c => c.Parameters.Length == 0 && c.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal) &&
+            props.Any(p => p.SetMethod is { DeclaredAccessibility: Accessibility.Public or Accessibility.Internal }))
+            return true;
+
+        // Constructor-bound DTO/record construction.
+        return PickConstructor(type, props) is not null;
     }
 
     private static bool IsSupportedGeneratedProperty(IPropertySymbol p)
@@ -316,7 +326,7 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
             .Where(p => p.DeclaredAccessibility == Accessibility.Public && !p.IsStatic && p.GetMethod is not null && IsScalar(p.Type));
 
     private static IEnumerable<IPropertySymbol> SettableProperties(INamedTypeSymbol type)
-        => Properties(type).Where(p => p.SetMethod is { DeclaredAccessibility: Accessibility.Public });
+        => Properties(type).Where(p => p.SetMethod is { DeclaredAccessibility: Accessibility.Public or Accessibility.Internal });
 
     private static bool IsScalar(ITypeSymbol type)
     {

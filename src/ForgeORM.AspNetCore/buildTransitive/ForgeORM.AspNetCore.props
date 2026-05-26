@@ -1,5 +1,8 @@
 <Project>
-  <!-- Ensures ForgeORM source generator is attached automatically for NuGet consumers. -->
+  <!--
+    Auto-wire ForgeORM source generation for NuGet consumers.
+    User only calls: options.UseCompilationMode(SourceGenerated).
+  -->
   <ItemGroup Condition="'$(ForgeOrmDisableSourceGenerator)' != 'true' and Exists('$(MSBuildThisFileDirectory)..\analyzers\dotnet\cs\ForgeORM.SourceGenerators.dll')">
     <Analyzer Include="$(MSBuildThisFileDirectory)..\analyzers\dotnet\cs\ForgeORM.SourceGenerators.dll" />
   </ItemGroup>

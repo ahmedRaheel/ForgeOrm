@@ -2,7 +2,7 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
+    <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <IsPackable>true</IsPackable>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
@@ -31,5 +31,11 @@
     </ItemGroup>
     <Error Condition="!Exists('$(TargetPath)')"
            Text="ForgeORM.SourceGenerators analyzer was not built at $(TargetPath). Build ForgeORM.SourceGenerators first or run dotnet pack with a valid Configuration." />
+  </Target>
+
+  <Target Name="ForgeORM_GetAnalyzerTargetPath" Returns="$(TargetPath)">
+    <ItemGroup>
+      <ForgeORM_SourceGeneratorTarget Include="$(TargetPath)" />
+    </ItemGroup>
   </Target>
 </Project>

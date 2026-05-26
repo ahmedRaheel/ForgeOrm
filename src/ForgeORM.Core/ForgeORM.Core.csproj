@@ -34,34 +34,30 @@
   <ItemGroup>
     <None Include="buildTransitive\$(PackageId).props" Pack="true" PackagePath="buildTransitive\$(PackageId).props" Visible="false" />
   </ItemGroup>
-
   <Target Name="ForgeORM_BuildAndPackSourceGeneratorAnalyzer" BeforeTargets="_GetPackageFiles;GenerateNuspec">
     <!--
-      Pack the source generator into ForgeORM.Core.nupkg so package consumers get
-      SourceGenerated mode by only calling:
-
-          options.UseCompilationMode(ForgeOrmCompilationMode.SourceGenerated);
-
-      We build the generator project first, then ask MSBuild for its TargetPath.
-      This avoids the broken bin\Debug\ForgeORM.SourceGenerators.dll path and
-      the unreliable ReferenceCopyLocalPaths path for analyzer ProjectReferences.
+      Build and pack the source generator into this NuGet package.
+      End users never add analyzer paths manually; NuGet consumes this from analyzers/dotnet/cs.
     -->
-    <MSBuild Projects="..\ForgeORM.SourceGenerators\ForgeORM.SourceGenerators.csproj"
+    <PropertyGroup>
+      <ForgeOrmSourceGeneratorTargetFramework Condition="'$(ForgeOrmSourceGeneratorTargetFramework)' == ''">netstandard2.0</ForgeOrmSourceGeneratorTargetFramework>
+      <ForgeOrmSourceGeneratorProject>..\ForgeORM.SourceGenerators\ForgeORM.SourceGenerators.csproj</ForgeOrmSourceGeneratorProject>
+      <ForgeOrmSourceGeneratorDll>..\ForgeORM.SourceGenerators\bin\$(Configuration)\$(ForgeOrmSourceGeneratorTargetFramework)\ForgeORM.SourceGenerators.dll</ForgeOrmSourceGeneratorDll>
+    </PropertyGroup>
+
+    <MSBuild Projects="$(ForgeOrmSourceGeneratorProject)"
              Targets="Build"
-             Properties="Configuration=$(Configuration);TargetFramework=netstandard2.0" />
-    <MSBuild Projects="..\ForgeORM.SourceGenerators\ForgeORM.SourceGenerators.csproj"
-             Targets="GetTargetPath"
-             Properties="Configuration=$(Configuration);TargetFramework=netstandard2.0">
-      <Output TaskParameter="TargetOutputs" ItemName="ForgeORM_SourceGeneratorDll" />
-    </MSBuild>
-    <Error Condition="'@(ForgeORM_SourceGeneratorDll)' == '' or !Exists('%(ForgeORM_SourceGeneratorDll.Identity)')"
-           Text="ForgeORM.SourceGenerators.dll was not built/found. Expected TargetPath from ForgeORM.SourceGenerators GetTargetPath." />
+             Properties="Configuration=$(Configuration);TargetFramework=$(ForgeOrmSourceGeneratorTargetFramework)" />
+
+    <Error Condition="!Exists('$(ForgeOrmSourceGeneratorDll)')"
+           Text="ForgeORM.SourceGenerators.dll was not built/found at $(ForgeOrmSourceGeneratorDll)." />
+
     <ItemGroup>
-      <None Include="@(ForgeORM_SourceGeneratorDll)"
+      <None Include="$(ForgeOrmSourceGeneratorDll)"
             Pack="true"
             PackagePath="analyzers/dotnet/cs"
             Visible="false" />
     </ItemGroup>
-    <Message Importance="High" Text="ForgeORM: packing source generator analyzer @(ForgeORM_SourceGeneratorDll)" />
+    <Message Importance="High" Text="ForgeORM: packing source generator analyzer $(ForgeOrmSourceGeneratorDll)" />
   </Target>
 </Project>

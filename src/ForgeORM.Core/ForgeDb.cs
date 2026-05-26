@@ -118,6 +118,24 @@ public partial class ForgeDb : IForgeDb
     public ValueTask<T?> QueryFirstOrDefaultAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
         => ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T>(Provider, _connectionString, sql, parameters, timeoutSeconds, cancellationToken);
 
+    /// <summary>Executes a first-or-default query with one typed scalar parameter. This avoids anonymous object reflection in ultra-hot paths.</summary>
+    public T? QueryFirstOrDefault<T, TKey>(string sql, string parameterName, TKey value, int? timeoutSeconds = null)
+    {
+        if (string.Equals(Provider.ProviderName, "SqlServer", StringComparison.OrdinalIgnoreCase) && !ForgeEnterpriseRuntime.IsEnabled)
+            return ForgeSqlServerProviderDirectHotPath.QueryFirstOrDefault<T, TKey>(_connectionString, sql, parameterName, value, timeoutSeconds);
+
+        return QueryFirstOrDefault<T>(sql, new ForgeScalarParameter<TKey>(parameterName, value), timeoutSeconds);
+    }
+
+    /// <summary>Executes a first-or-default query with one typed scalar parameter. This avoids anonymous object reflection in ultra-hot async paths.</summary>
+    public ValueTask<T?> QueryFirstOrDefaultAsync<T, TKey>(string sql, string parameterName, TKey value, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
+    {
+        if (string.Equals(Provider.ProviderName, "SqlServer", StringComparison.OrdinalIgnoreCase) && !ForgeEnterpriseRuntime.IsEnabled)
+            return ForgeSqlServerProviderDirectHotPath.QueryFirstOrDefaultAsync<T, TKey>(_connectionString, sql, parameterName, value, timeoutSeconds, cancellationToken);
+
+        return QueryFirstOrDefaultAsync<T>(sql, new ForgeScalarParameter<TKey>(parameterName, value), timeoutSeconds, cancellationToken);
+    }
+
     /// <summary>
     /// Executes the T operation.
     /// </summary>

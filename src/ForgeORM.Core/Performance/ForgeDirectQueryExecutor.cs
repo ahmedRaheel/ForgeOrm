@@ -185,7 +185,7 @@ internal static class ForgeDirectQueryExecutor
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.Default, cancellationToken).ConfigureAwait(false);
         var materializer = GetReader<T>(connection, sql, reader);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             yield return materializer(reader);
@@ -229,7 +229,7 @@ internal static class ForgeDirectQueryExecutor
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow, cancellationToken).ConfigureAwait(false);
         if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             return default;
 
@@ -250,7 +250,7 @@ internal static class ForgeDirectQueryExecutor
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.Default, cancellationToken).ConfigureAwait(false);
         if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             return default;
 
@@ -276,7 +276,7 @@ internal static class ForgeDirectQueryExecutor
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
+        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.Default, cancellationToken).ConfigureAwait(false);
         var materializer = GetReader<T>(connection, sql, reader);
         var rows = new List<T>(32);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -520,7 +520,7 @@ internal static class ForgeDirectQueryExecutor
 
     private static Func<DbDataReader, T> GetReader<T>(DbConnection connection, string sql, DbDataReader reader)
     {
-        var key = new DirectReaderKey(connection.GetType(), typeof(T), sql, ForgeSourceGeneratedRegistry.CompilationMode);
+        var key = new DirectReaderKey(connection.GetType(), typeof(T), sql);
         if (ReaderCache.TryGetValue(key, out var cached))
             return (Func<DbDataReader, T>)cached;
 

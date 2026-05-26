@@ -620,7 +620,7 @@ internal static class ForgeDirectQueryExecutor
             || type == typeof(TimeSpan) || type == typeof(byte[]);
     }
 
-    private readonly record struct DirectReaderKey(Type ProviderType, Type ResultType, string Sql, ForgeOrmCompilationMode CompilationMode);
+    private readonly record struct DirectReaderKey(Type ProviderType, Type ResultType, string Sql, ForgeOrmCompilationMode CompilationMode = ForgeOrmCompilationMode.RuntimeEmit);
 
     private readonly record struct DirectPlanKey(string Sql, Type? ParameterType, CommandType CommandType);
 

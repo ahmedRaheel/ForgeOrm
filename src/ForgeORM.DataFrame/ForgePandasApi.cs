@@ -12,7 +12,7 @@ namespace ForgeORM.DataFrame;
 /// Pandas-style factory helpers for creating <see cref="ForgeDataFrame"/> and <see cref="ForgeSeries"/> instances.
 /// These helpers intentionally avoid heavy runtime dependencies and keep the API friendly for everyday analytics.
 /// </summary>
-public static class ForgePandas
+public static partial class ForgePandas
 {
     /// <summary>
     /// Creates a dataframe from dictionaries, objects, records, tuples or nested enumerable values.
@@ -255,7 +255,7 @@ public sealed class ForgeSeries
 /// <summary>
 /// Pandas-style extension methods for <see cref="ForgeDataFrame"/>.
 /// </summary>
-public static class ForgePandasExtensions
+public static partial class ForgePandasExtensions
 {
     /// <summary>Writes the dataframe as CSV.</summary>
     public static void ToCsv(this ForgeDataFrame frame, string path, char delimiter = ',', bool includeHeader = true)

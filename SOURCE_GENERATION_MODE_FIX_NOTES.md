@@ -1,36 +1,21 @@
 # SourceGenerated Mode Fix
 
-This patch corrects the SourceGenerated execution model:
-
-- `SourceGenerated` mode is now treated as a compile-time generation mode, not a cache lookup followed by RuntimeEmit.
-- The consumer project now references `ForgeORM.SourceGenerators` as an analyzer, so generated providers are produced during build and registered through `ModuleInitializer`.
-- The generated provider now returns typed delegates directly through `CreateTypedReader_*`.
-- `TryCreateReader<T>` casts the generated delegate once instead of wrapping `Func<DbDataReader, object>` and casting every row.
-- RuntimeEmit fallback remains disabled when `SourceGenerated` or `SourceGeneratedStrict` is selected.
-
-Correct flow:
+This patch makes this the only configuration required at runtime:
 
 ```csharp
-SourceGenerated selected
-        ↓
-Analyzer generates ForgeORM.Generated.ForgeGeneratedAccessorProvider
-        ↓
-ModuleInitializer registers provider in ForgeSourceGeneratedRegistry
-        ↓
-Runtime resolves provider from registry/cache
-        ↓
-Generated typed reader executes
-        ↓
-No RuntimeEmit fallback
+builder.Services.AddForgeOrm(options =>
+{
+    options.UseSqlServer(connectionString);
+    options.UseCompilationMode(ForgeOrmCompilationMode.SourceGenerated);
+});
 ```
 
-Important: Source generation happens at build time. Therefore the project that owns the entity/DTO types must reference the generator as an analyzer:
+Behavior:
 
-```xml
-<ProjectReference Include="..\..\src\ForgeORM.SourceGenerators\ForgeORM.SourceGenerators.csproj"
-                  OutputItemType="Analyzer"
-                  ReferenceOutputAssembly="false"
-                  PrivateAssets="all" />
-```
+- `SourceGenerated` means generated provider/materializer only.
+- `RuntimeEmit` means emit only.
+- `Auto` tries generated first, then fallback.
+- `AddForgeOrm` now configures the compilation mode and discovers generated providers automatically.
+- `ForgeORM.AspNetCore` packages `ForgeORM.SourceGenerators` as an analyzer so NuGet consumers do not need a separate analyzer reference.
 
-For NuGet consumers this should be provided by the `ForgeORM.SourceGenerators` analyzer package.
+Important compile-time fact: source generation happens at build time. The DI call selects the generated path at runtime; the package now carries the analyzer so the generated provider exists without extra user setup.

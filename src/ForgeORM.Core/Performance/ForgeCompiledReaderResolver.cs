@@ -17,6 +17,11 @@ internal static class ForgeCompiledReaderResolver
         if (mode == ForgeOrmCompilationMode.RuntimeEmit)
             return ForgeIlMaterializerCache.GetOrCreate<T>(reader);
 
+        // SourceGenerated is an instruction to use compile-time generated code.
+        // First force discovery so ModuleInitializer/registered providers from the consumer assembly
+        // are visible before we decide that generation is missing.
+        ForgeSourceGeneratedRegistry.DiscoverGeneratedProvidersFromLoadedAssemblies();
+
         if (ForgeGeneratedRegistry.TryGetReader<T>(out var registeredReader))
             return registeredReader;
 
@@ -28,7 +33,7 @@ internal static class ForgeCompiledReaderResolver
         }
 
         if (mode == ForgeOrmCompilationMode.SourceGenerated || mode == ForgeOrmCompilationMode.SourceGeneratedStrict)
-            throw new InvalidOperationException($"SourceGenerated mode failed. No source-generated reader was registered for {type.FullName}. RuntimeEmit fallback is disabled because SourceGenerated was explicitly selected.");
+            throw new InvalidOperationException($"SourceGenerated mode failed. No source-generated reader was registered for {type.FullName}. The ForgeORM.SourceGenerators analyzer must be attached to the consuming project so a generated provider is compiled into that assembly. RuntimeEmit fallback is disabled because SourceGenerated was explicitly selected.");
 
         // Auto mode only: generated reader unavailable, fallback is allowed.
         if (ForgeProviderMaterializerRegistry.TryCreateReader<T>(reader, out var providerSpecific)
@@ -47,6 +52,8 @@ internal static class ForgeCompiledReaderResolver
         if (mode == ForgeOrmCompilationMode.RuntimeEmit)
             return ForgeIlMaterializerCache.GetOrCreate(type, reader);
 
+        ForgeSourceGeneratedRegistry.DiscoverGeneratedProvidersFromLoadedAssemblies();
+
         if (ForgeGeneratedRegistry.TryGetObjectReader(type, out var registeredReader))
             return registeredReader;
 
@@ -54,7 +61,7 @@ internal static class ForgeCompiledReaderResolver
             return provider.GetReader(type, reader);
 
         if (mode == ForgeOrmCompilationMode.SourceGenerated || mode == ForgeOrmCompilationMode.SourceGeneratedStrict)
-            throw new InvalidOperationException($"SourceGenerated mode failed. No source-generated reader was registered for {type.FullName}. RuntimeEmit fallback is disabled because SourceGenerated was explicitly selected.");
+            throw new InvalidOperationException($"SourceGenerated mode failed. No source-generated reader was registered for {type.FullName}. The ForgeORM.SourceGenerators analyzer must be attached to the consuming project so a generated provider is compiled into that assembly. RuntimeEmit fallback is disabled because SourceGenerated was explicitly selected.");
 
         // Auto mode only: generated reader unavailable, fallback is allowed.
         return ForgeIlMaterializerCache.GetOrCreate(type, reader);

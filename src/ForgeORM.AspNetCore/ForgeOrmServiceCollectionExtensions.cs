@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Threading;
 using ForgeORM.Abstractions;
 using ForgeORM.Analytics;
 using ForgeORM.Core;
@@ -32,13 +34,13 @@ public sealed class ForgeOrmOptions
     public void UseCompilationMode(ForgeOrmCompilationMode mode)
     {
         CompilationMode = mode;
-        ForgeSourceGeneratedRegistry.CompilationMode = mode;
+        ForgeOrmSourceGenerationBootstrap.Configure(mode);
     }
     /// <summary>Forces SourceGenerated-only mode for NativeAOT deployments. RuntimeEmit fallback is disabled by policy.</summary>
     public void UseNativeAotMode()
     {
         CompilationMode = ForgeOrmCompilationMode.SourceGenerated;
-        ForgeSourceGeneratedRegistry.CompilationMode = ForgeOrmCompilationMode.SourceGenerated;
+        ForgeOrmSourceGenerationBootstrap.Configure(ForgeOrmCompilationMode.SourceGenerated);
         ForgeORM.Core.Performance.ForgeUltimatePerformancePrimitives.NativeAotMode = true;
     }
 
@@ -79,7 +81,7 @@ public static class ForgeOrmServiceCollectionExtensions
 
         if (string.IsNullOrWhiteSpace(options.ConnectionString)) throw new InvalidOperationException("ForgeORM connection string is required.");
         if (options.Provider is null) throw new InvalidOperationException("ForgeORM provider is required.");
-        ForgeSourceGeneratedRegistry.CompilationMode = options.CompilationMode;
+        ForgeOrmSourceGenerationBootstrap.Configure(options.CompilationMode);
 
         services.AddSingleton(options.Provider);
         services.AddSingleton<IForgeEntityMetadataResolver, HybridForgeEntityMetadataResolver>();
@@ -112,5 +114,42 @@ public static class ForgeOrmServiceCollectionExtensions
 
         services.AddScoped<IForgeDb>(sp => sp.GetRequiredService<ForgeDbContext>());
         return services;
+    }
+}
+
+
+internal static class ForgeOrmSourceGenerationBootstrap
+{
+    private static int _configured;
+
+    /// <summary>
+    /// Applies the selected compilation mode globally and primes source-generated provider discovery.
+    /// Important: this does not require any user-side registry call. With the NuGet package,
+    /// ForgeORM.AspNetCore carries the analyzer so generated providers are created at build time.
+    /// At runtime this method only selects the generated path and discovers/registers already
+    /// generated providers from loaded assemblies.
+    /// </summary>
+    public static void Configure(ForgeOrmCompilationMode mode)
+    {
+        ForgeSourceGeneratedRegistry.CompilationMode = mode;
+
+        if (mode == ForgeOrmCompilationMode.SourceGenerated ||
+            mode == ForgeOrmCompilationMode.SourceGeneratedStrict ||
+            mode == ForgeOrmCompilationMode.Auto)
+        {
+            ForgeSourceGeneratedRegistry.DiscoverGeneratedProvidersFromLoadedAssemblies();
+        }
+
+        if (Interlocked.Exchange(ref _configured, 1) == 0)
+        {
+            AppDomain.CurrentDomain.AssemblyLoad += (_, args) =>
+            {
+                var current = ForgeSourceGeneratedRegistry.CompilationMode;
+                if (current == ForgeOrmCompilationMode.RuntimeEmit)
+                    return;
+
+                ForgeSourceGeneratedRegistry.DiscoverGeneratedProviders(args.LoadedAssembly);
+            };
+        }
     }
 }

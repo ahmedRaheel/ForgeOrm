@@ -5,6 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <IsPackable>true</IsPackable>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <DevelopmentDependency>true</DevelopmentDependency>
     <PackageId>ForgeORM.SourceGenerators</PackageId>
     <Description>Compile-time ForgeORM materializers and parameter binders that remove runtime reflection from hot paths.</Description>
     <IncludeBuildOutput>false</IncludeBuildOutput>
@@ -13,7 +15,21 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
   </ItemGroup>
-  <ItemGroup>
-    <None Include="$(OutputPath)$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
-  </ItemGroup>
+  <!--
+    Pack the built analyzer DLL only after the generator has been compiled.
+    Do not use $(OutputPath)$(AssemblyName).dll because SDK projects output to
+    bin/<Configuration>/<TargetFramework>/ and Visual Studio may evaluate the
+    item before the DLL exists, producing File not found errors.
+  -->
+  <Target Name="ForgeORM_SourceGenerator_AddAnalyzerToPackage" BeforeTargets="_GetPackageFiles;GenerateNuspec">
+    <ItemGroup>
+      <None Include="$(TargetPath)"
+            Pack="true"
+            PackagePath="analyzers/dotnet/cs"
+            Visible="false"
+            Condition="Exists('$(TargetPath)')" />
+    </ItemGroup>
+    <Error Condition="!Exists('$(TargetPath)')"
+           Text="ForgeORM.SourceGenerators analyzer was not built at $(TargetPath). Build ForgeORM.SourceGenerators first or run dotnet pack with a valid Configuration." />
+  </Target>
 </Project>

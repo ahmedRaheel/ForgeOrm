@@ -226,7 +226,7 @@ public static class ForgeSourceGeneratedRegistry
     private static readonly ConcurrentDictionary<Type, IForgeSourceGeneratedAccessorProvider?> ProviderByType = new();
     private static readonly ConcurrentDictionary<Type, ForgeEntityMetadata> MetadataByType = new();
     private static readonly object Gate = new();
-    private static int DiscoveryAttempted;
+    private static readonly ConcurrentDictionary<string, byte> DiscoveredAssemblies = new();
 
     public static ForgeOrmCompilationMode CompilationMode { get; set; } = ForgeOrmCompilationMode.Auto;
 
@@ -296,55 +296,59 @@ public static class ForgeSourceGeneratedRegistry
         if (TryGetProvider(type, out provider))
             return true;
 
-        DiscoverGeneratedProviders();
+        DiscoverGeneratedProvidersFromLoadedAssemblies();
         return TryGetProvider(type, out provider);
     }
 
-    private static void DiscoverGeneratedProviders()
+    /// <summary>
+    /// Discovers source-generated providers from all currently loaded assemblies.
+    /// This is called automatically by AddForgeOrm when SourceGenerated/Auto mode is selected.
+    /// </summary>
+    public static void DiscoverGeneratedProvidersFromLoadedAssemblies()
     {
-        if (Interlocked.Exchange(ref DiscoveryAttempted, 1) == 1)
-            return;
-
         var assemblies = AppDomain.CurrentDomain.GetAssemblies();
         for (var i = 0; i < assemblies.Length; i++)
+            DiscoverGeneratedProviders(assemblies[i]);
+    }
+
+    /// <summary>Discovers and registers generated providers from a single assembly.</summary>
+    public static void DiscoverGeneratedProviders(Assembly assembly)
+    {
+        var assemblyKey = assembly.FullName ?? assembly.Location ?? assembly.GetHashCode().ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (!DiscoveredAssemblies.TryAdd(assemblyKey, 0))
+            return;
+
+        Type?[] types;
+        try
         {
-            var assembly = assemblies[i];
-            Type?[] types;
+            types = assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException ex)
+        {
+            types = ex.Types;
+        }
+        catch
+        {
+            return;
+        }
+
+        for (var j = 0; j < types.Length; j++)
+        {
+            var providerType = types[j];
+            if (providerType is null || providerType.IsAbstract || providerType.IsInterface)
+                continue;
+
+            if (!typeof(IForgeSourceGeneratedAccessorProvider).IsAssignableFrom(providerType))
+                continue;
+
             try
             {
-                types = assembly.GetTypes();
-            }
-            catch (ReflectionTypeLoadException ex)
-            {
-                types = ex.Types;
+                if (Activator.CreateInstance(providerType) is IForgeSourceGeneratedAccessorProvider provider)
+                    Register(provider);
             }
             catch
             {
-                continue;
-            }
-
-            for (var j = 0; j < types.Length; j++)
-            {
-                var providerType = types[j];
-                if (providerType is null || providerType.IsAbstract || providerType.IsInterface)
-                    continue;
-
-                if (!typeof(IForgeSourceGeneratedAccessorProvider).IsAssignableFrom(providerType))
-                    continue;
-
-                // The generated provider usually registers itself through ModuleInitializer.
-                // This fallback handles cases where the generated assembly is loaded but the
-                // provider was not in the registry due to project/reference configuration.
-                try
-                {
-                    if (Activator.CreateInstance(providerType) is IForgeSourceGeneratedAccessorProvider provider)
-                        Register(provider);
-                }
-                catch
-                {
-                    // Ignore bad provider candidates; SourceGenerated/Strict will still fail
-                    // with a clear error if no generated provider can handle the requested type.
-                }
+                // SourceGenerated/Strict mode will throw a clear error if no provider can handle the type.
             }
         }
     }

@@ -18,6 +18,10 @@
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <Title>ForgeORM.AspNetCore</Title>
     <Description>ASP.NET Core dependency injection integration for ForgeORM.</Description>
+
+    <!-- Package the source generator inside ForgeORM.AspNetCore so consumers only need the normal ForgeORM package/reference.
+         SourceGenerated mode is then enabled by DI: options.UseCompilationMode(SourceGenerated). -->
+    <IncludeBuildOutput>true</IncludeBuildOutput>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\ForgeORM.Abstractions\ForgeORM.Abstractions.csproj" />
@@ -42,5 +46,30 @@
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
     <None Include="..\..\assets\forgeorm-icon.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <Target Name="ForgeORM_BuildAndPackSourceGeneratorAnalyzer" BeforeTargets="_GetPackageFiles;GenerateNuspec">
+    <!-- Build and pack the source generator analyzer deterministically. -->
+    <MSBuild Projects="..\ForgeORM.SourceGenerators\ForgeORM.SourceGenerators.csproj"
+             Targets="Build"
+             Properties="Configuration=$(Configuration);TargetFramework=netstandard2.0" />
+    <MSBuild Projects="..\ForgeORM.SourceGenerators\ForgeORM.SourceGenerators.csproj"
+             Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration);TargetFramework=netstandard2.0">
+      <Output TaskParameter="TargetOutputs" ItemName="ForgeORM_SourceGeneratorDll" />
+    </MSBuild>
+    <Error Condition="'@(ForgeORM_SourceGeneratorDll)' == '' or !Exists('%(ForgeORM_SourceGeneratorDll.Identity)')"
+           Text="ForgeORM.SourceGenerators.dll was not built/found. Expected TargetPath from ForgeORM.SourceGenerators GetTargetPath." />
+    <ItemGroup>
+      <None Include="@(ForgeORM_SourceGeneratorDll)"
+            Pack="true"
+            PackagePath="analyzers/dotnet/cs"
+            Visible="false" />
+    </ItemGroup>
+    <Message Importance="High" Text="ForgeORM: packing source generator analyzer @(ForgeORM_SourceGeneratorDll)" />
+  </Target>
+
+  <ItemGroup>
+    <None Include="buildTransitive\$(PackageId).props" Pack="true" PackagePath="buildTransitive\$(PackageId).props" Visible="false" />
   </ItemGroup>
 </Project>

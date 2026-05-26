@@ -1,0 +1,28 @@
+<Project>
+  <!--
+    Local source-tree safety net: when running apps/samples/benchmarks through ProjectReference,
+    NuGet buildTransitive analyzer assets are not imported from project references. Attach
+    ForgeORM.SourceGenerators directly to executable/Web/test consumer projects so this is enough:
+
+        options.UseCompilationMode(ForgeOrmCompilationMode.SourceGenerated)
+
+    Disable with: <ForgeOrmDisableSourceGenerator>true</ForgeOrmDisableSourceGenerator>
+  -->
+  <ItemGroup Condition="'$(ForgeOrmDisableSourceGenerator)' != 'true'
+                        and '$(MSBuildProjectName)' != 'ForgeORM.SourceGenerators'
+                        and Exists('$(MSBuildThisFileDirectory)src/ForgeORM.SourceGenerators/ForgeORM.SourceGenerators.csproj')
+                        and (
+                             '$(OutputType)' == 'Exe'
+                             or $([System.String]::Copy('$(MSBuildProjectSdk)').Contains('Microsoft.NET.Sdk.Web'))
+                             or $([System.String]::Copy('$(MSBuildProjectDirectory)').Contains('/samples/'))
+                             or $([System.String]::Copy('$(MSBuildProjectDirectory)').Contains('\samples\'))
+                             or $([System.String]::Copy('$(MSBuildProjectDirectory)').Contains('/benchmarks/'))
+                             or $([System.String]::Copy('$(MSBuildProjectDirectory)').Contains('\benchmarks\'))
+                        )">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)src/ForgeORM.SourceGenerators/ForgeORM.SourceGenerators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all"
+ />
+  </ItemGroup>
+</Project>

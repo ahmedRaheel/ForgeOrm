@@ -14,6 +14,8 @@ public static class ForgeGeneratedRegistry
     private static readonly ConcurrentDictionary<Type, Delegate> Readers = new();
     private static readonly ConcurrentDictionary<Type, Delegate> SqlServerReaders = new();
     private static readonly ConcurrentDictionary<Type, Delegate> ParameterBinders = new();
+    private static readonly ConcurrentDictionary<Type, Delegate> ReaderFactories = new();
+    private static readonly ConcurrentDictionary<Type, Delegate> SqlServerReaderFactories = new();
 
     /// <summary>Registers a generated reader for an entity or DTO type.</summary>
     public static void RegisterReader<T>(Func<DbDataReader, T> reader)
@@ -29,12 +31,54 @@ public static class ForgeGeneratedRegistry
         SqlServerReaders[typeof(T)] = reader ?? throw new ArgumentNullException(nameof(reader));
     }
 
+    /// <summary>Registers a generated reader factory. The factory binds ordinals once from the live reader and returns the hot row delegate.</summary>
+    public static void RegisterReaderFactory<T>(Func<DbDataReader, Func<DbDataReader, T>> factory)
+        where T : notnull
+    {
+        ReaderFactories[typeof(T)] = factory ?? throw new ArgumentNullException(nameof(factory));
+    }
+
+    /// <summary>Registers a generated SQL Server direct reader factory. The factory binds ordinals once from the live SqlDataReader.</summary>
+    public static void RegisterSqlServerReaderFactory<T>(Func<SqlDataReader, Func<SqlDataReader, T>> factory)
+        where T : notnull
+    {
+        SqlServerReaderFactories[typeof(T)] = factory ?? throw new ArgumentNullException(nameof(factory));
+    }
+
+
     /// <summary>Registers a generated parameter binder for an anonymous-like request DTO or entity.</summary>
     public static void RegisterParameterBinder<T>(Action<DbCommand, T> binder)
         where T : notnull
     {
         if (binder is null) throw new ArgumentNullException(nameof(binder));
         ParameterBinders[typeof(T)] = new Action<DbCommand, object>((command, value) => binder(command, (T)value));
+    }
+
+
+    /// <summary>Creates a generated reader from a reader-shape-aware factory when available.</summary>
+    public static bool TryCreateReader<T>(DbDataReader shapeReader, out Func<DbDataReader, T> reader)
+    {
+        if (ReaderFactories.TryGetValue(typeof(T), out var value) &&
+            value is Func<DbDataReader, Func<DbDataReader, T>> factory)
+        {
+            reader = factory(shapeReader);
+            return true;
+        }
+
+        return TryGetReader(out reader);
+    }
+
+    /// <summary>Creates a generated SQL Server direct reader from a reader-shape-aware factory when available.</summary>
+    public static bool TryCreateSqlServerReader<T>(SqlDataReader shapeReader, out Func<SqlDataReader, T> reader)
+    {
+        if (SqlServerReaderFactories.TryGetValue(typeof(T), out var value) &&
+            value is Func<SqlDataReader, Func<SqlDataReader, T>> factory)
+        {
+            reader = factory(shapeReader);
+            return true;
+        }
+
+        return TryGetSqlServerReader(out reader);
     }
 
     /// <summary>Gets a generated reader when one was emitted by ForgeORM.SourceGenerators.</summary>

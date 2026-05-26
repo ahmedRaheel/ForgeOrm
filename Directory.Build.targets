@@ -1,36 +1,3 @@
 <Project>
-  <!--
-    ForgeORM developer/source-tree convenience wiring.
-
-    End users do NOT need to configure analyzers manually. In NuGet packages the
-    source generator is shipped under analyzers/dotnet/cs and added by the
-    package automatically.
-
-    This file exists only for this repository when samples/benchmarks reference
-    ForgeORM projects directly instead of consuming the NuGet package. It uses a
-    ProjectReference with OutputItemType=Analyzer, so MSBuild builds the generator
-    first and passes the produced DLL to the compiler. There is no hardcoded
-    bin/Debug/netstandard2.0 path and no manual GetTargetPath call.
-  -->
-  <!-- <PropertyGroup>
-    <ForgeOrmLocalSourceGeneratorProject>$(MSBuildThisFileDirectory)src/ForgeORM.SourceGenerators/ForgeORM.SourceGenerators.csproj</ForgeOrmLocalSourceGeneratorProject>
-    <ForgeOrmAttachLocalSourceGenerator Condition="'$(ForgeOrmDisableSourceGenerator)' != 'true'
-                                          and '$(MSBuildProjectName)' != 'ForgeORM.SourceGenerators'
-                                          and Exists('$(ForgeOrmLocalSourceGeneratorProject)')
-                                          and (
-                                               '$(OutputType)' == 'Exe'
-                                               or $([System.String]::Copy('$(MSBuildProjectSdk)').Contains('Microsoft.NET.Sdk.Web'))
-                                               or $([System.String]::Copy('$(MSBuildProjectDirectory)').Contains('/samples/'))
-                                               or $([System.String]::Copy('$(MSBuildProjectDirectory)').Contains('\\samples\\'))
-                                               or $([System.String]::Copy('$(MSBuildProjectDirectory)').Contains('/benchmarks/'))
-                                               or $([System.String]::Copy('$(MSBuildProjectDirectory)').Contains('\\benchmarks\\'))
-                                          )">true</ForgeOrmAttachLocalSourceGenerator>
-  </PropertyGroup>
-
-  <ItemGroup Condition="'$(ForgeOrmAttachLocalSourceGenerator)' == 'true'">
-    <ProjectReference Include="$(ForgeOrmLocalSourceGeneratorProject)"
-                      OutputItemType="Analyzer"
-                      ReferenceOutputAssembly="false"
-                      PrivateAssets="all" />
-  </ItemGroup> -->
+  <!-- Intentionally empty. Local source-generator wiring is in Directory.Build.props so ProjectReference analyzers are available early. -->
 </Project>

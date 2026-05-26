@@ -67,6 +67,7 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("using System.Runtime.CompilerServices;");
         sb.AppendLine("using ForgeORM.Core;");
         sb.AppendLine("using ForgeORM.Abstractions;");
+        sb.AppendLine("using Microsoft.Data.SqlClient;");
         sb.AppendLine("namespace ForgeORM.Generated;");
         sb.AppendLine();
         sb.AppendLine("public sealed class ForgeGeneratedAccessorProvider : IForgeSourceGeneratedAccessorProvider");
@@ -77,7 +78,13 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("        var provider = new ForgeGeneratedAccessorProvider();");
         sb.AppendLine("        ForgeSourceGeneratedRegistry.Register(provider);");
         foreach (var type in entityTypes)
+        {
+            var full = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            var safe = Safe(type);
+            sb.AppendLine("        ForgeGeneratedRegistry.RegisterReaderFactory<" + full + ">(CreateTypedReader_" + safe + ");");
+            sb.AppendLine("        ForgeGeneratedRegistry.RegisterSqlServerReaderFactory<" + full + ">(CreateSqlServerTypedReader_" + safe + ");");
             EmitMetadataRegistration(sb, type);
+        }
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine("    public bool CanHandle(Type type) => type.FullName switch");
@@ -116,6 +123,21 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("        return false;");
         sb.AppendLine("    }");
         sb.AppendLine();
+        sb.AppendLine("    public bool TryCreateSqlServerReader<T>(SqlDataReader reader, out Func<SqlDataReader, T>? readerFunc)");
+        sb.AppendLine("    {");
+        foreach (var type in entityTypes)
+        {
+            sb.AppendLine("        if (typeof(T).FullName == \"" + Escape(type.ToDisplayString()) + "\")");
+            sb.AppendLine("        {");
+            sb.AppendLine("            readerFunc = (Func<SqlDataReader, T>)(object)CreateSqlServerTypedReader_" + Safe(type) + "(reader);");
+            sb.AppendLine("            return true;");
+            sb.AppendLine("        }");
+        }
+        sb.AppendLine("        readerFunc = null;");
+        sb.AppendLine("        return false;");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+
         sb.AppendLine("    public bool TryGetBinder(Type type, out Action<DbCommand, object>? binder)");
         sb.AppendLine("    {");
         sb.AppendLine("        if (!CanHandle(type))");
@@ -368,6 +390,62 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         }
 
         var initializerProps = initProps.Where(p => !ctorParamProps.Contains(p.Name)).ToArray();
+        if (initializerProps.Length > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("            {");
+            for (var i = 0; i < initializerProps.Length; i++)
+            {
+                var p = initializerProps[i];
+                sb.Append("                ").Append(p.Name).Append(" = ").Append(ReadOrDefaultExpression("r", "ord_" + p.Name, p.Type));
+                sb.AppendLine(i == initializerProps.Length - 1 ? string.Empty : ",");
+            }
+            sb.AppendLine("            };");
+        }
+        else
+        {
+            sb.AppendLine(";");
+        }
+
+        sb.AppendLine("            return entity;");
+        sb.AppendLine("        };");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine("    private static Func<SqlDataReader, " + full + "> CreateSqlServerTypedReader_" + safe + "(SqlDataReader reader)");
+        sb.AppendLine("    {");
+        foreach (var p in props)
+        {
+            sb.AppendLine("        var ord_" + p.Name + " = Ordinal(typeof(" + full + "), reader, \"" + Escape(ColumnName(p)) + "\");");
+            if (!string.Equals(ColumnName(p), p.Name, StringComparison.OrdinalIgnoreCase))
+                sb.AppendLine("        if (ord_" + p.Name + " < 0) ord_" + p.Name + " = Ordinal(typeof(" + full + "), reader, \"" + Escape(p.Name) + "\");");
+        }
+        sb.AppendLine("        return r =>");
+        sb.AppendLine("        {");
+
+        ctorParamProps.Clear();
+        if (ctor is not null && ctor.Parameters.Length > 0)
+        {
+            sb.Append("            var entity = new ").Append(full).Append("(");
+            for (var i = 0; i < ctor.Parameters.Length; i++)
+            {
+                if (i > 0) sb.Append(", ");
+                var parameter = ctor.Parameters[i];
+                var prop = FindPropertyForParameter(props, parameter);
+                if (prop is null) sb.Append("default!");
+                else
+                {
+                    ctorParamProps.Add(prop.Name);
+                    sb.Append(ReadOrDefaultExpression("r", "ord_" + prop.Name, parameter.Type));
+                }
+            }
+            sb.Append(")");
+        }
+        else
+        {
+            sb.Append("            var entity = new ").Append(full).Append("()");
+        }
+
+        initializerProps = initProps.Where(p => !ctorParamProps.Contains(p.Name)).ToArray();
         if (initializerProps.Length > 0)
         {
             sb.AppendLine();

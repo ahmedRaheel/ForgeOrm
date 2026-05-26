@@ -29,18 +29,21 @@ internal static class ForgeSqlServerDirectMaterializerCache
             return (Func<SqlDataReader, T>)Cache.GetOrAdd(runtimeKey, _ => Build<T>(reader));
         }
 
-        if (ForgeGeneratedRegistry.TryGetSqlServerReader<T>(out var sqlServerReader))
+        if (ForgeGeneratedRegistry.TryCreateSqlServerReader<T>(reader, out var sqlServerReader))
             return sqlServerReader;
 
-        if (ForgeGeneratedRegistry.TryGetReader<T>(out var registeredReader))
+        if (ForgeGeneratedRegistry.TryCreateReader<T>(reader, out var registeredReader))
             return r => registeredReader(r);
 
-        if (ForgeSourceGeneratedRegistry.TryGetProvider(type, out var provider)
-            && provider.TryCreateReader<T>(reader, out var generated)
-            && generated is not null)
+        // SourceGenerated/Auto must actively discover the generated provider emitted into the consuming assembly.
+        // Do not only check an already-filled cache; NuGet consumers should not manually register anything.
+        if (ForgeSourceGeneratedRegistry.TryGetOrCreateProvider(type, out var provider))
         {
-            // Generated providers expose DbDataReader delegates for portability; this adapter is created once per plan.
-            return r => generated(r);
+            if (provider.TryCreateSqlServerReader<T>(reader, out var sqlGenerated) && sqlGenerated is not null)
+                return sqlGenerated;
+
+            if (provider.TryCreateReader<T>(reader, out var generated) && generated is not null)
+                return r => generated(r);
         }
 
         if (mode == ForgeOrmCompilationMode.SourceGenerated || mode == ForgeOrmCompilationMode.SourceGeneratedStrict)

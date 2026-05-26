@@ -22,7 +22,7 @@ internal static class ForgeCompiledReaderResolver
         // are visible before we decide that generation is missing.
         ForgeSourceGeneratedRegistry.DiscoverGeneratedProvidersFromLoadedAssemblies();
 
-        if (ForgeGeneratedRegistry.TryGetReader<T>(out var registeredReader))
+        if (ForgeGeneratedRegistry.TryCreateReader<T>(reader, out var registeredReader))
             return registeredReader;
 
         if (ForgeSourceGeneratedRegistry.TryGetOrCreateProvider(type, out var provider)

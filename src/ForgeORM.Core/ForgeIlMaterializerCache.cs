@@ -28,7 +28,7 @@ internal static class ForgeIlMaterializerCache
             return (Func<DbDataReader, T>)Cache.GetOrAdd(runtimeKey, _ => CreateMaterializer<T>(reader));
         }
 
-        if (ForgeGeneratedRegistry.TryGetReader<T>(out var registeredReader))
+        if (ForgeGeneratedRegistry.TryCreateReader<T>(reader, out var registeredReader))
             return registeredReader;
 
         if (ForgeSourceGeneratedRegistry.TryGetOrCreateProvider(type, out var provider))

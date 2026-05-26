@@ -1,4 +1,8 @@
 <Project>
+  <PropertyGroup Condition="'$(ForgeOrmDisableSourceGenerator)' != 'true'">
+    <!-- SourceGenerated mode must work with only NuGet + DI. Force generators to run during normal builds. -->
+    <RunAnalyzersDuringBuild>true</RunAnalyzersDuringBuild>
+  </PropertyGroup>
   <!--
     Auto-wire ForgeORM source generation for NuGet consumers.
     User only calls: options.UseCompilationMode(SourceGenerated).

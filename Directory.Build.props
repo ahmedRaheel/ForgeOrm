@@ -1,12 +1,35 @@
 <Project>
+  <!--
+    ForgeORM source-tree convenience only. NuGet consumers do not do anything: the
+    ForgeORM package carries ForgeORM.SourceGenerators under analyzers/dotnet/cs.
+  -->
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
-    <LangVersion>latest</LangVersion>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Authors>Raheel Ahmed</Authors>
-    <Company>Forge Ecosystem</Company>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <ForgeOrmLocalSourceGeneratorProject>$(MSBuildThisFileDirectory)src/ForgeORM.SourceGenerators/ForgeORM.SourceGenerators.csproj</ForgeOrmLocalSourceGeneratorProject>
+    <ForgeOrmAttachLocalSourceGenerator Condition="'$(ForgeOrmDisableSourceGenerator)' != 'true'
+                                          and '$(MSBuildProjectName)' != 'ForgeORM.SourceGenerators'
+                                          and Exists('$(ForgeOrmLocalSourceGeneratorProject)')
+                                          and (
+                                               '$(OutputType)' == 'Exe'
+                                               or $([System.String]::Copy('$(MSBuildProjectSdk)').Contains('Microsoft.NET.Sdk.Web'))
+                                               or $([System.String]::Copy('$(MSBuildProjectDirectory)').Contains('/samples/'))
+                                               or $([System.String]::Copy('$(MSBuildProjectDirectory)').Contains('\samples\'))
+                                               or $([System.String]::Copy('$(MSBuildProjectDirectory)').Contains('/benchmarks/'))
+                                               or $([System.String]::Copy('$(MSBuildProjectDirectory)').Contains('\benchmarks\'))
+                                          )">true</ForgeOrmAttachLocalSourceGenerator>
+                                           <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+ <LangVersion>latest</LangVersion>
+ <Nullable>enable</Nullable>
+ <ImplicitUsings>enable</ImplicitUsings>
+ <Authors>Raheel Ahmed</Authors>
+ <Company>Forge Ecosystem</Company>
+ <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
-</Project>
 
+  <ItemGroup Condition="'$(ForgeOrmAttachLocalSourceGenerator)' == 'true'">
+    <ProjectReference Include="$(ForgeOrmLocalSourceGeneratorProject)"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+                      
+  </ItemGroup>
+</Project>

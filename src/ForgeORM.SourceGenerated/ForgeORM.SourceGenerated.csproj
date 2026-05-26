@@ -4,7 +4,7 @@
     <Title>ForgeORM.SourceGenerated</Title>
     <Description>Compile-time source generator for ForgeORM readers, binders, SQL builders, graph metadata and entity maps.</Description>
     <Version>1.3.7</Version>
-    <TargetFramework>netstandard2.0</TargetFramework>
+
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <IsRoslynComponent>true</IsRoslynComponent>

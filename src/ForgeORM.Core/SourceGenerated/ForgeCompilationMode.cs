@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using ForgeORM.Abstractions;
+using Microsoft.Data.SqlClient;
 
 namespace ForgeORM.Core;
 
@@ -114,6 +115,23 @@ public interface IForgeSourceGeneratedAccessorProvider
         var objectReader = GetReader(typeof(T), reader);
         readerFunc = r => (T)objectReader(r);
         return true;
+    }
+
+
+    /// <summary>
+    /// Preferred SQL Server direct typed reader path. Source-generated providers override this
+    /// so SqlServer hot paths can use Func&lt;SqlDataReader,T&gt; without DbDataReader virtual dispatch.
+    /// </summary>
+    bool TryCreateSqlServerReader<T>(SqlDataReader reader, out Func<SqlDataReader, T>? readerFunc)
+    {
+        if (TryCreateReader<T>(reader, out var dbReader) && dbReader is not null)
+        {
+            readerFunc = r => dbReader(r);
+            return true;
+        }
+
+        readerFunc = null;
+        return false;
     }
 
     /// <summary>Gets a generated parameter binder for the requested parameter/entity type.</summary>

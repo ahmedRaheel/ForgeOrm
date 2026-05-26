@@ -2,6 +2,7 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
 	  <Nullable>disable</Nullable>
+    <RunAnalyzersDuringBuild>true</RunAnalyzersDuringBuild>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\ForgeORM.Providers.SqlServer\ForgeORM.Providers.SqlServer.csproj" />
@@ -9,6 +10,7 @@
     <ProjectReference Include="..\..\src\ForgeORM.QueryAst.Artifacts\ForgeORM.QueryAst.Artifacts.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.QueryAst\ForgeORM.QueryAst.csproj" />
     <ProjectReference Include="..\..\src\ForgeORM.Core\ForgeORM.Core.csproj" />
+    <ProjectReference Include="..\..\src\ForgeORM.SourceGenerators\ForgeORM.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" />
     <ProjectReference Include="..\..\src\ForgeORM.AspNetCore\ForgeORM.AspNetCore.csproj" />
     <PackageReference Include="Swashbuckle.AspNetCore" />
     <ProjectReference Include="..\..\src\ForgeORM.NextGen\ForgeORM.NextGen.csproj" />

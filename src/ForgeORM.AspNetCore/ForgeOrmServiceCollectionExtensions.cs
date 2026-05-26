@@ -28,18 +28,18 @@ public sealed class ForgeOrmOptions
     /// <param name="ConnectionString">The ConnectionString value.</param>
     public void UseSqlServer(string connectionString) { ConnectionString = connectionString; Provider = new SqlServerForgeProvider(); }
 
-    /// <summary>Configures whether ForgeORM uses source-generated accessors, RuntimeEmit MSIL, or Auto mode.</summary>
+    /// <summary>Configures compilation mode. Source-generation modes are intentionally mapped to RuntimeEmit because this package is RuntimeEmit-only.</summary>
     public void UseCompilationMode(ForgeOrmCompilationMode mode)
     {
-        CompilationMode = mode;
-        ForgeSourceGeneratedRegistry.CompilationMode = mode;
+        CompilationMode = ForgeOrmCompilationMode.RuntimeEmit;
+        ForgeSourceGeneratedRegistry.CompilationMode = ForgeOrmCompilationMode.RuntimeEmit;
     }
-    /// <summary>Forces SourceGenerated-only mode for NativeAOT deployments. RuntimeEmit fallback is disabled by policy.</summary>
+    /// <summary>NativeAOT source-generation mode is not enabled in the RuntimeEmit-only package.</summary>
     public void UseNativeAotMode()
     {
-        CompilationMode = ForgeOrmCompilationMode.SourceGenerated;
-        ForgeSourceGeneratedRegistry.CompilationMode = ForgeOrmCompilationMode.SourceGenerated;
-        ForgeORM.Core.Performance.ForgeUltimatePerformancePrimitives.NativeAotMode = true;
+        CompilationMode = ForgeOrmCompilationMode.RuntimeEmit;
+        ForgeSourceGeneratedRegistry.CompilationMode = ForgeOrmCompilationMode.RuntimeEmit;
+        ForgeORM.Core.Performance.ForgeUltimatePerformancePrimitives.NativeAotMode = false;
     }
 
     /// <summary>
@@ -79,7 +79,7 @@ public static class ForgeOrmServiceCollectionExtensions
 
         if (string.IsNullOrWhiteSpace(options.ConnectionString)) throw new InvalidOperationException("ForgeORM connection string is required.");
         if (options.Provider is null) throw new InvalidOperationException("ForgeORM provider is required.");
-        ForgeSourceGeneratedRegistry.CompilationMode = options.CompilationMode;
+        ForgeSourceGeneratedRegistry.CompilationMode = ForgeOrmCompilationMode.RuntimeEmit;
 
         services.AddSingleton(options.Provider);
         services.AddSingleton<IForgeEntityMetadataResolver, HybridForgeEntityMetadataResolver>();

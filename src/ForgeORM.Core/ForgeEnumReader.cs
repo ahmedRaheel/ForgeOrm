@@ -61,30 +61,12 @@ public static class ForgeEnumReader
             if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var numericText))
                 return (TEnum)Enum.ToObject(typeof(TEnum), numericText);
 
-            return Fallback<TEnum>();
+            throw new InvalidCastException($"Value '{text}' cannot be converted to enum {typeof(TEnum).FullName}.");
         }
 
         var enumType = typeof(TEnum);
         var underlying = UnderlyingTypes.GetOrAdd(enumType, static t => Enum.GetUnderlyingType(t));
-        try
-        {
-            var numeric = Convert.ChangeType(value, underlying, CultureInfo.InvariantCulture);
-            return (TEnum)Enum.ToObject(enumType, numeric!);
-        }
-        catch
-        {
-            return Fallback<TEnum>();
-        }
-    }
-
-    private static TEnum Fallback<TEnum>() where TEnum : struct, Enum
-    {
-        if (Enum.TryParse<TEnum>("Unknown", ignoreCase: true, out var unknown))
-            return unknown;
-        if (Enum.TryParse<TEnum>("None", ignoreCase: true, out var none))
-            return none;
-        if (Enum.TryParse<TEnum>("Default", ignoreCase: true, out var @default))
-            return @default;
-        return default;
+        var numeric = Convert.ChangeType(value, underlying, CultureInfo.InvariantCulture);
+        return (TEnum)Enum.ToObject(enumType, numeric!);
     }
 }

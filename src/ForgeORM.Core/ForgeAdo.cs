@@ -702,11 +702,12 @@ public static class ForgeAdo
 
     private static object? NormalizeParameterValue(object? value)
     {
-        // Default ForgeORM enum parameter behavior follows .NET/EF convention: numeric storage.
-        // Materialization is storage-agnostic: int and string database values are both read into enums.
+        // Default ForgeORM enum parameter behavior uses string storage because raw SQL and
+        // sample schemas commonly store enum columns as NVARCHAR values such as 'Paid'.
+        // Numeric enum storage remains supported through ForgeValueConverter/explicit mapping paths.
         if (value is Enum enumValue)
         {
-            return Convert.ChangeType(enumValue, Enum.GetUnderlyingType(enumValue.GetType()), System.Globalization.CultureInfo.InvariantCulture);
+            return enumValue.ToString();
         }
 
         if (value is DateTime dateTime)

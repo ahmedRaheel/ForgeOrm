@@ -237,9 +237,10 @@ internal static class ForgeValueConverter
     {
         var attr = enumType.GetCustomAttribute<ForgeEnumStorageAttribute>();
 
-        // ForgeORM follows .NET/EF convention for writes: numeric enum storage by default.
-        // Reads are storage-agnostic and accept both numeric and string database values.
-        return attr?.Storage ?? ForgeEnumStorage.Number;
+        // ForgeORM defaults to string enum storage because most user/sample schemas store
+        // readable enum values such as 'Paid'. Numeric storage remains opt-in via
+        // [ForgeEnumStorage(ForgeEnumStorage.Number)]. Reads remain storage-agnostic.
+        return attr?.Storage ?? ForgeEnumStorage.String;
     }
 
     private static object? GetDefault(Type type)

@@ -127,6 +127,23 @@ internal static class ForgeParameterBinderCompiler
         if (parameterType is null)
             return static (_, _) => { };
 
+        if (ForgeSourceGeneratedRegistry.CompilationMode != ForgeOrmCompilationMode.RuntimeEmit
+            && ForgeSourceGeneratedRegistry.TryGetProvider(parameterType, out var provider))
+        {
+            var typedBinder = TryCreateTypedGeneratedBinder(provider, parameterType);
+            if (typedBinder is not null)
+                return typedBinder;
+
+            if (provider.TryGetBinder(parameterType, out var generated) && generated is not null)
+            {
+                return (command, value) =>
+                {
+                    if (value is not null)
+                        generated(command, value);
+                };
+            }
+        }
+
         if (parameterType.IsGenericType && parameterType.GetGenericTypeDefinition() == typeof(ForgeIdParameter<>))
             return CreateForgeIdBinder(parameterType, sqlNames);
 
@@ -444,19 +461,19 @@ internal static class ForgeParameterBinderCompiler
         var type = Nullable.GetUnderlyingType(declaredType ?? value.GetType()) ?? (declaredType ?? value.GetType());
         if (type.IsEnum)
         {
-            // Enterprise default: bind enums as their underlying numeric value, same as EF Core.
-            // Reading remains storage-agnostic and accepts both int and string database values.
-            // String enum binding is only an explicit opt-in; it is never required for materialization.
-            if (IsStringEnumStorage(property))
-                return value ?? DBNull.Value;
+            // Default to string enum storage for provider-safe raw SQL and sample schemas
+            // that store values such as 'Paid'. Explicit numeric enum storage still works
+            // through ForgeEnumStorageAttribute/ForgeValueConverter paths.
+            if (IsNumericEnumStorage(property))
+                return Convert.ChangeType(value, Enum.GetUnderlyingType(type), System.Globalization.CultureInfo.InvariantCulture) ?? DBNull.Value;
 
-            return Convert.ChangeType(value, Enum.GetUnderlyingType(type), System.Globalization.CultureInfo.InvariantCulture) ?? DBNull.Value;
+            return value.ToString() ?? string.Empty;
         }
 
         return value;
     }
 
-    private static bool IsStringEnumStorage(PropertyInfo? property)
+    private static bool IsNumericEnumStorage(PropertyInfo? property)
     {
         if (property is null)
             return false;

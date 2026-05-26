@@ -62,14 +62,6 @@ public partial class ForgeDb : IForgeDb
     public ValueTask<IReadOnlyList<T>> QueryAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
         => ForgeFrameworkExecutionPolicy.QueryAsync<T>(Provider, _connectionString, sql, parameters, timeoutSeconds, cancellationToken);
 
-    /// <summary>Executes a query with one typed scalar parameter, avoiding anonymous-object reflection in hot paths.</summary>
-    public ValueTask<IReadOnlyList<T>> QueryAsync<T, TKey>(string sql, TKey value, string parameterName = "Id", int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-        => ForgeFrameworkExecutionPolicy.QueryAsync<T>(Provider, _connectionString, sql, new ForgeORM.Core.Performance.ForgeScalarParameter<TKey>(parameterName, value), timeoutSeconds, cancellationToken);
-
-    /// <summary>Executes a query with one typed scalar parameter, avoiding anonymous-object reflection in hot paths.</summary>
-    public IReadOnlyList<T> Query<T, TKey>(string sql, TKey value, string parameterName = "Id", int? timeoutSeconds = null)
-        => ForgeFrameworkExecutionPolicy.Query<T>(Provider, _connectionString, sql, new ForgeORM.Core.Performance.ForgeScalarParameter<TKey>(parameterName, value), timeoutSeconds);
-
     /// <summary>Executes a SQL query when no parameters are needed and only a cancellation token is supplied.</summary>
     public ValueTask<IReadOnlyList<T>> QueryAsync<T>(string sql, CancellationToken cancellationToken)
         => QueryAsync<T>(sql, parameters: null, timeoutSeconds: null, cancellationToken: cancellationToken);
@@ -125,14 +117,6 @@ public partial class ForgeDb : IForgeDb
     /// <returns>The result of the T operation.</returns>
     public ValueTask<T?> QueryFirstOrDefaultAsync<T>(string sql, object? parameters = null, int? timeoutSeconds = null, CancellationToken cancellationToken = default)
         => ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T>(Provider, _connectionString, sql, parameters, timeoutSeconds, cancellationToken);
-
-    /// <summary>Executes a single-row query with one typed scalar parameter, avoiding anonymous-object reflection in hot paths.</summary>
-    public ValueTask<T?> QueryFirstOrDefaultAsync<T, TKey>(string sql, TKey value, string parameterName = "Id", int? timeoutSeconds = null, CancellationToken cancellationToken = default)
-        => ForgeFrameworkExecutionPolicy.FirstOrDefaultAsync<T>(Provider, _connectionString, sql, new ForgeORM.Core.Performance.ForgeScalarParameter<TKey>(parameterName, value), timeoutSeconds, cancellationToken);
-
-    /// <summary>Executes a single-row query with one typed scalar parameter, avoiding anonymous-object reflection in hot paths.</summary>
-    public T? QueryFirstOrDefault<T, TKey>(string sql, TKey value, string parameterName = "Id", int? timeoutSeconds = null)
-        => ForgeFrameworkExecutionPolicy.FirstOrDefault<T>(Provider, _connectionString, sql, new ForgeORM.Core.Performance.ForgeScalarParameter<TKey>(parameterName, value), timeoutSeconds);
 
     /// <summary>
     /// Executes the T operation.

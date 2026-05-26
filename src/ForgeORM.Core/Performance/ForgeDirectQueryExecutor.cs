@@ -351,9 +351,6 @@ internal static class ForgeDirectQueryExecutor
         if (parameters is null)
             return DirectExecutionPlan.NoParameters;
                
-        if (parameters is IForgeDirectScalarParameter scalarParameter)
-            return DirectExecutionPlan.ForScalar(NormalizeParameterName(scalarParameter.Name), scalarParameter.ValueType);
-
         if (parameters is System.Collections.IDictionary || parameters is IReadOnlyDictionary<string, object?>)
             return DirectExecutionPlan.Unsupported;
 
@@ -440,21 +437,22 @@ internal static class ForgeDirectQueryExecutor
         var typedParameters = Expression.Convert(parameters, declaringType);
 
         var addMethod = typeof(ForgeDirectQueryExecutor).GetMethod(
-            nameof(AddKnownValue),
+            nameof(AddKnown),
             BindingFlags.Static | BindingFlags.NonPublic)
-            ?? throw new MissingMethodException(nameof(ForgeDirectQueryExecutor), nameof(AddKnownValue));
+            ?? throw new MissingMethodException(nameof(ForgeDirectQueryExecutor), nameof(AddKnown));
 
         var calls = new Expression[properties.Count];
         for (var i = 0; i < properties.Count; i++)
         {
             var property = properties[i];
-            var declaredType = property.PropertyType;
             var access = Expression.Property(typedParameters, property);
+            var declaredType = property.PropertyType;
             calls[i] = Expression.Call(
-                addMethod.MakeGenericMethod(declaredType),
+                addMethod,
                 command,
                 Expression.Constant(NormalizeParameterName(property.Name), typeof(string)),
-                access,
+                Expression.Convert(access, typeof(object)),
+                Expression.Constant(declaredType, typeof(Type)),
                 Expression.Constant(ToSqlDbType(declaredType), typeof(SqlDbType?)),
                 Expression.Constant(ToDbType(declaredType), typeof(DbType?)));
         }
@@ -462,27 +460,6 @@ internal static class ForgeDirectQueryExecutor
         return Expression.Lambda<Action<DbCommand, object>>(Expression.Block(calls), command, parameters).Compile();
     }
 
-
-    private static void AddKnownValue<TValue>(DbCommand command, string name, TValue value, SqlDbType? sqlDbType, DbType? dbType)
-    {
-        var parameterValue = NormalizeTypedValue(value);
-
-        if (command is SqlCommand sqlCommand)
-        {
-            var sqlParameter = sqlDbType.HasValue
-                ? sqlCommand.Parameters.Add(name, sqlDbType.Value)
-                : sqlCommand.Parameters.Add(name, SqlDbType.Variant);
-            sqlParameter.Value = parameterValue;
-            return;
-        }
-
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = name;
-        if (dbType.HasValue)
-            parameter.DbType = dbType.Value;
-        parameter.Value = parameterValue;
-        command.Parameters.Add(parameter);
-    }
 
     private static void AddKnown(DbCommand command, string name, object? value, Type? declaredType, SqlDbType? sqlDbType, DbType? dbType)
     {
@@ -537,26 +514,13 @@ internal static class ForgeDirectQueryExecutor
 
         var type = Nullable.GetUnderlyingType(declaredType ?? value.GetType()) ?? (declaredType ?? value.GetType());
         return type.IsEnum
-            ? Convert.ChangeType(value, Enum.GetUnderlyingType(type), CultureInfo.InvariantCulture) ?? DBNull.Value
+            ? value.ToString() ?? string.Empty
             : value;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static object NormalizeTypedValue<TValue>(TValue value)
-    {
-        if (value is null)
-            return DBNull.Value;
-
-        var type = Nullable.GetUnderlyingType(typeof(TValue)) ?? typeof(TValue);
-        if (type.IsEnum)
-            return Convert.ChangeType(value, Enum.GetUnderlyingType(type), CultureInfo.InvariantCulture) ?? DBNull.Value;
-
-        return value;
     }
 
     private static Func<DbDataReader, T> GetReader<T>(DbConnection connection, string sql, DbDataReader reader)
     {
-        var key = new DirectReaderKey(connection.GetType(), typeof(T), sql);
+        var key = new DirectReaderKey(connection.GetType(), typeof(T), sql, ForgeSourceGeneratedRegistry.CompilationMode);
         if (ReaderCache.TryGetValue(key, out var cached))
             return (Func<DbDataReader, T>)cached;
 
@@ -602,7 +566,7 @@ internal static class ForgeDirectQueryExecutor
 
         type = Nullable.GetUnderlyingType(type) ?? type;
         if (type.IsEnum)
-            type = Enum.GetUnderlyingType(type);
+            return SqlDbType.NVarChar;
 
         if (type == typeof(int)) return SqlDbType.Int;
         if (type == typeof(long)) return SqlDbType.BigInt;
@@ -628,7 +592,7 @@ internal static class ForgeDirectQueryExecutor
 
         type = Nullable.GetUnderlyingType(type) ?? type;
         if (type.IsEnum)
-            type = Enum.GetUnderlyingType(type);
+            return DbType.String;
 
         if (type == typeof(int)) return DbType.Int32;
         if (type == typeof(long)) return DbType.Int64;
@@ -656,7 +620,7 @@ internal static class ForgeDirectQueryExecutor
             || type == typeof(TimeSpan) || type == typeof(byte[]);
     }
 
-    private readonly record struct DirectReaderKey(Type ProviderType, Type ResultType, string Sql);
+    private readonly record struct DirectReaderKey(Type ProviderType, Type ResultType, string Sql, ForgeOrmCompilationMode CompilationMode);
 
     private readonly record struct DirectPlanKey(string Sql, Type? ParameterType, CommandType CommandType);
 
@@ -698,9 +662,9 @@ internal static class ForgeDirectQueryExecutor
                 return;
 
             if (_scalarName is not null)
-            {
-                var value = parameters is IForgeDirectScalarParameter scalar ? scalar.BoxedValue : parameters;
-                AddKnown(command, _scalarName, value, _scalarType, _scalarSqlDbType, _scalarDbType);
+            {              
+
+                AddKnown(command, _scalarName, parameters, _scalarType, _scalarSqlDbType, _scalarDbType);
                 return;
             }
 

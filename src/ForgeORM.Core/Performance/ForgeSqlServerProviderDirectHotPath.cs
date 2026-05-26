@@ -33,6 +33,12 @@ internal static class ForgeSqlServerProviderDirectHotPath
 
     public static async ValueTask<T?> QueryFirstOrDefaultAsync<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds, CancellationToken cancellationToken)
     {
+        if (ForgeSourceGeneratedRegistry.TryExecuteSqlServerFirstOrDefaultAsync<T>(
+                connectionString, sql, parameters, timeoutSeconds, cancellationToken, out var generated))
+        {
+            return await generated.ConfigureAwait(false);
+        }
+
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
@@ -55,6 +61,9 @@ internal static class ForgeSqlServerProviderDirectHotPath
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        if (ForgeSourceGeneratedRegistry.TryExecuteQueryAsync<T>(connection, sql, parameters, null, CommandType.Text, timeoutSeconds, cancellationToken, out var generatedRows))
+            return await generatedRows.ConfigureAwait(false);
 
         await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
         await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken).ConfigureAwait(false);
@@ -178,9 +187,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
         if (timeoutSeconds.HasValue)
             command.CommandTimeout = timeoutSeconds.Value;
         BindParameters(command, plan.ParameterNames, parameters);
-        if (parameters is IForgeDirectScalarParameter directScalar)
-            EnsureScalarSqlParametersBound(command, directScalar.BoxedValue, directScalar.ValueType);
-        else if (parameters is not null && IsScalar(parameters.GetType()))
+        if (parameters is not null && IsScalar(parameters.GetType()))
             EnsureScalarSqlParametersBound(command, parameters, parameters.GetType());
         EnsureReferencedSqlParametersAreBound(command, plan.ParameterNames, parameters);
         ValidateNoUnboundSqlParameters(command, plan.ParameterNames);
@@ -405,13 +412,6 @@ internal static class ForgeSqlServerProviderDirectHotPath
         if (parameters is null)
             return;
 
-        if (parameters is IForgeDirectScalarParameter scalarParameter)
-        {
-            var name = parameterNames.Length == 0 ? scalarParameter.Name : parameterNames[0];
-            AddTypedParameter(command, name, scalarParameter.BoxedValue, scalarParameter.ValueType);
-            return;
-        }
-
         if (IsScalar(parameters.GetType()))
         {
             if (parameterNames.Length == 0)
@@ -463,7 +463,8 @@ internal static class ForgeSqlServerProviderDirectHotPath
         if (!parameterName.StartsWith('@')) parameterName = "@" + parameterName;
 
         SqlParameter parameter;
-        if (actualType == typeof(int)) parameter = command.Parameters.Add(parameterName, SqlDbType.Int);
+        if (actualType.IsEnum) parameter = command.Parameters.Add(parameterName, SqlDbType.NVarChar);
+        else if (actualType == typeof(int)) parameter = command.Parameters.Add(parameterName, SqlDbType.Int);
         else if (actualType == typeof(long)) parameter = command.Parameters.Add(parameterName, SqlDbType.BigInt);
         else if (actualType == typeof(short)) parameter = command.Parameters.Add(parameterName, SqlDbType.SmallInt);
         else if (actualType == typeof(byte)) parameter = command.Parameters.Add(parameterName, SqlDbType.TinyInt);
@@ -482,7 +483,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
         if (actualType.IsEnum)
             parameter.Value = value is null
                 ? DBNull.Value
-                : Convert.ChangeType(value, Enum.GetUnderlyingType(actualType), System.Globalization.CultureInfo.InvariantCulture);
+                : value.ToString();
         else if (value is DateOnly d)
             parameter.Value = d.ToDateTime(TimeOnly.MinValue);
         else if (value is TimeOnly t)
@@ -524,12 +525,6 @@ internal static class ForgeSqlServerProviderDirectHotPath
                 if (found)
                     AddTypedParameter(command, name, value, value?.GetType() ?? typeof(object));
             }
-            return;
-        }
-
-        if (parameters is IForgeDirectScalarParameter scalarParameter)
-        {
-            EnsureScalarSqlParametersBound(command, scalarParameter.BoxedValue, scalarParameter.ValueType);
             return;
         }
 

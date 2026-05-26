@@ -23,7 +23,11 @@ internal static class ForgeSqlServerProviderDirectHotPath
     private static readonly ConcurrentDictionary<string, string[]> SqlParameterTokenCache = new(StringComparer.Ordinal);
 
     public static bool CanUse(IForgeDatabaseProvider provider)
-        => string.Equals(provider.ProviderName, "SqlServer", StringComparison.OrdinalIgnoreCase);
+    {
+        var name = provider.ProviderName ?? provider.GetType().FullName ?? string.Empty;
+        return name.Contains("SqlServer", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("SqlClient", StringComparison.OrdinalIgnoreCase);
+    }
 
     public static T? GetById<T>(string connectionString, ForgeEntityMetadata metadata, object id)
         => ForgeSqlServerDirectGetByIdExecutor<T>.Execute(connectionString, metadata, id);

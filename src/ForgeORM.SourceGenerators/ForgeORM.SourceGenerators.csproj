@@ -17,11 +17,7 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
   </ItemGroup>
 
-  <Target Name="ForgeORM_SourceGenerator_AddAnalyzerToPackage" BeforeTargets="_GetPackageFiles;GenerateNuspec" DependsOnTargets="Build">
-    <ItemGroup Condition="Exists('$(TargetPath)')">
-      <None Include="$(TargetPath)" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
-    </ItemGroup>
-    <Error Condition="!Exists('$(TargetPath)')"
-           Text="ForgeORM.SourceGenerators analyzer was not built at $(TargetPath)." />
-  </Target>
+  <ItemGroup>
+    <None Include="$(TargetPath)" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" Condition="Exists('$(TargetPath)')" />
+  </ItemGroup>
 </Project>

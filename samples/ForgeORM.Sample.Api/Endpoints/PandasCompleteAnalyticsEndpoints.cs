@@ -6,9 +6,9 @@ public static class PandasCompleteAnalyticsEndpoints
     {
         var group = app.MapGroup("/dataframe/pandas-complete").WithTags("DataFrame Pandas Complete Analytics");
 
-        group.MapGet("/demo", () =>
+        group.MapGet("/demo", (ForgeORM.Core.ForgeDbContext db) =>
         {
-            var frame = ForgePandas.DataFrame(new Dictionary<string, IEnumerable<object?>>
+            var frame = db.DataFrame(new Dictionary<string, IEnumerable<object?>>
             {
                 ["Region"] = new object?[] { "North", "South", "North", "East", "South" },
                 ["Revenue"] = new object?[] { 1200m, 700m, 1500m, null, 900m },

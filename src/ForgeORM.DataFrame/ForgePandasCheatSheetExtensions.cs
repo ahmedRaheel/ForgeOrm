@@ -142,8 +142,8 @@ public static class ForgePandasCheatSheetExtensions
         => frame.Assign(column, expression);
 
     /// <summary>Maps one column to another using a converter.</summary>
-    public static ForgeDataFrame MapColumn(this ForgeDataFrame frame, string sourceColumn, string targetColumn, Func<object?, object?> converter)
-        => frame.Assign(targetColumn, r => converter(ForgeDataFrame.Get(r, sourceColumn)));
+    //public static ForgeDataFrame MapColumn(this ForgeDataFrame frame, string sourceColumn, string targetColumn, Func<object?, object?> converter)
+    //    => frame.Assign(targetColumn, r => converter(ForgeDataFrame.Get(r, sourceColumn)));
 
     /// <summary>Replaces values in a column using a dictionary, equivalent to pandas replace/map.</summary>
     public static ForgeDataFrame ReplaceValues(this ForgeDataFrame frame, string column, IReadOnlyDictionary<object?, object?> replacements)

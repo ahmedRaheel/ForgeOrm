@@ -12,7 +12,7 @@ namespace ForgeORM.DataFrame;
 /// Pandas-style factory helpers for creating <see cref="ForgeDataFrame"/> and <see cref="ForgeSeries"/> instances.
 /// These helpers intentionally avoid heavy runtime dependencies and keep the API friendly for everyday analytics.
 /// </summary>
-public static partial class ForgePandas
+internal static partial class ForgePandas
 {
     /// <summary>
     /// Creates a dataframe from dictionaries, objects, records, tuples or nested enumerable values.
@@ -255,7 +255,7 @@ public sealed class ForgeSeries
 /// <summary>
 /// Pandas-style extension methods for <see cref="ForgeDataFrame"/>.
 /// </summary>
-public static partial class ForgePandasExtensions
+internal static partial class ForgePandasExtensions
 {
     /// <summary>Writes the dataframe as CSV.</summary>
     public static void ToCsv(this ForgeDataFrame frame, string path, char delimiter = ',', bool includeHeader = true)
@@ -353,9 +353,9 @@ public static partial class ForgePandasExtensions
     {
         var rows = frame.Rows.ToList();
         var columns = frame.Columns.ToArray();
-        var rowOffset = rowRange.GetOffsetAndLength(rows.Count);
-        var columnOffset = columnRange.GetOffsetAndLength(columns.Length);
-        var selectedColumns = columns.Skip(columnOffset.Offset).Take(columnOffset.Length).ToArray();
+        var rowOffset = 1;//rowRange.GetOffsetAndLength(rows.Count);
+        var columnOffset = 2;//columnRange.GetOffsetAndLength(columns.Length);
+        var selectedColumns = 10;//columns.Skip(columnOffset.Offset).Take(columnOffset.Length).ToArray();
         return new ForgeDataFrame(rows.Skip(rowOffset.Offset).Take(rowOffset.Length).Select(row => selectedColumns.ToDictionary(c => c, c => ForgeDataFrame.Get(row, c), StringComparer.OrdinalIgnoreCase)));
     }
 
@@ -470,8 +470,7 @@ public static partial class ForgePandasExtensions
     }
 
     private static (int Offset, int Length) GetOffsetAndLength(this Range? range, int length)
-        => (range ?? new Range(Index.Start, Index.End)).GetOffsetAndLength(length);
-
+     => (range ?? new Range(Index.Start, Index.End)).GetOffsetAndLength(length);
     private static ForgeDataFrame BooleanMask(ForgeDataFrame frame, bool isNull)
     {
         var rows = frame.Rows.Select(row => frame.Columns.ToDictionary(c => c, c => (ForgeDataFrame.Get(row, c) is null or DBNull) == isNull ? (object?)true : false, StringComparer.OrdinalIgnoreCase));

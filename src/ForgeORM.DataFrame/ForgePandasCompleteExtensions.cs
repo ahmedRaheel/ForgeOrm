@@ -11,7 +11,7 @@ namespace ForgeORM.DataFrame;
 /// Complete pandas-inspired facade for ForgeDataFrame. The methods are intentionally pragmatic:
 /// they provide the same analytics workflow surface as pandas while staying dependency-light and ORM friendly.
 /// </summary>
-public static partial class ForgePandas
+internal static partial class ForgePandas
 {
     public static ForgeDataFrame FromDict(IDictionary<string, IEnumerable<object?>> columns) => DataFrame(columns);
 
@@ -179,10 +179,7 @@ public static partial class ForgePandas
         var list = new List<object?>();
         foreach (var value in values) if (!list.Any(x => Same(x, value))) list.Add(value);
         return list;
-    }
-
-    public static ForgeDataFrame ValueCounts(IEnumerable<object?> values, string column = "Value") => new ForgeSeries(column, values).ValueCounts();
-
+    }    
     public static ForgeMultiIndex MultiIndexFromArrays(params IEnumerable<object?>[] arrays) => ForgeMultiIndex.FromArrays(arrays);
     public static ForgeMultiIndex MultiIndexFromTuples(params object?[][] tuples) => ForgeMultiIndex.FromTuples(tuples);
     public static ForgeMultiIndex MultiIndexFromProduct(params IEnumerable<object?>[] levels) => ForgeMultiIndex.FromProduct(levels);
@@ -260,7 +257,7 @@ public static partial class ForgePandas
     private static bool Same(object? a, object? b) => string.Equals(Convert.ToString(a, CultureInfo.InvariantCulture), Convert.ToString(b, CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase);
 }
 
-public static partial class ForgePandasExtensions
+internal static partial class ForgePandasExtensions
 {
     public static int Size(this ForgeDataFrame frame) => frame.RowCount * frame.Columns.Count;
     public static int NDim(this ForgeDataFrame frame) => 2;

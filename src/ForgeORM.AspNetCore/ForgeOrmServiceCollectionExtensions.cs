@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Threading;
 using ForgeORM.Abstractions;
 using ForgeORM.Analytics;
 using ForgeORM.Core;
@@ -28,19 +30,18 @@ public sealed class ForgeOrmOptions
     /// <param name="ConnectionString">The ConnectionString value.</param>
     public void UseSqlServer(string connectionString) { ConnectionString = connectionString; Provider = new SqlServerForgeProvider(); }
 
-    /// <summary>Configures the compilation mode. ForgeORM now uses MSIL RuntimeEmit only; Auto and legacy SourceGenerated values are mapped to RuntimeEmit for compatibility.</summary>
+    /// <summary>Configures whether ForgeORM uses source-generated accessors, RuntimeEmit MSIL, or Auto mode.</summary>
     public void UseCompilationMode(ForgeOrmCompilationMode mode)
     {
-        CompilationMode = ForgeOrmCompilationMode.RuntimeEmit;
-        ForgeOrmCompilationRuntime.Mode = ForgeOrmCompilationMode.RuntimeEmit;
+        CompilationMode = mode;
+        ForgeOrmSourceGenerationBootstrap.Configure(mode);
     }
-
-    /// <summary>NativeAOT source-generation mode was removed. ForgeORM now uses RuntimeEmit only.</summary>
-    [Obsolete("Source-generation mode was removed. ForgeORM now uses MSIL RuntimeEmit only.")]
+    /// <summary>Forces SourceGenerated-only mode for NativeAOT deployments. RuntimeEmit fallback is disabled by policy.</summary>
     public void UseNativeAotMode()
     {
-        CompilationMode = ForgeOrmCompilationMode.RuntimeEmit;
-        ForgeOrmCompilationRuntime.Mode = ForgeOrmCompilationMode.RuntimeEmit;
+        CompilationMode = ForgeOrmCompilationMode.SourceGenerated;
+        ForgeOrmSourceGenerationBootstrap.Configure(ForgeOrmCompilationMode.SourceGenerated);
+        ForgeORM.Core.Performance.ForgeUltimatePerformancePrimitives.NativeAotMode = true;
     }
 
     /// <summary>
@@ -80,10 +81,10 @@ public static class ForgeOrmServiceCollectionExtensions
 
         if (string.IsNullOrWhiteSpace(options.ConnectionString)) throw new InvalidOperationException("ForgeORM connection string is required.");
         if (options.Provider is null) throw new InvalidOperationException("ForgeORM provider is required.");
-        ForgeOrmCompilationRuntime.Mode = ForgeOrmCompilationMode.RuntimeEmit;
+      
 
         services.AddSingleton(options.Provider);
-      
+        services.AddSingleton<IForgeEntityMetadataResolver, HybridForgeEntityMetadataResolver>();
         services.AddSingleton<IForgeQueryAnalyzer, BasicForgeQueryAnalyzer>();
         services.AddSingleton<IForgeSelectQueryBuilder, ForgeORM.QueryBuilder.ForgeDynamicQueryBuilder>();
         services.AddSingleton<ForgeORM.QueryAst.IForgeDynamicQueryBuilder, ForgeORM.QueryAst.ForgeDynamicQueryBuilder>();
@@ -115,4 +116,3 @@ public static class ForgeOrmServiceCollectionExtensions
         return services;
     }
 }
-

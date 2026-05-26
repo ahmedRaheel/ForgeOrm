@@ -150,7 +150,7 @@ public static class EnterpriseAdvancedFeaturePackEndpoints
             });
         });
 
-        group.MapGet("/12-source-generators", () =>
+        group.MapGet("/12-runtime-emit-materializers", () =>
         {
             var artifacts = new[]
             {
@@ -160,8 +160,8 @@ public static class EnterpriseAdvancedFeaturePackEndpoints
 
             return Results.Ok(new
             {
-                feature = ForgeEnterpriseFeatureRegistry.Get(ForgeEnterpriseFeature.SourceGenerators),
-                api = "ForgeORM.SourceGenerator emits compiled readers/mappers/plans",
+                feature = ForgeEnterpriseFeatureRegistry.Get(ForgeEnterpriseFeature.RuntimeEmitMaterializers),
+                api = "ForgeORM RuntimeEmit caches compiled readers/binders/plans",
                 artifacts
             });
         });

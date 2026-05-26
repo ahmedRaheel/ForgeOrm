@@ -127,27 +127,6 @@ internal static class ForgeParameterBinderCompiler
         if (parameterType is null)
             return static (_, _) => { };
 
-        var mode = ForgeSourceGeneratedRegistry.CompilationMode;
-        if (mode != ForgeOrmCompilationMode.RuntimeEmit
-            && ForgeSourceGeneratedRegistry.TryGetProvider(parameterType, out var provider))
-        {
-            var typedBinder = TryCreateTypedGeneratedBinder(provider, parameterType);
-            if (typedBinder is not null)
-                return typedBinder;
-
-            if (provider.TryGetBinder(parameterType, out var generated) && generated is not null)
-            {
-                return (command, value) =>
-                {
-                    if (value is not null)
-                        generated(command, value);
-                };
-            }
-        }
-
-        if (mode == ForgeOrmCompilationMode.SourceGenerated || mode == ForgeOrmCompilationMode.SourceGeneratedStrict)
-            throw new InvalidOperationException($"SourceGenerated mode failed. No ForgeORM source-generated parameter binder was registered for {parameterType.FullName}. RuntimeEmit/reflection binder fallback is disabled because SourceGenerated was explicitly selected.");
-
         if (parameterType.IsGenericType && parameterType.GetGenericTypeDefinition() == typeof(ForgeIdParameter<>))
             return CreateForgeIdBinder(parameterType, sqlNames);
 
@@ -253,25 +232,7 @@ internal static class ForgeParameterBinderCompiler
         {
             if (value is ForgeNamedParameter<TValue> typed)
                 Add(command, typed.Name, typed.Value, typeof(TValue));
-        };
-    }
-    private static Action<DbCommand, object?>? TryCreateTypedGeneratedBinder(IForgeSourceGeneratedAccessorProvider provider, Type parameterType)
-    {
-        var method = typeof(ForgeParameterBinderCompiler)
-            .GetMethod(nameof(CreateTypedGeneratedBinder), BindingFlags.NonPublic | BindingFlags.Static)!
-            .MakeGenericMethod(parameterType);
-
-        return (Action<DbCommand, object?>?)method.Invoke(null, new object[] { provider });
-    }
-
-    private static Action<DbCommand, object?>? CreateTypedGeneratedBinder<T>(IForgeSourceGeneratedAccessorProvider provider)
-    {
-        return provider.TryGetTypedBinder<T>(out var binder) && binder is not null
-            ? (command, value) =>
-            {
-                if (value is T typed) binder.Bind(command, typed);
-            }
-            : null;
+        };  
     }
 
     private static Func<object, object?> CompileGetter(Type declaringType, PropertyInfo property)

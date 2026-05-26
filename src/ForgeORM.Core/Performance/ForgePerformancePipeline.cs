@@ -9,7 +9,7 @@ namespace ForgeORM.Core.Performance;
 
 /// <summary>
 /// Central high-performance ADO.NET pipeline. It no longer delegates query execution to ForgeAdo;
-/// it owns plan lookup, parameter binding, command execution and source-generated/MSIL materialization.
+/// it owns plan lookup, parameter binding, command execution and MSIL RuntimeEmit materialization.
 /// </summary>
 public static class ForgePerformancePipeline
 {
@@ -22,9 +22,6 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        if (!ForgeEnterpriseRuntime.IsEnabled &&
-            ForgeSourceGeneratedRegistry.TryExecuteQueryAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var generatedQuery))
-            return await generatedQuery.ConfigureAwait(false);
 
         if (!ForgeEnterpriseRuntime.IsEnabled &&
             ForgeDirectQueryExecutor.TryQueryAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var directQuery))
@@ -54,9 +51,6 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        if (!ForgeEnterpriseRuntime.IsEnabled &&
-            ForgeSourceGeneratedRegistry.TryExecuteQueryAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var generatedQuery))
-            return await generatedQuery.ConfigureAwait(false);
 
         if (!ForgeEnterpriseRuntime.IsEnabled &&
             ForgeDirectQueryExecutor.TryQueryAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var directQuery))
@@ -126,9 +120,6 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        if (!ForgeEnterpriseRuntime.IsEnabled &&
-            ForgeSourceGeneratedRegistry.TryExecuteFirstOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var generatedFirst))
-            return await generatedFirst.ConfigureAwait(false);
 
         if (!ForgeEnterpriseRuntime.IsEnabled &&
             ForgeDirectQueryExecutor.TryFirstOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var directFirst))
@@ -155,9 +146,6 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        if (!ForgeEnterpriseRuntime.IsEnabled &&
-            ForgeSourceGeneratedRegistry.TryExecuteFirstOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var generatedFirst))
-            return await generatedFirst.ConfigureAwait(false);
 
         if (!ForgeEnterpriseRuntime.IsEnabled &&
             ForgeDirectQueryExecutor.TryFirstOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var directFirst))
@@ -206,17 +194,6 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        if (!ForgeEnterpriseRuntime.IsEnabled &&
-            ForgeSourceGeneratedRegistry.TryExecuteQueryAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var generatedRows))
-        {
-            var rows = await generatedRows.ConfigureAwait(false);
-            return rows.Count switch
-            {
-                0 => default,
-                1 => rows[0],
-                _ => throw new InvalidOperationException("Sequence contains more than one element.")
-            };
-        }
 
         if (!ForgeEnterpriseRuntime.IsEnabled &&
             ForgeDirectQueryExecutor.TrySingleOrDefaultAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var directSingle))
@@ -264,9 +241,6 @@ public static class ForgePerformancePipeline
         int? timeoutSeconds = null,
         CancellationToken cancellationToken = default)
     {
-        if (!ForgeEnterpriseRuntime.IsEnabled &&
-            ForgeSourceGeneratedRegistry.TryExecuteScalarAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var generatedScalar))
-            return await generatedScalar.ConfigureAwait(false);
 
         if (!ForgeEnterpriseRuntime.IsEnabled &&
             ForgeDirectQueryExecutor.TryScalarAsync<T>(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken, out var directScalar))

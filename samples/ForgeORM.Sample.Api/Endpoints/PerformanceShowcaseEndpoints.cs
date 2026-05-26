@@ -26,7 +26,7 @@ public static class PerformanceShowcaseEndpoints
         {
             const string sql = "select Id, OrderNo, CustomerId, GrandTotal, Status from Orders where CustomerId = @CustomerId and Status = @Status";
             var rows = await db.QueryAsync<Order>(sql, request, cancellationToken: ct);
-            return Results.Ok(new { binder = "source-generated binder when registered, otherwise cached MSIL binder", rows });
+            return Results.Ok(new { binder = "cached MSIL binder", rows });
         });
 
         return app;

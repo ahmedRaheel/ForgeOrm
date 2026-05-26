@@ -1,3 +1,3 @@
 <Project>
-  <!-- Intentionally empty. Local source-generator wiring is in Directory.Build.props so ProjectReference analyzers are available early. -->
+  <!-- Intentionally empty. ForgeORM now uses MSIL RuntimeEmit only. -->
 </Project>

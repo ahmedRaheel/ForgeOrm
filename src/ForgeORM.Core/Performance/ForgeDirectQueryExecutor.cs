@@ -520,7 +520,7 @@ internal static class ForgeDirectQueryExecutor
 
     private static Func<DbDataReader, T> GetReader<T>(DbConnection connection, string sql, DbDataReader reader)
     {
-        var key = new DirectReaderKey(connection.GetType(), typeof(T), sql, ForgeSourceGeneratedRegistry.CompilationMode);
+        var key = new DirectReaderKey(connection.GetType(), typeof(T), sql, ForgeOrmCompilationMode.RuntimeEmit);
         if (ReaderCache.TryGetValue(key, out var cached))
             return (Func<DbDataReader, T>)cached;
 

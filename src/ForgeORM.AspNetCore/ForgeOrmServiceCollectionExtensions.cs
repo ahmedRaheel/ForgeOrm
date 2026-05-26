@@ -1,5 +1,3 @@
-using System.Reflection;
-using System.Threading;
 using ForgeORM.Abstractions;
 using ForgeORM.Analytics;
 using ForgeORM.Core;
@@ -30,18 +28,19 @@ public sealed class ForgeOrmOptions
     /// <param name="ConnectionString">The ConnectionString value.</param>
     public void UseSqlServer(string connectionString) { ConnectionString = connectionString; Provider = new SqlServerForgeProvider(); }
 
-    /// <summary>Configures whether ForgeORM uses source-generated accessors, RuntimeEmit MSIL, or Auto mode.</summary>
+    /// <summary>Configures the compilation mode. ForgeORM now uses MSIL RuntimeEmit only; Auto and legacy SourceGenerated values are mapped to RuntimeEmit for compatibility.</summary>
     public void UseCompilationMode(ForgeOrmCompilationMode mode)
     {
-        CompilationMode = mode;
-        ForgeOrmSourceGenerationBootstrap.Configure(mode);
+        CompilationMode = ForgeOrmCompilationMode.RuntimeEmit;
+        ForgeOrmCompilationRuntime.Mode = ForgeOrmCompilationMode.RuntimeEmit;
     }
-    /// <summary>Forces SourceGenerated-only mode for NativeAOT deployments. RuntimeEmit fallback is disabled by policy.</summary>
+
+    /// <summary>NativeAOT source-generation mode was removed. ForgeORM now uses RuntimeEmit only.</summary>
+    [Obsolete("Source-generation mode was removed. ForgeORM now uses MSIL RuntimeEmit only.")]
     public void UseNativeAotMode()
     {
-        CompilationMode = ForgeOrmCompilationMode.SourceGenerated;
-        ForgeOrmSourceGenerationBootstrap.Configure(ForgeOrmCompilationMode.SourceGenerated);
-        ForgeORM.Core.Performance.ForgeUltimatePerformancePrimitives.NativeAotMode = true;
+        CompilationMode = ForgeOrmCompilationMode.RuntimeEmit;
+        ForgeOrmCompilationRuntime.Mode = ForgeOrmCompilationMode.RuntimeEmit;
     }
 
     /// <summary>
@@ -81,10 +80,10 @@ public static class ForgeOrmServiceCollectionExtensions
 
         if (string.IsNullOrWhiteSpace(options.ConnectionString)) throw new InvalidOperationException("ForgeORM connection string is required.");
         if (options.Provider is null) throw new InvalidOperationException("ForgeORM provider is required.");
-        ForgeOrmSourceGenerationBootstrap.Configure(options.CompilationMode);
+        ForgeOrmCompilationRuntime.Mode = ForgeOrmCompilationMode.RuntimeEmit;
 
         services.AddSingleton(options.Provider);
-        services.AddSingleton<IForgeEntityMetadataResolver, HybridForgeEntityMetadataResolver>();
+      
         services.AddSingleton<IForgeQueryAnalyzer, BasicForgeQueryAnalyzer>();
         services.AddSingleton<IForgeSelectQueryBuilder, ForgeORM.QueryBuilder.ForgeDynamicQueryBuilder>();
         services.AddSingleton<ForgeORM.QueryAst.IForgeDynamicQueryBuilder, ForgeORM.QueryAst.ForgeDynamicQueryBuilder>();
@@ -117,39 +116,3 @@ public static class ForgeOrmServiceCollectionExtensions
     }
 }
 
-
-internal static class ForgeOrmSourceGenerationBootstrap
-{
-    private static int _configured;
-
-    /// <summary>
-    /// Applies the selected compilation mode globally and primes source-generated provider discovery.
-    /// Important: this does not require any user-side registry call. With the NuGet package,
-    /// ForgeORM.AspNetCore carries the analyzer so generated providers are created at build time.
-    /// At runtime this method only selects the generated path and discovers/registers already
-    /// generated providers from loaded assemblies.
-    /// </summary>
-    public static void Configure(ForgeOrmCompilationMode mode)
-    {
-        ForgeSourceGeneratedRegistry.CompilationMode = mode;
-
-        if (mode == ForgeOrmCompilationMode.SourceGenerated ||
-            mode == ForgeOrmCompilationMode.SourceGeneratedStrict ||
-            mode == ForgeOrmCompilationMode.Auto)
-        {
-            ForgeSourceGeneratedRegistry.DiscoverGeneratedProvidersFromLoadedAssemblies();
-        }
-
-        if (Interlocked.Exchange(ref _configured, 1) == 0)
-        {
-            AppDomain.CurrentDomain.AssemblyLoad += (_, args) =>
-            {
-                var current = ForgeSourceGeneratedRegistry.CompilationMode;
-                if (current == ForgeOrmCompilationMode.RuntimeEmit)
-                    return;
-
-                ForgeSourceGeneratedRegistry.DiscoverGeneratedProviders(args.LoadedAssembly);
-            };
-        }
-    }
-}

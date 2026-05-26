@@ -4,6 +4,6 @@ public static class ForgeRuntimeEmitMode
 {
     public static void UseRuntimeEmit()
     {
-        ForgeORM.Core.ForgeSourceGeneratedRegistry.CompilationMode = ForgeORM.Core.ForgeOrmCompilationMode.RuntimeEmit;
+        ForgeORM.Core.ForgeOrmCompilationRuntime.Mode = ForgeORM.Core.ForgeOrmCompilationMode.RuntimeEmit;
     }
 }

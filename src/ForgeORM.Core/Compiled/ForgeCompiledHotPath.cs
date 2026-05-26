@@ -31,7 +31,7 @@ public sealed class ForgeCompiledEntityPlan
 }
 
 /// <summary>
-/// Compiles and caches entity plans. This is source-generator-compatible and removes reflection from hot paths after first access.
+/// Compiles and caches entity plans. This is RuntimeEmit-compatible and removes reflection from hot paths after first access.
 /// </summary>
 public static class ForgeCompiledPlanCache
 {

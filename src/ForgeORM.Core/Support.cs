@@ -87,12 +87,6 @@ public sealed class ReflectionForgeEntityMetadataResolver : IForgeEntityMetadata
     {
         ArgumentNullException.ThrowIfNull(type);
 
-        // Framework-level policy: generated metadata always wins when available, even when
-        // older app code still constructs ReflectionForgeEntityMetadataResolver directly.
-        // Reflection becomes the safe fallback, not a separate runtime framework.
-        if (ForgeSourceGeneratedRegistry.TryGetMetadata(type, out var generated))
-            return generated;
-
         return _cache.GetOrAdd(type, BuildMetadata);
     }
 

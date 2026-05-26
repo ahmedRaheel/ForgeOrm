@@ -20,36 +20,7 @@ internal static class ForgeSqlServerDirectMaterializerCache
 
     public static Func<SqlDataReader, T> GetOrCreate<T>(SqlDataReader reader)
     {
-        var mode = ForgeSourceGeneratedRegistry.CompilationMode;
         var type = typeof(T);
-
-        if (mode == ForgeOrmCompilationMode.RuntimeEmit)
-        {
-            var runtimeKey = CreateKey(type, reader);
-            return (Func<SqlDataReader, T>)Cache.GetOrAdd(runtimeKey, _ => Build<T>(reader));
-        }
-
-        if (ForgeGeneratedRegistry.TryCreateSqlServerReader<T>(reader, out var sqlServerReader))
-            return sqlServerReader;
-
-        if (ForgeGeneratedRegistry.TryCreateReader<T>(reader, out var registeredReader))
-            return r => registeredReader(r);
-
-        // SourceGenerated/Auto must actively discover the generated provider emitted into the consuming assembly.
-        // Do not only check an already-filled cache; NuGet consumers should not manually register anything.
-        if (ForgeSourceGeneratedRegistry.TryGetOrCreateProvider(type, out var provider))
-        {
-            if (provider.TryCreateSqlServerReader<T>(reader, out var sqlGenerated) && sqlGenerated is not null)
-                return sqlGenerated;
-
-            if (provider.TryCreateReader<T>(reader, out var generated) && generated is not null)
-                return r => generated(r);
-        }
-
-        if (mode == ForgeOrmCompilationMode.SourceGenerated || mode == ForgeOrmCompilationMode.SourceGeneratedStrict)
-            throw new InvalidOperationException($"SourceGenerated mode failed. No source-generated SQL Server direct materializer was registered for {type.FullName}. RuntimeEmit fallback is disabled because SourceGenerated was explicitly selected.");
-
-        // Auto mode only: generated reader unavailable, SQL Server RuntimeEmit fallback is allowed.
         var key = CreateKey(type, reader);
         return (Func<SqlDataReader, T>)Cache.GetOrAdd(key, _ => Build<T>(reader));
     }

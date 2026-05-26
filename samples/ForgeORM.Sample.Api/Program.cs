@@ -25,7 +25,7 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddForgeOrm(options =>
 {
     options.UseSqlServer(connectionString);
-    options.UseCompilationMode(ForgeOrmCompilationMode.SourceGenerated);
+    options.UseCompilationMode(ForgeOrmCompilationMode.Auto);
 });
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddForgeMemoryQueryCaching();

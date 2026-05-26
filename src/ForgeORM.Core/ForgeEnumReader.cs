@@ -7,7 +7,7 @@ using System.Runtime.CompilerServices;
 namespace ForgeORM.Core;
 
 /// <summary>
-/// Central enum materializer used by source-generated, provider-specific and RuntimeEmit readers.
+/// Central enum materializer used by provider-specific and RuntimeEmit readers.
 /// It is intentionally storage-agnostic: SQL INT, BIGINT, SMALLINT and NVARCHAR/VARCHAR enum names
 /// all materialize into enum properties without requiring [ForgeEnumStorage].
 /// </summary>

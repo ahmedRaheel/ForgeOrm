@@ -9,7 +9,7 @@ namespace ForgeORM.Core;
 /// <summary>
 /// Framework-level execution gateway used by all public ForgeORM APIs.
 /// Provider-specific optimizations are selected behind <see cref="ForgePerformancePipeline"/>
-/// and source-generated registries; public APIs must not branch to separate database frameworks.
+/// and RuntimeEmit caches; public APIs must not branch to separate database frameworks.
 /// </summary>
 internal static class ForgeFrameworkExecutionPolicy
 {

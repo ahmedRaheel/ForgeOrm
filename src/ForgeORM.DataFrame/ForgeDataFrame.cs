@@ -365,6 +365,87 @@ public sealed class ForgeDataFrame
                 if (!row.TryGetValue(c, out var current) || current is null || current is DBNull)
                     row[c] = value;
         return this;
+    } 
+       /// <summary>
+      /// Shape of Dataframe
+      /// </summary>
+      /// <returns></returns>
+    public (int Rows, int Columns) Shape() => (RowCount, Columns.Count);
+
+    /// <summary>
+    /// Datatypes of columns in dataframe
+    /// </summary>
+    /// <returns></returns>
+    public ForgeDataFrame DTypes()
+    {
+        var rows = new List<IDictionary<string, object?>>();
+
+        foreach (var column in Columns)
+        {
+            object? sample = null;
+
+            for (int i = 0; i < _rows.Count; i++)
+            {
+                if (_rows[i].TryGetValue(column, out var value)
+                    && value is not null
+                    && value is not DBNull)
+                {
+                    sample = value;
+                    break;
+                }
+            }
+
+            rows.Add(new Dictionary<string, object?>
+            {
+                ["Column"] = column,
+                ["Type"] = sample?.GetType().Name ?? "object"
+            });
+        }
+
+        return new ForgeDataFrame(rows);
+    }
+
+    public ForgeDataFrame Info()
+    {
+        var rows = new List<IDictionary<string, object?>>();
+
+        foreach (var column in Columns)
+        {
+            var nulls = 0;
+
+            for (int i = 0; i < _rows.Count; i++)
+            {
+                if (!_rows[i].TryGetValue(column, out var value)
+                    || value is null
+                    || value is DBNull)
+                {
+                    nulls++;
+                }
+            }
+
+            object? sample = null;
+
+            for (int i = 0; i < _rows.Count; i++)
+            {
+                if (_rows[i].TryGetValue(column, out var value)
+                    && value is not null
+                    && value is not DBNull)
+                {
+                    sample = value;
+                    break;
+                }
+            }
+
+            rows.Add(new Dictionary<string, object?>
+            {
+                ["Column"] = column,
+                ["Type"] = sample?.GetType().Name ?? "object",
+                ["Nulls"] = nulls,
+                ["NonNulls"] = RowCount - nulls
+            });
+        }
+
+        return new ForgeDataFrame(rows);
     }
 
     /// <summary>
@@ -377,7 +458,60 @@ public sealed class ForgeDataFrame
         var targetColumns = columns.Length == 0 ? Columns : columns;
         return new(_rows.Where(row => targetColumns.All(c => row.TryGetValue(c, out var v) && v is not null && v is not DBNull)));
     }
+    /// <summary>
+    /// Converts the column value to capital case
+    /// </summary>
+    /// <param name="column"></param>
+    /// <returns></returns>
+    public ForgeDataFrame StrUpper(string column)
+    {
+        for (int i = 0; i < _rows.Count; i++)
+        {
+            if (_rows[i].TryGetValue(column, out var value)
+                && value is not null
+                && value is not DBNull)
+            {
+                _rows[i][column] =
+                    Convert.ToString(value)?.ToUpperInvariant();
+            }
+        }
 
+        return this;
+    }
+
+    public ForgeDataFrame ValueCounts(
+    string column,
+    bool descending = true)
+    {
+        var groups = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        for (int i = 0; i < _rows.Count; i++)
+        {
+            var key = Convert.ToString(Get(_rows[i], column)) ?? "null";
+
+            if (groups.TryGetValue(key, out var count))
+                groups[key] = count + 1;
+            else
+                groups[key] = 1;
+        }
+
+        IEnumerable<KeyValuePair<string, int>> ordered = descending
+            ? groups.OrderByDescending(x => x.Value)
+            : groups.OrderBy(x => x.Value);
+
+        var rows = new List<IDictionary<string, object?>>();
+
+        foreach (var pair in ordered)
+        {
+            rows.Add(new Dictionary<string, object?>
+            {
+                ["Value"] = pair.Key,
+                ["Count"] = pair.Value
+            });
+        }
+
+        return new ForgeDataFrame(rows);
+    }
     /// <summary>
     /// Executes the DropDuplicates operation.
     /// </summary>
@@ -888,7 +1022,343 @@ public sealed class ForgeDataFrame
         return new StringDataFrameColumn(
             name,
             values.Select(v => v is null or DBNull ? null : v.ToString()));
+    }    
+    /// <summary>
+    /// Returns distinct values for a column.
+    /// </summary>
+    /// <param name="column">The column name.</param>
+    /// <param name="dropNa">Whether null-like values should be excluded.</param>
+    /// <returns>The distinct values in first-seen order.</returns>
+    public IReadOnlyList<object?> Unique(string column, bool dropNa = true)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(column);
+
+        var result = new List<object?>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 0; i < _rows.Count; i++)
+        {
+            var value = Get(_rows[i], column);
+            if (dropNa && IsNullLike(value))
+                continue;
+
+            var key = ToKey(value);
+            if (seen.Add(key))
+                result.Add(value);
+        }
+
+        return result;
     }
+
+    ///// <summary>
+    ///// Returns value counts for a column.
+    ///// </summary>
+    ///// <param name="column">The column name.</param>
+    ///// <param name="descending">Whether counts are returned in descending frequency order.</param>
+    ///// <param name="dropNa">Whether null-like values should be excluded.</param>
+    ///// <returns>A dataframe containing Value and Count columns.</returns>
+    //public ForgeDataFrame ValueCounts(string column, bool descending = true, bool dropNa = true)
+    //{
+    //    ArgumentException.ThrowIfNullOrWhiteSpace(column);
+
+    //    var counts = new Dictionary<string, (object? Value, int Count)>(StringComparer.OrdinalIgnoreCase);
+
+    //    for (var i = 0; i < _rows.Count; i++)
+    //    {
+    //        var value = Get(_rows[i], column);
+    //        if (dropNa && IsNullLike(value))
+    //            continue;
+
+    //        var key = ToKey(value);
+    //        if (counts.TryGetValue(key, out var current))
+    //            counts[key] = (current.Value, current.Count + 1);
+    //        else
+    //            counts[key] = (value, 1);
+    //    }
+
+    //    var ordered = new List<KeyValuePair<string, (object? Value, int Count)>>(counts);
+    //    ordered.Sort((a, b) => descending
+    //        ? b.Value.Count.CompareTo(a.Value.Count)
+    //        : a.Value.Count.CompareTo(b.Value.Count));
+
+    //    var rows = new List<IDictionary<string, object?>>(ordered.Count);
+    //    for (var i = 0; i < ordered.Count; i++)
+    //    {
+    //        rows.Add(new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+    //        {
+    //            ["Value"] = ordered[i].Value.Value,
+    //            ["Count"] = ordered[i].Value.Count
+    //        });
+    //    }
+
+    //    return new ForgeDataFrame(rows);
+    //}
+
+    /// <summary>
+    /// Adds or replaces a string column using upper-case invariant text.
+    /// </summary>
+    /// <param name="column">The source column.</param>
+    /// <param name="alias">Optional output column. When omitted, the source column is replaced.</param>
+    /// <returns>The current dataframe.</returns>
+    public ForgeDataFrame StrUpper(string column, string? alias = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(column);
+        var target = string.IsNullOrWhiteSpace(alias) ? column : alias!;
+
+        for (var i = 0; i < _rows.Count; i++)
+        {
+            var value = Get(_rows[i], column);
+            _rows[i][target] = IsNullLike(value) ? null : Convert.ToString(value, CultureInfo.InvariantCulture)?.ToUpperInvariant();
+        }
+
+        return this;
+    }
+
+    /// <summary>
+    /// Extracts the month number from a date/time column.
+    /// </summary>
+    /// <param name="column">The source date/time column.</param>
+    /// <param name="alias">The output column name.</param>
+    /// <returns>The current dataframe.</returns>
+    public ForgeDataFrame DtMonth(string column, string alias = "Month")
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(column);
+        ArgumentException.ThrowIfNullOrWhiteSpace(alias);
+
+        for (var i = 0; i < _rows.Count; i++)
+        {
+            _rows[i][alias] = TryGetDateTime(Get(_rows[i], column), out var value) ? value.Month : null;
+        }
+
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a rolling mean column for a numeric column.
+    /// </summary>
+    /// <param name="column">The source numeric column.</param>
+    /// <param name="window">The rolling window size.</param>
+    /// <param name="alias">The output column name.</param>
+    /// <returns>The current dataframe.</returns>
+    public ForgeDataFrame RollingMean(string column, int window, string alias)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(column);
+        ArgumentException.ThrowIfNullOrWhiteSpace(alias);
+        if (window <= 0)
+            throw new ArgumentOutOfRangeException(nameof(window), "Window must be greater than zero.");
+
+        for (var i = 0; i < _rows.Count; i++)
+        {
+            decimal total = 0;
+            var count = 0;
+            var start = Math.Max(0, i - window + 1);
+
+            for (var j = start; j <= i; j++)
+            {
+                var number = ToDecimal(Get(_rows[j], column));
+                if (!number.HasValue)
+                    continue;
+
+                total += number.Value;
+                count++;
+            }
+
+            _rows[i][alias] = count == 0 ? null : total / count;
+        }
+
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a cumulative sum column for a numeric column.
+    /// </summary>
+    /// <param name="column">The source numeric column.</param>
+    /// <param name="alias">The output column name.</param>
+    /// <returns>The current dataframe.</returns>
+    public ForgeDataFrame CumSum(string column, string alias)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(column);
+        ArgumentException.ThrowIfNullOrWhiteSpace(alias);
+
+        decimal total = 0;
+        for (var i = 0; i < _rows.Count; i++)
+        {
+            var number = ToDecimal(Get(_rows[i], column));
+            if (number.HasValue)
+                total += number.Value;
+
+            _rows[i][alias] = total;
+        }
+
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a rank column for a numeric/text column.
+    /// </summary>
+    /// <param name="column">The source column.</param>
+    /// <param name="alias">The output column name.</param>
+    /// <param name="ascending">Whether lower values should receive lower ranks.</param>
+    /// <returns>The current dataframe.</returns>
+    public ForgeDataFrame RankValues(string column, string alias, bool ascending = true)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(column);
+        ArgumentException.ThrowIfNullOrWhiteSpace(alias);
+
+        var values = new List<(int Index, object? Value)>(_rows.Count);
+        for (var i = 0; i < _rows.Count; i++)
+            values.Add((i, Get(_rows[i], column)));
+
+        values.Sort((a, b) => ascending
+            ? CompareValues(a.Value, b.Value)
+            : CompareValues(b.Value, a.Value));
+
+        var rankByIndex = new int[_rows.Count];
+        var rank = 1;
+        for (var i = 0; i < values.Count; i++)
+        {
+            if (i > 0 && CompareValues(values[i].Value, values[i - 1].Value) != 0)
+                rank = i + 1;
+
+            rankByIndex[values[i].Index] = rank;
+        }
+
+        for (var i = 0; i < _rows.Count; i++)
+            _rows[i][alias] = rankByIndex[i];
+
+        return this;
+    }
+
+    private static bool TryGetDateTime(object? value, out DateTime dateTime)
+    {
+        if (value is DateTime date)
+        {
+            dateTime = date;
+            return true;
+        }
+
+        if (value is DateTimeOffset offset)
+        {
+            dateTime = offset.DateTime;
+            return true;
+        }
+
+        return DateTime.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out dateTime);
+    }
+
+    /// <summary>
+    /// Creates one-hot/dummy indicator columns for the distinct values in the specified column.
+    /// This is the canonical dataframe-level implementation; endpoints must call this method instead of declaring local helpers.
+    /// </summary>
+    /// <param name="column">The source categorical column.</param>
+    /// <param name="prefix">Optional prefix for generated dummy columns.</param>
+    /// <returns>A new dataframe containing the original columns plus dummy indicator columns.</returns>
+    public ForgeDataFrame GetDummies(string column, string prefix = "")
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(column);
+
+        var values = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 0; i < _rows.Count; i++)
+        {
+            var key = ToKey(Get(_rows[i], column));
+            if (seen.Add(key))
+                values.Add(key);
+        }
+
+        var result = new List<IDictionary<string, object?>>(_rows.Count);
+        for (var i = 0; i < _rows.Count; i++)
+        {
+            var source = _rows[i];
+            var copy = new Dictionary<string, object?>(source, StringComparer.OrdinalIgnoreCase);
+            var current = ToKey(Get(source, column));
+
+            for (var v = 0; v < values.Count; v++)
+            {
+                var dummyColumn = prefix + values[v];
+                copy[dummyColumn] = string.Equals(current, values[v], StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+            }
+
+            result.Add(copy);
+        }
+
+        return new ForgeDataFrame(result);
+    }
+
+    /// <summary>
+    /// Converts the dataframe to a GitHub-flavored Markdown table.
+    /// This is the canonical dataframe-level implementation; endpoints must call this method instead of declaring local helpers.
+    /// </summary>
+    /// <returns>A markdown table string.</returns>
+    public string ToMarkdown()
+    {
+        var columns = Columns;
+        if (columns.Count == 0)
+            return string.Empty;
+
+        var sb = new StringBuilder();
+        sb.Append('|');
+        for (var i = 0; i < columns.Count; i++)
+        {
+            sb.Append(' ')
+              .Append(EscapeMarkdown(columns[i]))
+              .Append(" |");
+        }
+
+        sb.AppendLine();
+        sb.Append('|');
+        for (var i = 0; i < columns.Count; i++)
+            sb.Append(" --- |");
+
+        sb.AppendLine();
+        for (var r = 0; r < _rows.Count; r++)
+        {
+            sb.Append('|');
+            for (var c = 0; c < columns.Count; c++)
+            {
+                sb.Append(' ')
+                  .Append(EscapeMarkdown(Convert.ToString(Get(_rows[r], columns[c]), CultureInfo.InvariantCulture) ?? string.Empty))
+                  .Append(" |");
+            }
+
+            sb.AppendLine();
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Resolves a C# range into offset and length without relying on Range.GetOffsetAndLength,
+    /// so dataframe slicing works across all supported target frameworks.
+    /// </summary>
+    /// <param name="range">The requested range. Null means the full range.</param>
+    /// <param name="collectionLength">The collection length.</param>
+    /// <returns>The resolved offset and length.</returns>
+    internal static (int Offset, int Length) ResolveRange(Range? range, int collectionLength)
+    {
+        if (collectionLength <= 0)
+            return (0, 0);
+
+        if (range is null)
+            return (0, collectionLength);
+
+        var value = range.Value;
+        var start = value.Start.IsFromEnd ? collectionLength - value.Start.Value : value.Start.Value;
+        var end = value.End.IsFromEnd ? collectionLength - value.End.Value : value.End.Value;
+
+        if (start < 0) start = 0;
+        if (start > collectionLength) start = collectionLength;
+        if (end < 0) end = 0;
+        if (end > collectionLength) end = collectionLength;
+        if (end < start) end = start;
+
+        return (start, end - start);
+    }
+
+    private static string EscapeMarkdown(string value)
+        => value.Replace("|", "\\|", StringComparison.Ordinal).Replace("\r", " ", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal);
+
 }
 
 public enum ForgeJoinKind { Inner, Left, Right, Full }

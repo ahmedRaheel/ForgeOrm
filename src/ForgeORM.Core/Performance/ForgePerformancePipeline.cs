@@ -514,7 +514,17 @@ public static class ForgePerformancePipeline
                 command.Parameters.Add(textParameter);
             }
 
-            command.CommandText = RewriteEnumComparison(command.CommandText, parameter.ParameterName, textParameterName, enumMap);
+            var numberParameterName = ForgeParameterBinderCompiler.NormalizeParameterName(logicalParameterName + "__enum_number");
+            if (!HasParameter(command, numberParameterName) && TryGetEnumNumber(parameter.Value, enumType, out var enumNumber))
+            {
+                var numberParameter = command.CreateParameter();
+                numberParameter.ParameterName = numberParameterName;
+                numberParameter.DbType = DbType.Int64;
+                numberParameter.Value = enumNumber;
+                command.Parameters.Add(numberParameter);
+            }
+
+            command.CommandText = RewriteEnumComparison(command.CommandText, parameter.ParameterName, numberParameterName, textParameterName, enumMap);
         }
     }
 
@@ -566,9 +576,43 @@ public static class ForgePerformancePipeline
         }
     }
 
+    private static bool TryGetEnumNumber(object? value, Type enumType, out long enumNumber)
+    {
+        enumNumber = 0;
+        if (value is null || value is DBNull)
+            return false;
+
+        try
+        {
+            object enumValue;
+            if (value is string s)
+            {
+                if (!Enum.TryParse(enumType, s, ignoreCase: true, out var parsed) || parsed is null)
+                    return false;
+                enumValue = parsed;
+            }
+            else if (value.GetType().IsEnum)
+            {
+                enumValue = value;
+            }
+            else
+            {
+                enumValue = Enum.ToObject(enumType, Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture));
+            }
+
+            enumNumber = Convert.ToInt64(enumValue, System.Globalization.CultureInfo.InvariantCulture);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static string RewriteEnumComparison(
         string sql,
         string parameterName,
+        string numberParameterName,
         string textParameterName,
         System.Collections.Generic.IReadOnlyDictionary<string, Type> enumMap)
     {
@@ -586,7 +630,7 @@ public static class ForgePerformancePipeline
                 if (!enumMap.ContainsKey(simpleColumnName))
                     return match.Value;
 
-                return $"(TRY_CONVERT(bigint, {column}) = {parameterName} OR CONVERT(nvarchar(128), {column}) = {textParameterName})";
+                return $"(TRY_CONVERT(bigint, {column}) = {numberParameterName} OR CONVERT(nvarchar(128), {column}) = {textParameterName})";
             },
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     }
@@ -667,31 +711,11 @@ public static class ForgePerformancePipeline
 
     private static void NormalizeRawEnumStringParameters<T>(DbCommand command)
     {
-        if (command.Parameters.Count == 0)
-            return;
-
-        var enumMap = ForgeRawEnumParameterMap<T>.Map;
-        if (enumMap.Count == 0)
-            return;
-
-        for (var i = 0; i < command.Parameters.Count; i++)
-        {
-            if (command.Parameters[i] is not DbParameter parameter)
-                continue;
-
-            if (parameter.Value is not string text || string.IsNullOrWhiteSpace(text))
-                continue;
-
-            var name = parameter.ParameterName.TrimStart('@', ':');
-            if (!enumMap.TryGetValue(name, out var enumType))
-                continue;
-
-            if (!Enum.TryParse(enumType, text, ignoreCase: true, out var parsed) || parsed is null)
-                continue;
-
-            var underlying = Enum.GetUnderlyingType(enumType);
-            parameter.Value = Convert.ChangeType(parsed, underlying, System.Globalization.CultureInfo.InvariantCulture) ?? DBNull.Value;
-        }
+        // Do not mutate the original enum parameter from string ('Paid') to int.
+        // SQL Server will otherwise try to convert an NVARCHAR enum column to INT and fail.
+        // Numeric compatibility is handled by RewriteEnumComparison using a separate
+        // @Param__enum_number parameter.
+        return;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

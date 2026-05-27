@@ -43,6 +43,7 @@ app.MapArtifactEndpoints();
 app.MapBulkTransactionEndpoints();
 app.MapCacheSecurityTelemetryEndpoints();
 app.MapDataFrameImportEndpoints();
+app.MapPandasCompleteAnalyticsEndpoints();
 app.MapGraphPersistenceEndpoints();
 app.MapQueryBuilderEndpoints();
 app.MapRawSqlEndpoints();

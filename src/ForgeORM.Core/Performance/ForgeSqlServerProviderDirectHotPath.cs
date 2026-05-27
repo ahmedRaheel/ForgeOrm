@@ -463,7 +463,8 @@ internal static class ForgeSqlServerProviderDirectHotPath
         if (!parameterName.StartsWith('@')) parameterName = "@" + parameterName;
 
         SqlParameter parameter;
-        if (actualType == typeof(int)) parameter = command.Parameters.Add(parameterName, SqlDbType.Int);
+        if (actualType.IsEnum) parameter = command.Parameters.Add(parameterName, SqlDbType.NVarChar);
+        else if (actualType == typeof(int)) parameter = command.Parameters.Add(parameterName, SqlDbType.Int);
         else if (actualType == typeof(long)) parameter = command.Parameters.Add(parameterName, SqlDbType.BigInt);
         else if (actualType == typeof(short)) parameter = command.Parameters.Add(parameterName, SqlDbType.SmallInt);
         else if (actualType == typeof(byte)) parameter = command.Parameters.Add(parameterName, SqlDbType.TinyInt);
@@ -482,7 +483,7 @@ internal static class ForgeSqlServerProviderDirectHotPath
         if (actualType.IsEnum)
             parameter.Value = value is null
                 ? DBNull.Value
-                : Convert.ChangeType(value, Enum.GetUnderlyingType(actualType), System.Globalization.CultureInfo.InvariantCulture);
+                : value.ToString();
         else if (value is DateOnly d)
             parameter.Value = d.ToDateTime(TimeOnly.MinValue);
         else if (value is TimeOnly t)

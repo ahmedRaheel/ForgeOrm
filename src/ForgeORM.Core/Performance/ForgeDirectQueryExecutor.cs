@@ -514,7 +514,7 @@ internal static class ForgeDirectQueryExecutor
 
         var type = Nullable.GetUnderlyingType(declaredType ?? value.GetType()) ?? (declaredType ?? value.GetType());
         return type.IsEnum
-            ? Convert.ChangeType(value, Enum.GetUnderlyingType(type), CultureInfo.InvariantCulture) ?? DBNull.Value
+            ? value.ToString() ?? string.Empty
             : value;
     }
 
@@ -566,7 +566,7 @@ internal static class ForgeDirectQueryExecutor
 
         type = Nullable.GetUnderlyingType(type) ?? type;
         if (type.IsEnum)
-            type = Enum.GetUnderlyingType(type);
+            return SqlDbType.NVarChar;
 
         if (type == typeof(int)) return SqlDbType.Int;
         if (type == typeof(long)) return SqlDbType.BigInt;
@@ -592,7 +592,7 @@ internal static class ForgeDirectQueryExecutor
 
         type = Nullable.GetUnderlyingType(type) ?? type;
         if (type.IsEnum)
-            type = Enum.GetUnderlyingType(type);
+            return DbType.String;
 
         if (type == typeof(int)) return DbType.Int32;
         if (type == typeof(long)) return DbType.Int64;

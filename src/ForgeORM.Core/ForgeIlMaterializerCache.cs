@@ -651,9 +651,7 @@ internal static class Support
 
         if (value is Enum enumValue)
         {
-            return Convert.ChangeType(
-                enumValue,
-                Enum.GetUnderlyingType(enumValue.GetType()));
+            return enumValue.ToString();
         }
 
         if (value is DateTime dateTime)

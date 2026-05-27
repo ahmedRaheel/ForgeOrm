@@ -12,7 +12,7 @@ namespace ForgeORM.DataFrame;
 /// Pandas-style factory helpers for creating <see cref="ForgeDataFrame"/> and <see cref="ForgeSeries"/> instances.
 /// These helpers intentionally avoid heavy runtime dependencies and keep the API friendly for everyday analytics.
 /// </summary>
-public static class ForgePandas
+internal static partial class ForgePandas
 {
     /// <summary>
     /// Creates a dataframe from dictionaries, objects, records, tuples or nested enumerable values.
@@ -255,7 +255,7 @@ public sealed class ForgeSeries
 /// <summary>
 /// Pandas-style extension methods for <see cref="ForgeDataFrame"/>.
 /// </summary>
-public static class ForgePandasExtensions
+internal static partial class ForgePandasExtensions
 {
     /// <summary>Writes the dataframe as CSV.</summary>
     public static void ToCsv(this ForgeDataFrame frame, string path, char delimiter = ',', bool includeHeader = true)
@@ -351,12 +351,42 @@ public static class ForgePandasExtensions
     /// <summary>Selects rows and columns by integer positions, similar to pandas iloc.</summary>
     public static ForgeDataFrame ILoc(this ForgeDataFrame frame, Range? rowRange = null, Range? columnRange = null)
     {
+        ArgumentNullException.ThrowIfNull(frame);
+
         var rows = frame.Rows.ToList();
         var columns = frame.Columns.ToArray();
-        var rowOffset = rowRange.GetOffsetAndLength(rows.Count);
-        var columnOffset = columnRange.GetOffsetAndLength(columns.Length);
+        var rowOffset = ResolveRange(rowRange.Value, rows.Count);
+        var columnOffset = ResolveRange(columnRange.Value, columns.Length);
         var selectedColumns = columns.Skip(columnOffset.Offset).Take(columnOffset.Length).ToArray();
-        return new ForgeDataFrame(rows.Skip(rowOffset.Offset).Take(rowOffset.Length).Select(row => selectedColumns.ToDictionary(c => c, c => ForgeDataFrame.Get(row, c), StringComparer.OrdinalIgnoreCase)));
+
+        return new ForgeDataFrame(rows
+            .Skip(rowOffset.Offset)
+            .Take(rowOffset.Length)
+            .Select(row => selectedColumns.ToDictionary(
+                c => c,
+                c => ForgeDataFrame.Get(row, c),
+                StringComparer.OrdinalIgnoreCase)));
+    }
+    private static (int Offset, int Length) ResolveRange(Range range, int totalLength)
+    {
+        var start = range.Start.IsFromEnd
+            ? totalLength - range.Start.Value
+            : range.Start.Value;
+
+        var end = range.End.IsFromEnd
+            ? totalLength - range.End.Value
+            : range.End.Value;
+
+        if (start < 0)
+            start = 0;
+
+        if (end > totalLength)
+            end = totalLength;
+
+        if (end < start)
+            end = start;
+
+        return (start, end - start);
     }
 
     /// <summary>Alias for pandas sort_values().</summary>
@@ -469,9 +499,7 @@ public static class ForgePandasExtensions
         return frame;
     }
 
-    private static (int Offset, int Length) GetOffsetAndLength(this Range? range, int length)
-        => (range ?? new Range(Index.Start, Index.End)).GetOffsetAndLength(length);
-
+    
     private static ForgeDataFrame BooleanMask(ForgeDataFrame frame, bool isNull)
     {
         var rows = frame.Rows.Select(row => frame.Columns.ToDictionary(c => c, c => (ForgeDataFrame.Get(row, c) is null or DBNull) == isNull ? (object?)true : false, StringComparer.OrdinalIgnoreCase));
@@ -653,6 +681,42 @@ internal static class ForgeFrameQueryExpression
             "<=" => cmp <= 0,
             _ => false
         };
+    }
+
+    private static (int Offset, int Length) ResolveRange(Range? range, int collectionLength)
+    {
+        if (collectionLength < 0)
+            throw new ArgumentOutOfRangeException(nameof(collectionLength));
+
+        if (range is null)
+            return (0, collectionLength);
+
+        var value = range.Value;
+        var start = ResolveIndex(value.Start, collectionLength);
+        var end = ResolveIndex(value.End, collectionLength);
+
+        if (start < 0 || start > collectionLength)
+            throw new ArgumentOutOfRangeException(nameof(range), $"Range start {start} is outside 0..{collectionLength}.");
+        if (end < 0 || end > collectionLength)
+            throw new ArgumentOutOfRangeException(nameof(range), $"Range end {end} is outside 0..{collectionLength}.");
+        if (end < start)
+            throw new ArgumentOutOfRangeException(nameof(range), $"Range end {end} cannot be before start {start}.");
+
+        return (start, end - start);
+    }
+
+    private static int ResolveIndex(Index index, int collectionLength)
+    {
+        if (index.Equals(Index.Start))
+            return 0;
+        if (index.Equals(Index.End))
+            return collectionLength;
+
+        var value = index.Value;
+        if (index.IsFromEnd)
+            return collectionLength - value;
+
+        return value;
     }
 
     private static int CompareValue(object? left, object? right)

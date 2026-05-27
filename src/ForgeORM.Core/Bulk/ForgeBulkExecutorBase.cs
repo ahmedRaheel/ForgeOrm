@@ -100,7 +100,7 @@ internal abstract class ForgeBulkExecutorBase : IForgeProviderBulkExecutor
         var actual = Nullable.GetUnderlyingType(declaredType) ?? declaredType;
 
         if (actual.IsEnum)
-            return Convert.ToInt32(value);
+            return value.ToString();
 
         if (actual == typeof(DateTime))
         {

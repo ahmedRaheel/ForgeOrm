@@ -18,11 +18,11 @@ public static class PandasCompleteAnalyticsEndpoints
             });
 
             var cleaned = frame.FillNa(0, "Revenue")
-                .StrUpper("Region")
-                .DtMonth("CreatedAt")
-                .RollingMean("Revenue", 2, "RevenueRolling2")
-                .CumSum("Revenue", "RevenueCumSum")
-                .RankValues("Revenue", "RevenueRank", ascending: false);
+                .StrUpper("Region");
+                //.DtMonth("CreatedAt")
+                //.RollingMean("Revenue", 2, "RevenueRolling2")
+                //.CumSum("Revenue", "RevenueCumSum")
+                //.RankValues("Revenue", "RevenueRank", ascending: false);
 
             var grouped = cleaned.GroupBy("Region").Agg(
                 ForgeAggregation.Count(alias: "Rows"),
@@ -38,7 +38,7 @@ public static class PandasCompleteAnalyticsEndpoints
                 valueCounts = frame.ValueCounts("Status").Rows,
                 cleaned = cleaned.Rows,
                 grouped = grouped.Rows,
-                pivot = cleaned.PivotTable("Region", "Status", "Revenue", "sum").Rows,
+                pivot = cleaned.PivotTable("Region", "Status", "Revenue", ForgeAgg.Sum()).Rows,
                 melt = cleaned.Melt(new[] { "Region" }, new[] { "Revenue", "Orders" }).Rows,
                 dummy = cleaned.GetDummies("Status", "Status_").Rows,
                 markdown = grouped.ToMarkdown()

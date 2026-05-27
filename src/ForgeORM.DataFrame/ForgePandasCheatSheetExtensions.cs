@@ -9,13 +9,13 @@ namespace ForgeORM.DataFrame;
 /// selection, filtering, cleaning, reshaping, joins, window calculations,
 /// string/date transformations and summary analytics without leaving ForgeORM.
 /// </summary>
-public static class ForgePandasCheatSheetExtensions
+internal static partial class ForgePandas
 {
     /// <summary>Returns row and column counts, equivalent to pandas df.shape.</summary>
-    public static ForgeFrameShape Shape(this ForgeDataFrame frame) => new(frame.RowCount, frame.Columns.Count);
+    public static ForgeFrameShape CheatSheetShape(this ForgeDataFrame frame) => new(frame.RowCount, frame.Columns.Count);
 
     /// <summary>Returns a DataFrame containing column names and inferred CLR/data kinds.</summary>
-    public static ForgeDataFrame DTypes(this ForgeDataFrame frame)
+    public static ForgeDataFrame CheatSheetDTypes(this ForgeDataFrame frame)
     {
         var rows = new List<IDictionary<string, object?>>();
         foreach (var column in frame.Columns)
@@ -32,7 +32,7 @@ public static class ForgePandasCheatSheetExtensions
     }
 
     /// <summary>Returns a compact pandas df.info()-style summary.</summary>
-    public static ForgeFrameInfo Info(this ForgeDataFrame frame)
+    public static ForgeFrameInfo CheatSheetInfo(this ForgeDataFrame frame)
         => new(frame.RowCount, frame.Columns.Count, frame.Columns.ToArray());
 
     /// <summary>Returns a one-column DataFrame containing the column names.</summary>
@@ -77,7 +77,7 @@ public static class ForgePandasCheatSheetExtensions
     }
 
     /// <summary>Returns a value by row index and column name, equivalent to pandas df.at[index, column].</summary>
-    public static object? At(this ForgeDataFrame frame, int rowIndex, string column)
+    public static object? CheatSheetAt(this ForgeDataFrame frame, int rowIndex, string column)
         => rowIndex < 0 || rowIndex >= frame.RowCount ? null : ForgeDataFrame.Get(frame.Rows[rowIndex], column);
 
     /// <summary>Filters rows using a row predicate, equivalent to pandas boolean masks/query.</summary>
@@ -97,14 +97,14 @@ public static class ForgePandasCheatSheetExtensions
         });
 
     /// <summary>Filters rows where column value is in the provided set, equivalent to pandas isin.</summary>
-    public static ForgeDataFrame IsIn(this ForgeDataFrame frame, string column, params object?[] values)
+    public static ForgeDataFrame CheatSheetIsIn(this ForgeDataFrame frame, string column, params object?[] values)
     {
         var keys = new HashSet<string>(values.Select(ToKey), StringComparer.OrdinalIgnoreCase);
         return frame.Where(r => keys.Contains(ToKey(ForgeDataFrame.Get(r, column))));
     }
 
     /// <summary>Sorts by one or more columns, equivalent to pandas sort_values.</summary>
-    public static ForgeDataFrame SortValues(this ForgeDataFrame frame, params string[] columns)
+    public static ForgeDataFrame CheatSheetSortValues(this ForgeDataFrame frame, params string[] columns)
     {
         if (columns.Length == 0) return new ForgeDataFrame(frame.Rows.Select(CloneRow));
         var rows = frame.Rows.Select(CloneRow).ToList();
@@ -142,7 +142,7 @@ public static class ForgePandasCheatSheetExtensions
         => frame.Assign(column, expression);
 
     /// <summary>Maps one column to another using a converter.</summary>
-    //public static ForgeDataFrame MapColumn(this ForgeDataFrame frame, string sourceColumn, string targetColumn, Func<object?, object?> converter)
+    //public static ForgeDataFrame CheatSheetMapColumn(this ForgeDataFrame frame, string sourceColumn, string targetColumn, Func<object?, object?> converter)
     //    => frame.Assign(targetColumn, r => converter(ForgeDataFrame.Get(r, sourceColumn)));
 
     /// <summary>Replaces values in a column using a dictionary, equivalent to pandas replace/map.</summary>
@@ -169,7 +169,7 @@ public static class ForgePandasCheatSheetExtensions
         => new ForgeDataFrame(frame.Rows.Select(row => frame.Columns.ToDictionary(c => c, c => (object?)!IsNull(ForgeDataFrame.Get(row, c)), StringComparer.OrdinalIgnoreCase)));
 
     /// <summary>Returns unique values for a column, equivalent to pandas unique.</summary>
-    public static IReadOnlyList<object?> Unique(this ForgeDataFrame frame, string column)
+    public static IReadOnlyList<object?> CheatSheetUnique(this ForgeDataFrame frame, string column)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var output = new List<object?>();
@@ -182,11 +182,11 @@ public static class ForgePandasCheatSheetExtensions
     }
 
     /// <summary>Returns distinct count for a column, equivalent to pandas nunique.</summary>
-    public static int NUnique(this ForgeDataFrame frame, string column)
+    public static int CheatSheetNUnique(this ForgeDataFrame frame, string column)
         => frame.NUnique(column);
 
     /// <summary>Returns value counts for a column, equivalent to pandas value_counts.</summary>
-    public static ForgeDataFrame ValueCounts(this ForgeDataFrame frame, string column, string countColumn = "Count")
+    public static ForgeDataFrame CheatSheetValueCounts(this ForgeDataFrame frame, string column, string countColumn = "Count")
     {
         var groups = frame.Rows.GroupBy(r => ToKey(ForgeDataFrame.Get(r, column)), StringComparer.OrdinalIgnoreCase)
             .OrderByDescending(g => g.Count())
@@ -214,7 +214,7 @@ public static class ForgePandasCheatSheetExtensions
         => frame.CastColumn(column, ForgeFrameColumnKind.Decimal, targetColumn);
 
     /// <summary>Converts a column to DateTime values.</summary>
-    public static ForgeDataFrame ToDateTime(this ForgeDataFrame frame, string column, string? targetColumn = null)
+    public static ForgeDataFrame CheatSheetToDateTime(this ForgeDataFrame frame, string column, string? targetColumn = null)
         => frame.CastColumn(column, ForgeFrameColumnKind.DateTime, targetColumn);
 
     /// <summary>Filters rows whose string column contains the given text.</summary>
@@ -284,7 +284,7 @@ public static class ForgePandasCheatSheetExtensions
         => left.Merge(right, on, on, join);
 
     /// <summary>Adds an index column, equivalent to reset_index for analytics output.</summary>
-    public static ForgeDataFrame ResetIndex(this ForgeDataFrame frame, string indexColumn = "Index")
+    public static ForgeDataFrame CheatSheetResetIndex(this ForgeDataFrame frame, string indexColumn = "Index")
     {
         var rows = new List<IDictionary<string, object?>>();
         for (var i = 0; i < frame.RowCount; i++)
@@ -297,11 +297,11 @@ public static class ForgePandasCheatSheetExtensions
     }
 
     /// <summary>Copies a column into an index-style column, equivalent to set_index while keeping row dictionaries simple.</summary>
-    public static ForgeDataFrame SetIndex(this ForgeDataFrame frame, string column, string indexColumn = "Index")
+    public static ForgeDataFrame CheatSheetSetIndex(this ForgeDataFrame frame, string column, string indexColumn = "Index")
         => frame.MapColumn(column, indexColumn, v => v);
 
     /// <summary>Adds shifted values, equivalent to pandas shift.</summary>
-    public static ForgeDataFrame Shift(this ForgeDataFrame frame, string column, int periods = 1, string? targetColumn = null)
+    public static ForgeDataFrame CheatSheetShift(this ForgeDataFrame frame, string column, int periods = 1, string? targetColumn = null)
     {
         targetColumn ??= column + "_Shift";
         var rows = frame.Rows.Select(CloneRow).ToList();
@@ -314,7 +314,7 @@ public static class ForgePandasCheatSheetExtensions
     }
 
     /// <summary>Adds numeric difference from previous row, equivalent to pandas diff.</summary>
-    public static ForgeDataFrame Diff(this ForgeDataFrame frame, string column, int periods = 1, string? targetColumn = null)
+    public static ForgeDataFrame CheatSheetDiff(this ForgeDataFrame frame, string column, int periods = 1, string? targetColumn = null)
     {
         targetColumn ??= column + "_Diff";
         var rows = frame.Rows.Select(CloneRow).ToList();
@@ -329,7 +329,7 @@ public static class ForgePandasCheatSheetExtensions
     }
 
     /// <summary>Adds cumulative sum, equivalent to pandas cumsum.</summary>
-    public static ForgeDataFrame CumSum(this ForgeDataFrame frame, string column, string? targetColumn = null)
+    public static ForgeDataFrame CheatSheetCumSum(this ForgeDataFrame frame, string column, string? targetColumn = null)
     {
         targetColumn ??= column + "_CumSum";
         decimal running = 0;
@@ -349,23 +349,23 @@ public static class ForgePandasCheatSheetExtensions
     }
 
     /// <summary>Adds rolling sum over a numeric column.</summary>
-    public static ForgeDataFrame RollingSum(this ForgeDataFrame frame, string column, int window, string? targetColumn = null)
+    public static ForgeDataFrame CheatSheetRollingSum(this ForgeDataFrame frame, string column, int window, string? targetColumn = null)
         => frame.Rolling(column, window, targetColumn ?? column + "_RollingSum", ForgeAgg.Sum());
 
     /// <summary>Adds rolling average over a numeric column.</summary>
-    public static ForgeDataFrame RollingMean(this ForgeDataFrame frame, string column, int window, string? targetColumn = null)
+    public static ForgeDataFrame CheatSheetRollingMean(this ForgeDataFrame frame, string column, int window, string? targetColumn = null)
         => frame.Rolling(column, window, targetColumn ?? column + "_RollingMean", ForgeAgg.Avg());
 
     /// <summary>Adds expanding sum over a numeric column.</summary>
-    public static ForgeDataFrame ExpandingSum(this ForgeDataFrame frame, string column, string? targetColumn = null)
+    public static ForgeDataFrame CheatSheetExpandingSum(this ForgeDataFrame frame, string column, string? targetColumn = null)
         => frame.Rolling(column, Math.Max(1, frame.RowCount), targetColumn ?? column + "_ExpandingSum", ForgeAgg.Sum());
 
     /// <summary>Adds expanding average over a numeric column.</summary>
-    public static ForgeDataFrame ExpandingMean(this ForgeDataFrame frame, string column, string? targetColumn = null)
+    public static ForgeDataFrame CheatSheetExpandingMean(this ForgeDataFrame frame, string column, string? targetColumn = null)
         => frame.Rolling(column, Math.Max(1, frame.RowCount), targetColumn ?? column + "_ExpandingMean", ForgeAgg.Avg());
 
     /// <summary>Clips numeric values to lower/upper bounds, equivalent to pandas clip.</summary>
-    public static ForgeDataFrame Clip(this ForgeDataFrame frame, string column, decimal lower, decimal upper, string? targetColumn = null)
+    public static ForgeDataFrame CheatSheetClip(this ForgeDataFrame frame, string column, decimal lower, decimal upper, string? targetColumn = null)
         => frame.MapColumn(column, targetColumn ?? column, v =>
         {
             var value = ForgeDataFrame.ToDecimal(v);

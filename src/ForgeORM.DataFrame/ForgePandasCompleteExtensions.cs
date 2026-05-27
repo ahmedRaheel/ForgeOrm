@@ -347,7 +347,15 @@ internal static partial class ForgePandasExtensions
     public static decimal Sum(this ForgeDataFrame frame, string column) => Values(frame, column).Sum();
     public static decimal? Mean(this ForgeDataFrame frame, string column) { var v = Values(frame, column).ToArray(); return v.Length == 0 ? null : v.Average(); }
     public static decimal? Median(this ForgeDataFrame frame, string column) => Quantile(frame, column, 0.5m);
-    public static object? Mode(this ForgeDataFrame frame, string column) => (frame.ValueCounts(column).Rows.FirstOrDefault() is { } modeRow && modeRow.TryGetValue("Value", out var mv) ? mv : null);
+    public static object? Mode(this ForgeDataFrame frame, string column)
+    {
+        var counts = ForgePandasExtensions.ValueCounts(frame, column);
+        if (counts.Rows.Count == 0)
+            return null;
+
+        var row = counts.Rows[0];
+        return row.TryGetValue("Value", out var value) ? value : null;
+    }
     public static object? MinValue(this ForgeDataFrame frame, string column) => frame.Rows.Select(r => ForgeDataFrame.Get(r, column)).Where(v => v is not null).OrderBy(v => v).FirstOrDefault();
     public static object? MaxValue(this ForgeDataFrame frame, string column) => frame.Rows.Select(r => ForgeDataFrame.Get(r, column)).Where(v => v is not null).OrderByDescending(v => v).FirstOrDefault();
     public static int Count(this ForgeDataFrame frame, string? column = null) => column is null ? frame.RowCount : frame.Rows.Count(r => ForgeDataFrame.Get(r, column) is not null and not DBNull);
@@ -455,10 +463,9 @@ internal static partial class ForgePandasExtensions
     public static ForgeDataFrame CatAddCategories(this ForgeDataFrame frame, string column, params object?[] values) => frame; // categories are implicit in the column values
     public static ForgeDataFrame CatRemoveCategories(this ForgeDataFrame frame, string column, params object?[] values) => frame.Where(r => !values.Any(v => Same(v, ForgeDataFrame.Get(r, column))));
 
-    public static ForgeDataFrame GetDummies(this ForgeDataFrame frame, string column, string prefix = "")
+    public static ForgeDataFrame GetDummiesFrame(this ForgeDataFrame frame, string column, string prefix = "")
     {
-        var categories = frame.Unique(column).Select(v => Convert.ToString(v, CultureInfo.InvariantCulture) ?? "Null").ToArray();
-        return new ForgeDataFrame(frame.Rows.Select(r => { var c = Copy(r); var value = Convert.ToString(ForgeDataFrame.Get(r, column), CultureInfo.InvariantCulture) ?? "Null"; foreach (var cat in categories) c[$"{prefix}{cat}"] = string.Equals(value, cat, StringComparison.OrdinalIgnoreCase) ? 1 : 0; return c; }));
+        return frame.GetDummies(column, prefix);
     }
     public static ForgeDataFrame Factorize(this ForgeDataFrame frame, string column, string alias = "Code") => frame.ToCategory(column, alias);
     public static ForgeDataFrame Eval(this ForgeDataFrame frame, string alias, Func<IReadOnlyDictionary<string, object?>, object?> expression) => frame.Assign(alias, expression);
@@ -513,9 +520,9 @@ internal static partial class ForgePandasExtensions
     public static void ToJson(this ForgeDataFrame frame, string path, bool indented = false) => File.WriteAllText(path, frame.ToJsonText(indented), Encoding.UTF8);
     public static string ToHtml(this ForgeDataFrame frame) => "<table><thead><tr>" + string.Concat(frame.Columns.Select(c => $"<th>{Esc(c)}</th>")) + "</tr></thead><tbody>" + string.Concat(frame.Rows.Select(r => "<tr>" + string.Concat(frame.Columns.Select(c => $"<td>{Esc(ForgeDataFrame.Get(r, c))}</td>")) + "</tr>")) + "</tbody></table>";
     public static string ToXml(this ForgeDataFrame frame, string root = "rows", string rowName = "row") => new XDocument(new XElement(root, frame.Rows.Select(r => new XElement(rowName, frame.Columns.Select(c => new XElement(c, ForgeDataFrame.Get(r, c))))))).ToString();
-    public static string ToMarkdown(this ForgeDataFrame frame)
+    public static string ToMarkdownText(this ForgeDataFrame frame)
     {
-        var cols = frame.Columns; var sb = new StringBuilder(); sb.AppendLine("| " + string.Join(" | ", cols) + " |"); sb.AppendLine("| " + string.Join(" | ", cols.Select(_ => "---")) + " |"); foreach (var r in frame.Rows) sb.AppendLine("| " + string.Join(" | ", cols.Select(c => Convert.ToString(ForgeDataFrame.Get(r, c), CultureInfo.InvariantCulture))) + " |"); return sb.ToString();
+        return frame.ToMarkdown();
     }
     public static IReadOnlyList<IDictionary<string, object?>> ToDict(this ForgeDataFrame frame) => frame.ToDictionaries();
     public static object?[,] ToNumpy(this ForgeDataFrame frame) { var arr = new object?[frame.RowCount, frame.Columns.Count]; for (var i = 0; i < frame.RowCount; i++) for (var j = 0; j < frame.Columns.Count; j++) arr[i, j] = ForgeDataFrame.Get(frame.Rows[i], frame.Columns[j]); return arr; }

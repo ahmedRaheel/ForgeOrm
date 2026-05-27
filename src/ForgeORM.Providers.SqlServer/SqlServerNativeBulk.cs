@@ -1,11 +1,7 @@
-using ForgeORM.Core;
-using System.Collections;
-using System.Collections.Concurrent;
+using Microsoft.Data.SqlClient;
 using System.Data;
 using System.Data.Common;
 using System.Reflection;
-using Microsoft.Data.SqlClient;
-using Microsoft.Data.SqlClient.Server;
 
 namespace ForgeORM.Providers.SqlServer;
 
@@ -17,7 +13,7 @@ internal static class SqlServerNativeBulk
         IReadOnlyCollection<T> rows,
         CancellationToken cancellationToken = default)
     {
-        if (rows.Count == 0)
+        if (rows is null || rows.Count == 0)
             return;
 
         if (connection is not SqlConnection sqlConnection)
@@ -29,204 +25,282 @@ internal static class SqlServerNativeBulk
         if (sqlConnection.State != ConnectionState.Open)
             await sqlConnection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        var plan = SqlServerBulkPlanCache<T>.GetOrCreate(tableName, keyColumn: "Id", includeKey: false);
+        var list = rows as IReadOnlyList<T> ?? rows.ToArray();
+        var properties = GetBulkProperties<T>(includeIdentity: false);
+        if (properties.Length == 0)
+            return;
 
-        await EnsureTableTypeAsync(sqlConnection, plan, cancellationToken).ConfigureAwait(false);
+        var table = CreateDataTable(properties, list);
 
-        await using var command = sqlConnection.CreateCommand();
-        command.CommandText = plan.InsertSql;
-        command.CommandType = CommandType.Text;
+        using var bulk = new SqlBulkCopy(sqlConnection, SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.CheckConstraints, externalTransaction: null)
+        {
+            DestinationTableName = tableName,
+            BatchSize = Math.Min(Math.Max(list.Count, 1), 5000),
+            BulkCopyTimeout = 0,
+            EnableStreaming = true
+        };
 
-        var parameter = command.Parameters.Add("@Rows", SqlDbType.Structured);
-        parameter.TypeName = plan.TvpTypeName;
-        parameter.Value = new SqlServerDataRecordEnumerable<T>(rows, plan);
+        for (var i = 0; i < properties.Length; i++)
+            bulk.ColumnMappings.Add(properties[i].Name, properties[i].Name);
 
-        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        await bulk.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
     }
 
-    public static async ValueTask BulkUpdateAsync<T>(
+    public static async ValueTask<int> BulkUpdateAsync<T>(
         DbConnection connection,
         string tableName,
-        IReadOnlyCollection<T> rows,
+        IReadOnlyList<T> rows,
         string keyColumn,
         CancellationToken cancellationToken = default)
     {
         if (rows.Count == 0)
-            return;
+            return 0;
 
         if (connection is not SqlConnection sqlConnection)
         {
             await BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken).ConfigureAwait(false);
-            return;
+            return rows.Count;
         }
 
         if (sqlConnection.State != ConnectionState.Open)
             await sqlConnection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        var plan = SqlServerBulkPlanCache<T>.GetOrCreate(tableName, keyColumn, includeKey: true);
+        var properties = GetBulkProperties<T>(includeIdentity: true);
+        var key = FindProperty(properties, keyColumn);
+        if (key is null)
+            throw new InvalidOperationException($"Bulk update requires key column '{keyColumn}' on '{typeof(T).Name}'.");
 
-        await EnsureTableTypeAsync(sqlConnection, plan, cancellationToken).ConfigureAwait(false);
+        var updateProperties = properties
+            .Where(p => !string.Equals(p.Name, key.Name, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
 
-        await using var command = sqlConnection.CreateCommand();
-        command.CommandText = plan.MergeUpdateSql;
-        command.CommandType = CommandType.Text;
+        if (updateProperties.Length == 0)
+            return 0;
 
-        var parameter = command.Parameters.Add("@Rows", SqlDbType.Structured);
-        parameter.TypeName = plan.TvpTypeName;
-        parameter.Value = new SqlServerDataRecordEnumerable<T>(rows, plan);
+        var tempTable = "#ForgeBulkUpdate_" + Guid.NewGuid().ToString("N");
+        var table = CreateDataTable(properties, rows);
 
-        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        await using var create = sqlConnection.CreateCommand();
+        create.CommandText = BuildTempTableSql(tempTable, properties);
+        await create.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+
+        using (var bulk = new SqlBulkCopy(sqlConnection, SqlBulkCopyOptions.TableLock, externalTransaction: null)
+        {
+            DestinationTableName = tempTable,
+            BatchSize = Math.Min(Math.Max(rows.Count, 1), 5000),
+            BulkCopyTimeout = 0,
+            EnableStreaming = true
+        })
+        {
+            for (var i = 0; i < properties.Length; i++)
+                bulk.ColumnMappings.Add(properties[i].Name, properties[i].Name);
+
+            await bulk.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
+        }
+
+        await using var merge = sqlConnection.CreateCommand();
+        merge.CommandText = BuildMergeUpdateSql(tableName, tempTable, key.Name, updateProperties);
+        return await merge.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public static async ValueTask BulkMergeAsync<T>(
+    public static async ValueTask<int> BulkDeleteAsync<TKey>(
         DbConnection connection,
         string tableName,
-        IReadOnlyCollection<T> rows,
+        IReadOnlyList<TKey> keys,
         string keyColumn,
         CancellationToken cancellationToken = default)
     {
-        await BulkUpdateAsync(connection, tableName, rows, keyColumn, cancellationToken).ConfigureAwait(false);
+        if (keys.Count == 0)
+            return 0;
+
+        if (connection is not SqlConnection sqlConnection)
+        {
+            await BulkFallback.DeleteAsync(connection, tableName, keys, keyColumn, cancellationToken).ConfigureAwait(false);
+            return keys.Count;
+        }
+
+        if (sqlConnection.State != ConnectionState.Open)
+            await sqlConnection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        var tempTable = "#ForgeBulkDelete_" + Guid.NewGuid().ToString("N");
+        var keyType = Nullable.GetUnderlyingType(typeof(TKey)) ?? typeof(TKey);
+        if (keyType.IsEnum)
+            keyType = typeof(string);
+
+        var table = new DataTable();
+        table.Columns.Add(keyColumn, keyType);
+
+        for (var i = 0; i < keys.Count; i++)
+        {
+            var row = table.NewRow();
+            row[0] = NormalizeValue(keys[i], typeof(TKey)) ?? DBNull.Value;
+            table.Rows.Add(row);
+        }
+
+        await using var create = sqlConnection.CreateCommand();
+        create.CommandText = $"CREATE TABLE {tempTable} ({QuoteIdentifier(keyColumn)} {ToSqlType(keyType)} NULL);";
+        await create.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+
+        using (var bulk = new SqlBulkCopy(sqlConnection, SqlBulkCopyOptions.TableLock, externalTransaction: null)
+        {
+            DestinationTableName = tempTable,
+            BatchSize = Math.Min(Math.Max(keys.Count, 1), 5000),
+            BulkCopyTimeout = 0,
+            EnableStreaming = true
+        })
+        {
+            bulk.ColumnMappings.Add(keyColumn, keyColumn);
+            await bulk.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
+        }
+
+        await using var delete = sqlConnection.CreateCommand();
+        delete.CommandText =
+            $"DELETE Target FROM {QuoteTable(tableName)} AS Target INNER JOIN {tempTable} AS Source ON Target.{QuoteIdentifier(keyColumn)} = Source.{QuoteIdentifier(keyColumn)};";
+        return await delete.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static async ValueTask EnsureTableTypeAsync<T>(
-        SqlConnection connection,
-        SqlServerBulkPlan<T> plan,
-        CancellationToken cancellationToken)
+    private static PropertyInfo[] GetBulkProperties<T>(bool includeIdentity)
     {
-        if (!SqlServerBulkTypeCache.TryMarkEnsured(plan.TvpTypeName))
-            return;
-
-        await using var command = connection.CreateCommand();
-        command.CommandText = plan.EnsureTypeSql;
-        command.CommandType = CommandType.Text;
-        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-    }
-}
-
-internal static class SqlServerBulkTypeCache
-{
-    private static readonly ConcurrentDictionary<string, byte> Ensured = new(StringComparer.OrdinalIgnoreCase);
-
-    public static bool TryMarkEnsured(string typeName)
-        => Ensured.TryAdd(typeName, 0);
-}
-
-internal static class SqlServerBulkPlanCache<T>
-{
-    private static readonly ConcurrentDictionary<string, SqlServerBulkPlan<T>> Cache = new(StringComparer.OrdinalIgnoreCase);
-
-    public static SqlServerBulkPlan<T> GetOrCreate(string tableName, string keyColumn, bool includeKey)
-    {
-        var key = tableName + "|" + keyColumn + "|" + includeKey;
-        return Cache.GetOrAdd(key, _ => SqlServerBulkPlan<T>.Create(tableName, keyColumn, includeKey));
-    }
-}
-
-internal sealed class SqlServerBulkPlan<T>
-{
-    private SqlServerBulkPlan(
-        string tableName,
-        string keyColumn,
-        string tvpTypeName,
-        PropertyInfo[] properties,
-        SqlMetaData[] metadata,
-        string ensureTypeSql,
-        string insertSql,
-        string mergeUpdateSql)
-    {
-        TableName = tableName;
-        KeyColumn = keyColumn;
-        TvpTypeName = tvpTypeName;
-        Properties = properties;
-        MetaData = metadata;
-        EnsureTypeSql = ensureTypeSql;
-        InsertSql = insertSql;
-        MergeUpdateSql = mergeUpdateSql;
-    }
-
-    public string TableName { get; }
-
-    public string KeyColumn { get; }
-
-    public string TvpTypeName { get; }
-
-    public PropertyInfo[] Properties { get; }
-
-    public SqlMetaData[] MetaData { get; }
-
-    public string EnsureTypeSql { get; }
-
-    public string InsertSql { get; }
-
-    public string MergeUpdateSql { get; }
-
-    public static SqlServerBulkPlan<T> Create(string tableName, string keyColumn, bool includeKey)
-    {
-        var properties = GetBulkProperties(includeKey, keyColumn);
-        var metadata = new SqlMetaData[properties.Length];
-
-        for (var i = 0; i < properties.Length; i++)
-            metadata[i] = CreateMetaData(properties[i]);
-
-        var shortName = UnqualifiedName(tableName).Trim('[', ']');
-        var tvpTypeName = $"dbo.{shortName}TableType";
-
-        var escapedTable = EscapeTableName(tableName);
-        var escapedColumns = properties.Select(p => EscapeIdentifier(p.Name)).ToArray();
-        var columnList = string.Join(", ", escapedColumns);
-
-        var insertSql = $"INSERT INTO {escapedTable} ({columnList}) SELECT {columnList} FROM @Rows;";
-
-        var updateColumns = properties
-            .Where(p => !p.Name.Equals(keyColumn, StringComparison.OrdinalIgnoreCase))
-            .Select(p => $"Target.{EscapeIdentifier(p.Name)} = Source.{EscapeIdentifier(p.Name)}")
-            .ToArray();
-
-        var mergeSql = $"""
-MERGE {escapedTable} AS Target
-USING @Rows AS Source
-ON Target.{EscapeIdentifier(keyColumn)} = Source.{EscapeIdentifier(keyColumn)}
-WHEN MATCHED THEN
-    UPDATE SET {string.Join(", ", updateColumns)};
-""";
-
-        var definitions = new string[properties.Length];
-        for (var i = 0; i < properties.Length; i++)
-            definitions[i] = $"{EscapeIdentifier(properties[i].Name)} {GetSqlTypeDefinition(properties[i].PropertyType)} NULL";
-
-        var ensureSql = $"""
-IF TYPE_ID(N'{tvpTypeName}') IS NULL
-    EXEC(N'CREATE TYPE {tvpTypeName} AS TABLE ({string.Join(", ", definitions).Replace("'", "''")})');
-""";
-
-        return new SqlServerBulkPlan<T>(
-            tableName,
-            keyColumn,
-            tvpTypeName,
-            properties,
-            metadata,
-            ensureSql,
-            insertSql,
-            mergeSql);
-    }
-
-    private static PropertyInfo[] GetBulkProperties(bool includeKey, string keyColumn)
-    {
-        return typeof(T)
+        var props = typeof(T)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanRead && IsScalar(p.PropertyType))
-            .Where(p => includeKey || !IsKey(p, keyColumn))
-            .ToArray();
+            .Where(p => p.CanRead && IsScalar(p.PropertyType));
+
+        if (!includeIdentity)
+            props = props.Where(p => !IsIdentityConvention(p));
+
+        return props.ToArray();
     }
 
-    private static bool IsKey(PropertyInfo property, string keyColumn)
+    private static PropertyInfo? FindProperty(PropertyInfo[] properties, string name)
     {
-        var entityName = property.DeclaringType?.Name + "Id";
+        for (var i = 0; i < properties.Length; i++)
+        {
+            if (string.Equals(properties[i].Name, name, StringComparison.OrdinalIgnoreCase))
+                return properties[i];
+        }
 
-        return property.Name.Equals(keyColumn, StringComparison.OrdinalIgnoreCase)
-               || property.Name.Equals("Id", StringComparison.OrdinalIgnoreCase)
-               || property.Name.Equals(entityName, StringComparison.OrdinalIgnoreCase)
-               || property.GetCustomAttributes().Any(a => a.GetType().Name is "ForgeKeyAttribute" or "KeyAttribute");
+        return null;
+    }
+
+    private static DataTable CreateDataTable<T>(PropertyInfo[] properties, IReadOnlyList<T> rows)
+    {
+        var table = new DataTable();
+
+        for (var i = 0; i < properties.Length; i++)
+        {
+            var type = Nullable.GetUnderlyingType(properties[i].PropertyType) ?? properties[i].PropertyType;
+            if (type.IsEnum)
+                type = typeof(string);
+            if (type == typeof(DateOnly) || type == typeof(TimeOnly))
+                type = typeof(string);
+
+            table.Columns.Add(properties[i].Name, type);
+        }
+
+        for (var r = 0; r < rows.Count; r++)
+        {
+            var dataRow = table.NewRow();
+
+            for (var c = 0; c < properties.Length; c++)
+            {
+                dataRow[c] = NormalizeValue(ForgeProviderAccessors.Get(properties[c], rows[r]!), properties[c].PropertyType) ?? DBNull.Value;
+            }
+
+            table.Rows.Add(dataRow);
+        }
+
+        return table;
+    }
+
+    private static string BuildTempTableSql(string tempTable, PropertyInfo[] properties)
+    {
+        var sql = new System.Text.StringBuilder(256 + properties.Length * 64);
+        sql.Append("CREATE TABLE ").Append(tempTable).Append(" (");
+
+        for (var i = 0; i < properties.Length; i++)
+        {
+            if (i > 0)
+                sql.Append(", ");
+
+            var type = Nullable.GetUnderlyingType(properties[i].PropertyType) ?? properties[i].PropertyType;
+            sql.Append(QuoteIdentifier(properties[i].Name)).Append(' ').Append(ToSqlType(type)).Append(" NULL");
+        }
+
+        sql.Append(");");
+        return sql.ToString();
+    }
+
+    private static string BuildMergeUpdateSql(string tableName, string sourceTable, string keyColumn, PropertyInfo[] updateProperties)
+    {
+        var sql = new System.Text.StringBuilder(512 + updateProperties.Length * 64);
+        var key = QuoteIdentifier(keyColumn);
+
+        sql.Append("MERGE ").Append(QuoteTable(tableName)).Append(" AS Target ")
+           .Append("USING ").Append(sourceTable).Append(" AS Source ")
+           .Append("ON Target.").Append(key).Append(" = Source.").Append(key).Append(' ')
+           .Append("WHEN MATCHED THEN UPDATE SET ");
+
+        for (var i = 0; i < updateProperties.Length; i++)
+        {
+            if (i > 0)
+                sql.Append(", ");
+
+            var col = QuoteIdentifier(updateProperties[i].Name);
+            sql.Append("Target.").Append(col).Append(" = Source.").Append(col);
+        }
+
+        sql.Append(';');
+        return sql.ToString();
+    }
+
+    private static string ToSqlType(Type type)
+    {
+        var actual = Nullable.GetUnderlyingType(type) ?? type;
+
+        if (actual.IsEnum) return "NVARCHAR(128)";
+        if (actual == typeof(string)) return "NVARCHAR(MAX)";
+        if (actual == typeof(int)) return "INT";
+        if (actual == typeof(long)) return "BIGINT";
+        if (actual == typeof(short)) return "SMALLINT";
+        if (actual == typeof(byte)) return "TINYINT";
+        if (actual == typeof(bool)) return "BIT";
+        if (actual == typeof(decimal)) return "DECIMAL(38, 10)";
+        if (actual == typeof(float)) return "REAL";
+        if (actual == typeof(double)) return "FLOAT";
+        if (actual == typeof(DateTime)) return "DATETIME2";
+        if (actual == typeof(DateTimeOffset)) return "DATETIMEOFFSET";
+        if (actual == typeof(Guid)) return "UNIQUEIDENTIFIER";
+        if (actual == typeof(byte[])) return "VARBINARY(MAX)";
+        if (actual == typeof(TimeSpan)) return "TIME";
+        if (actual == typeof(DateOnly)) return "NVARCHAR(32)";
+        if (actual == typeof(TimeOnly)) return "NVARCHAR(32)";
+
+        return "NVARCHAR(MAX)";
+    }
+
+    private static object? NormalizeValue(object? value, Type declaredType)
+    {
+        if (value is null)
+            return null;
+
+        var actual = Nullable.GetUnderlyingType(declaredType) ?? declaredType;
+
+        if (actual.IsEnum)
+            return value.ToString();
+
+        if (actual == typeof(DateOnly) && value is DateOnly dateOnly)
+            return dateOnly.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
+        if (actual == typeof(TimeOnly) && value is TimeOnly timeOnly)
+            return timeOnly.ToString("HH:mm:ss.fffffff", System.Globalization.CultureInfo.InvariantCulture);
+
+        if (actual == typeof(DateTime) && value is DateTime dt)
+            return dt == default || dt < new DateTime(1753, 1, 1) ? DateTime.UtcNow : dt;
+
+        if (actual == typeof(DateTimeOffset) && value is DateTimeOffset dto)
+            return dto == default ? DateTimeOffset.UtcNow : dto;
+
+        return value;
     }
 
     private static bool IsScalar(Type type)
@@ -234,245 +308,38 @@ IF TYPE_ID(N'{tvpTypeName}') IS NULL
         var actual = Nullable.GetUnderlyingType(type) ?? type;
 
         return actual.IsPrimitive
-               || actual.IsEnum
-               || actual == typeof(string)
-               || actual == typeof(Guid)
-               || actual == typeof(decimal)
-               || actual == typeof(DateTime)
-               || actual == typeof(DateTimeOffset)
-               || actual == typeof(DateOnly)
-               || actual == typeof(TimeOnly)
-               || actual == typeof(TimeSpan)
-               || actual == typeof(byte[]);
+            || actual.IsEnum
+            || actual == typeof(string)
+            || actual == typeof(Guid)
+            || actual == typeof(decimal)
+            || actual == typeof(DateTime)
+            || actual == typeof(DateTimeOffset)
+            || actual == typeof(DateOnly)
+            || actual == typeof(TimeOnly)
+            || actual == typeof(TimeSpan)
+            || actual == typeof(byte[]);
     }
 
-    private static SqlMetaData CreateMetaData(PropertyInfo property)
+    private static bool IsIdentityConvention(PropertyInfo property)
     {
-        var actual = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-
-        if (actual.IsEnum)
-            return new SqlMetaData(property.Name, SqlDbType.NVarChar, 128);
-
-        if (actual == typeof(int))
-            return new SqlMetaData(property.Name, SqlDbType.Int);
-
-        if (actual == typeof(long))
-            return new SqlMetaData(property.Name, SqlDbType.BigInt);
-
-        if (actual == typeof(short))
-            return new SqlMetaData(property.Name, SqlDbType.SmallInt);
-
-        if (actual == typeof(byte))
-            return new SqlMetaData(property.Name, SqlDbType.TinyInt);
-
-        if (actual == typeof(bool))
-            return new SqlMetaData(property.Name, SqlDbType.Bit);
-
-        if (actual == typeof(decimal))
-            return new SqlMetaData(property.Name, SqlDbType.Decimal, (byte)18, (byte)4);
-
-        if (actual == typeof(double))
-            return new SqlMetaData(property.Name, SqlDbType.Float);
-
-        if (actual == typeof(float))
-            return new SqlMetaData(property.Name, SqlDbType.Real);
-
-        if (actual == typeof(DateTime))
-            return new SqlMetaData(property.Name, SqlDbType.DateTime2);
-
-        if (actual == typeof(DateTimeOffset))
-            return new SqlMetaData(property.Name, SqlDbType.DateTimeOffset);
-
-        if (actual == typeof(Guid))
-            return new SqlMetaData(property.Name, SqlDbType.UniqueIdentifier);
-
-        if (actual == typeof(byte[]))
-            return new SqlMetaData(property.Name, SqlDbType.VarBinary, -1);
-
-        return new SqlMetaData(property.Name, SqlDbType.NVarChar, -1);
+        var entityName = property.DeclaringType?.Name + "Id";
+        return property.Name.Equals("Id", StringComparison.OrdinalIgnoreCase)
+            || property.Name.Equals(entityName, StringComparison.OrdinalIgnoreCase)
+            || property.GetCustomAttributes(false).Any(a => a.GetType().Name is "ForgeKeyAttribute" or "KeyAttribute" or "ForgeIdentityAttribute" or "DatabaseGeneratedAttribute");
     }
 
-    private static string GetSqlTypeDefinition(Type declaredType)
+    private static string QuoteTable(string tableName)
     {
-        var actual = Nullable.GetUnderlyingType(declaredType) ?? declaredType;
+        var parts = tableName.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 1)
+            return QuoteIdentifier(parts[0]);
 
-        if (actual.IsEnum)
-            return "NVARCHAR(128)";
-
-        if (actual == typeof(int))
-            return "INT";
-
-        if (actual == typeof(long))
-            return "BIGINT";
-
-        if (actual == typeof(short))
-            return "SMALLINT";
-
-        if (actual == typeof(byte))
-            return "TINYINT";
-
-        if (actual == typeof(bool))
-            return "BIT";
-
-        if (actual == typeof(decimal))
-            return "DECIMAL(18,4)";
-
-        if (actual == typeof(double))
-            return "FLOAT";
-
-        if (actual == typeof(float))
-            return "REAL";
-
-        if (actual == typeof(DateTime))
-            return "DATETIME2";
-
-        if (actual == typeof(DateTimeOffset))
-            return "DATETIMEOFFSET";
-
-        if (actual == typeof(Guid))
-            return "UNIQUEIDENTIFIER";
-
-        if (actual == typeof(byte[]))
-            return "VARBINARY(MAX)";
-
-        return "NVARCHAR(MAX)";
+        return string.Join(".", parts.Select(QuoteIdentifier));
     }
 
-    private static string EscapeTableName(string tableName)
-        => string.Join('.', tableName.Split('.', StringSplitOptions.RemoveEmptyEntries).Select(EscapeIdentifier));
-
-    private static string EscapeIdentifier(string name)
-        => "[" + name.Trim('[', ']').Replace("]", "]]", StringComparison.Ordinal) + "]";
-
-    private static string UnqualifiedName(string tableName)
+    private static string QuoteIdentifier(string name)
     {
-        var parts = tableName.Split('.', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length == 0 ? tableName : parts[^1];
-    }
-}
-
-internal sealed class SqlServerDataRecordEnumerable<T> : IEnumerable<SqlDataRecord>
-{
-    private readonly IReadOnlyCollection<T> _items;
-    private readonly SqlServerBulkPlan<T> _plan;
-
-    public SqlServerDataRecordEnumerable(IReadOnlyCollection<T> items, SqlServerBulkPlan<T> plan)
-    {
-        _items = items;
-        _plan = plan;
-    }
-
-    public IEnumerator<SqlDataRecord> GetEnumerator()
-    {
-        foreach (var item in _items)
-        {
-            var record = new SqlDataRecord(_plan.MetaData);
-            SetValues(record, _plan.Properties, item!);
-            yield return record;
-        }
-    }
-
-    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-
-    private static void SetValues(SqlDataRecord record, PropertyInfo[] properties, object item)
-    {
-        for (var i = 0; i < properties.Length; i++)
-        {
-            var property = properties[i];
-            var value = ForgeProviderAccessors.Get(property, item);
-            SetTypedValue(record, i, value, property.PropertyType);
-        }
-    }
-
-    private static void SetTypedValue(SqlDataRecord record, int ordinal, object? value, Type declaredType)
-    {
-        if (value is null)
-        {
-            record.SetDBNull(ordinal);
-            return;
-        }
-
-        var actual = Nullable.GetUnderlyingType(declaredType) ?? declaredType;
-
-        if (actual.IsEnum)
-        {
-            record.SetString(ordinal, value.ToString() ?? string.Empty);
-            return;
-        }
-
-        if (actual == typeof(int))
-        {
-            record.SetInt32(ordinal, Convert.ToInt32(value));
-            return;
-        }
-
-        if (actual == typeof(long))
-        {
-            record.SetInt64(ordinal, Convert.ToInt64(value));
-            return;
-        }
-
-        if (actual == typeof(short))
-        {
-            record.SetInt16(ordinal, Convert.ToInt16(value));
-            return;
-        }
-
-        if (actual == typeof(byte))
-        {
-            record.SetByte(ordinal, Convert.ToByte(value));
-            return;
-        }
-
-        if (actual == typeof(bool))
-        {
-            record.SetBoolean(ordinal, Convert.ToBoolean(value));
-            return;
-        }
-
-        if (actual == typeof(decimal))
-        {
-            record.SetDecimal(ordinal, Convert.ToDecimal(value));
-            return;
-        }
-
-        if (actual == typeof(double))
-        {
-            record.SetDouble(ordinal, Convert.ToDouble(value));
-            return;
-        }
-
-        if (actual == typeof(float))
-        {
-            record.SetFloat(ordinal, Convert.ToSingle(value));
-            return;
-        }
-
-        if (actual == typeof(DateTime))
-        {
-            var dateTime = (DateTime)value;
-            record.SetDateTime(ordinal, dateTime == default || dateTime < new DateTime(1753, 1, 1) ? DateTime.UtcNow : dateTime);
-            return;
-        }
-
-        if (actual == typeof(DateTimeOffset))
-        {
-            record.SetDateTimeOffset(ordinal, (DateTimeOffset)value);
-            return;
-        }
-
-        if (actual == typeof(Guid))
-        {
-            record.SetGuid(ordinal, (Guid)value);
-            return;
-        }
-
-        if (actual == typeof(byte[]))
-        {
-            record.SetBytes(ordinal, 0, (byte[])value, 0, ((byte[])value).Length);
-            return;
-        }
-
-        record.SetString(ordinal, Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty);
+        var clean = name.Trim('[', ']');
+        return "[" + clean.Replace("]", "]]", StringComparison.Ordinal) + "]";
     }
 }

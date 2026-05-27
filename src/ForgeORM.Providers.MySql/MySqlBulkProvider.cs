@@ -45,12 +45,7 @@ public sealed class MySqlBulkProvider : IForgeBulkProvider
         string keyColumn = "Id",
         CancellationToken cancellationToken = default)
     {
-        // Provider-native delete can be specialized per database:
-        // SQL Server: key TVP + DELETE JOIN.
-        // PostgreSQL: temp key table + DELETE USING.
-        // MySQL: temp key table + DELETE JOIN.
-        // Oracle: array-bound DELETE.
-        await BulkFallback.DeleteAsync(connection, tableName, keys.Cast<object>().ToArray(), keyColumn, cancellationToken).ConfigureAwait(false);
+        await MySqlNativeBulk.BulkDeleteAsync(connection, tableName, keys, keyColumn, cancellationToken).ConfigureAwait(false);
         return keys.Count;
     }
 

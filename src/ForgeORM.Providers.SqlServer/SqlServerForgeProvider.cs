@@ -1,4 +1,3 @@
-using ForgeORM.Core;
 using System.Data.Common;
 using System.Reflection;
 using ForgeORM.Abstractions;
@@ -119,7 +118,7 @@ public sealed class SqlServerForgeProvider : IForgeDatabaseProvider
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public ValueTask BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => SqlServerNativeBulk.BulkUpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+    public ValueTask BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -130,7 +129,7 @@ public sealed class SqlServerForgeProvider : IForgeDatabaseProvider
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => SqlServerNativeBulk.BulkMergeAsync(connection, tableName, rows, keyColumn, cancellationToken);
+    public ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
 
     private string BuildInsertSql(ForgeEntityMetadata e)
     {
@@ -150,6 +149,56 @@ public sealed class SqlServerForgeProvider : IForgeDatabaseProvider
 
 internal static class BulkFallback
 {
+
+    public static ValueTask<int> DeleteAsync<TKey>(
+    DbConnection connection,
+    string tableName,
+    IReadOnlyList<TKey> keys,
+    string keyColumn,
+    CancellationToken cancellationToken = default)
+    {
+        if (keys.Count == 0)
+            return ValueTask.FromResult(0);
+
+        return connection switch
+        {
+            SqlConnection sql =>
+                SqlServerNativeBulk.BulkDeleteAsync(
+                    sql,
+                    tableName,
+                    keys,
+                    keyColumn,
+                    cancellationToken),
+
+            NpgsqlConnection pg =>
+                PostgreSqlNativeBulk.BulkDeleteAsync(
+                    pg,
+                    tableName,
+                    keys,
+                    keyColumn,
+                    cancellationToken),
+
+            MySqlConnection my =>
+                MySqlNativeBulk.BulkDeleteAsync(
+                    my,
+                    tableName,
+                    keys,
+                    keyColumn,
+                    cancellationToken),
+
+            OracleConnection oracle =>
+                OracleNativeBulk.BulkDeleteAsync(
+                    oracle,
+                    tableName,
+                    keys,
+                    keyColumn,
+                    cancellationToken),
+
+            _ => throw new NotSupportedException(
+                $"Bulk delete is not supported for provider '{connection.GetType().Name}'.")
+        };
+    }
+
     /// <summary>
     /// Executes the T operation.
     /// </summary>

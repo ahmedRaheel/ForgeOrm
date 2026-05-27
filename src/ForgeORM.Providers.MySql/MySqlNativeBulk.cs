@@ -1,6 +1,6 @@
-using ForgeORM.Core;
 using System.Data.Common;
 using System.Reflection;
+using ForgeORM.Core;
 
 namespace ForgeORM.Providers.MySql;
 
@@ -19,8 +19,7 @@ internal static class MySqlNativeBulk
             .ConfigureAwait(false);
     }
 
-
-    public static ValueTask BulkUpdateAsync<T>(
+    public static async ValueTask BulkUpdateAsync<T>(
         DbConnection connection,
         string tableName,
         IReadOnlyCollection<T> rows,
@@ -28,22 +27,25 @@ internal static class MySqlNativeBulk
         CancellationToken cancellationToken = default)
     {
         if (rows is null || rows.Count == 0)
-            return ValueTask.CompletedTask;
+            return;
 
-        // Provider-native strategy placeholder:
-        // PostgreSQL: COPY to temp table + UPDATE FROM / ON CONFLICT.
-        // MySQL: temp table + UPDATE JOIN / ON DUPLICATE KEY UPDATE.
-        // Oracle: array binding + MERGE.
-        return BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+        await BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken)
+            .ConfigureAwait(false);
     }
 
-    public static ValueTask BulkMergeAsync<T>(
+    public static async ValueTask BulkDeleteAsync<TKey>(
         DbConnection connection,
         string tableName,
-        IReadOnlyCollection<T> rows,
+        IReadOnlyCollection<TKey> keys,
         string keyColumn,
         CancellationToken cancellationToken = default)
-        => BulkUpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+    {
+        if (keys is null || keys.Count == 0)
+            return;
+
+        await BulkFallback.DeleteAsync(connection, tableName, keys, keyColumn, cancellationToken)
+            .ConfigureAwait(false);
+    }
 
     internal static PropertyInfo[] GetBulkProperties<T>()
         => typeof(T)

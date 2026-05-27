@@ -1,4 +1,3 @@
-using ForgeORM.Core;
 using System.Data.Common;
 using System.Reflection;
 using ForgeORM.Abstractions;
@@ -121,7 +120,7 @@ public sealed class PostgreSqlForgeProvider : IForgeDatabaseProvider
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public ValueTask BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => PostgreSqlNativeBulk.BulkUpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+    public ValueTask BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -132,7 +131,7 @@ public sealed class PostgreSqlForgeProvider : IForgeDatabaseProvider
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => PostgreSqlNativeBulk.BulkMergeAsync(connection, tableName, rows, keyColumn, cancellationToken);
+    public ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
 
     private string BuildInsertSql(ForgeEntityMetadata e)
     {

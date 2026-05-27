@@ -1,4 +1,3 @@
-using ForgeORM.Core;
 using ForgeORM.Abstractions;
 using MySqlConnector;
 using System;
@@ -131,10 +130,16 @@ public sealed class MySqlForgeProvider : IForgeDatabaseProvider
         => MySqlNativeBulk.BulkInsertAsync(connection, tableName, rows, cancellationToken);
 
     public ValueTask BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default)
-        => MySqlNativeBulk.BulkUpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+    {
+        if (rows is null || rows.Count == 0) return ValueTask.CompletedTask;
+        return BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+    }
 
     public ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default)
-        => MySqlNativeBulk.BulkMergeAsync(connection, tableName, rows, keyColumn, cancellationToken);
+    {
+        if (rows is null || rows.Count == 0) return ValueTask.CompletedTask;
+        return BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+    }
 }
 
 internal static class BulkFallback

@@ -29,6 +29,5 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.SqlClient" />
-  
   </ItemGroup>
 </Project>

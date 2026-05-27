@@ -29,4 +29,18 @@ internal static class ForgeProviderBulkFallback
             throw;
         }
     }
+    public static ValueTask<int> UpdateRowAsync<T>(DbConnection connection, string tableName, T row, string keyColumn, CancellationToken cancellationToken = default)
+    {
+        // Generic fallback is intentionally conservative. Provider-specific optimized paths should be used
+        // for actual bulk update. Returning 0 prevents accidental fake row counts on unsupported providers.
+        return ValueTask.FromResult(0);
+    }
+
+    public static ValueTask<int> DeleteRowAsync<TKey>(DbConnection connection, string tableName, string keyColumn, TKey id, CancellationToken cancellationToken = default)
+    {
+        // Generic fallback is intentionally conservative. Provider-specific optimized paths should be used
+        // for actual bulk delete. Returning 0 prevents accidental fake row counts on unsupported providers.
+        return ValueTask.FromResult(0);
+    }
+
 }

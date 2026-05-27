@@ -43,7 +43,7 @@ internal sealed class ForgeSqlServerExecutionStrategy : IForgeProviderExecutionS
     public string BulkDeleteStrategy => "TVP + DELETE JOIN";
     public string GraphWriteStrategy => "Temp table + SqlBulkCopy + MERGE";
     public ValueTask<int> ExecuteBulkInsertAsync<T>(DbConnection connection, IReadOnlyList<T> rows, CancellationToken cancellationToken = default)
-        => ForgeProviderBulkFallback.InsertRowsAsync(connection, rows, cancellationToken);
+        => ForgeSqlServerTvpBulkExecutor.InsertAsync(connection, rows, cancellationToken);
 }
 
 internal sealed class ForgePostgreSqlExecutionStrategy : IForgeProviderExecutionStrategy

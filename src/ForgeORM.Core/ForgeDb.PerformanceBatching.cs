@@ -21,12 +21,12 @@ public partial class ForgeDb
             if (batch.Count < batchSize)
                 continue;
 
-            total += await InsertBatchInternalAsync(batch, cancellationToken).ConfigureAwait(false);
+            total += await InsertBulkAsync(batch, cancellationToken).ConfigureAwait(false);
             batch.Clear();
         }
 
         if (batch.Count > 0)
-            total += await InsertBatchInternalAsync(batch, cancellationToken).ConfigureAwait(false);
+            total += await InsertBulkAsync(batch, cancellationToken).ConfigureAwait(false);
 
         return total;
     }
@@ -36,22 +36,7 @@ public partial class ForgeDb
         ArgumentNullException.ThrowIfNull(rows);
         var total = 0;
         foreach (var batch in rows.Chunk(Math.Max(1, batchSize)))
-        {
-            await using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-            await using var tx = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                foreach (var row in batch)
-                    total += await UpdateAsync(row!, cancellationToken).ConfigureAwait(false);
-                await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch
-            {
-                await tx.RollbackAsync(cancellationToken).ConfigureAwait(false);
-                throw;
-            }
-        }
+            total += await UpdateBulkAsync(batch, cancellationToken: cancellationToken).ConfigureAwait(false);
         return total;
     }
 
@@ -61,20 +46,8 @@ public partial class ForgeDb
         var total = 0;
         foreach (var batch in ids.Chunk(Math.Max(1, batchSize)))
         {
-            await using var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-            await using var tx = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                foreach (var id in batch)
-                    total += await DeleteAsync<T>(id, cancellationToken).ConfigureAwait(false);
-                await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch
-            {
-                await tx.RollbackAsync(cancellationToken).ConfigureAwait(false);
-                throw;
-            }
+            var intIds = batch.Select(static x => Convert.ToInt32(x, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+            total += await DeleteBulkAsync<T>(intIds, cancellationToken).ConfigureAwait(false);
         }
         return total;
     }
@@ -102,9 +75,6 @@ public partial class ForgeDb
 
     private async ValueTask<int> InsertBatchInternalAsync<T>(IReadOnlyList<T> batch, CancellationToken cancellationToken)
     {
-        await using var connection = CreateConnection();
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        var strategy = ForgeProviderExecutionStrategySelector.Resolve(connection);
-        return await strategy.ExecuteBulkInsertAsync(connection, batch, cancellationToken).ConfigureAwait(false);
+        return await InsertBulkAsync(batch.ToArray(), cancellationToken).ConfigureAwait(false);
     }
 }

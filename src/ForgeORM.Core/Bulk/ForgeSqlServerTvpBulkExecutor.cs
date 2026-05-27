@@ -66,15 +66,29 @@ internal static class ForgeSqlServerTvpBulkExecutor
         return DeleteSqlServerAsync(sqlConnection, tableName, keyColumn, ids, cancellationToken);
     }
 
-    private static async ValueTask<int> InsertSqlServerAsync<T>(SqlConnection connection, ForgeEntityMetadata metadata, IReadOnlyCollection<T> rows, CancellationToken cancellationToken)
+    /// <summary>Updates already-boxed graph rows through the same SQL Server TVP + MERGE path.</summary>
+    public static ValueTask<int> UpdateObjectsAsync(DbConnection connection, DbTransaction? transaction, ForgeEntityMetadata metadata, IReadOnlyCollection<object> rows, string? keyColumn = null, CancellationToken cancellationToken = default)
+    {
+        if (rows.Count == 0)
+            return ValueTask.FromResult(0);
+
+        if (connection is not SqlConnection sqlConnection)
+            return UpdateFallbackAsync(connection, metadata, rows, keyColumn ?? metadata.KeyColumn, cancellationToken);
+
+        return UpdateSqlServerAsync(sqlConnection, metadata, rows, keyColumn ?? metadata.KeyColumn, cancellationToken, transaction);
+    }
+
+    private static async ValueTask<int> InsertSqlServerAsync<T>(SqlConnection connection, ForgeEntityMetadata metadata, IReadOnlyCollection<T> rows, CancellationToken cancellationToken, DbTransaction? transaction = null)
     {
         var plan = GetEntityPlan(metadata);
         if (plan.InsertColumns.Length == 0)
             return 0;
 
-        await EnsureTableTypeAsync(connection, plan.InsertTypeName, plan.InsertTypeSql, cancellationToken).ConfigureAwait(false);
+        await EnsureTableTypeAsync(connection, plan.InsertTypeName, plan.InsertTypeSql, cancellationToken, transaction).ConfigureAwait(false);
 
         await using var command = connection.CreateCommand();
+        if (transaction is SqlTransaction sqlTransaction)
+            command.Transaction = sqlTransaction;
         command.CommandText = plan.InsertSql;
         var parameter = command.Parameters.Add("@Rows", SqlDbType.Structured);
         parameter.TypeName = plan.InsertTypeName;
@@ -83,15 +97,17 @@ internal static class ForgeSqlServerTvpBulkExecutor
         return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static async ValueTask<int> UpdateSqlServerAsync<T>(SqlConnection connection, ForgeEntityMetadata metadata, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken)
+    private static async ValueTask<int> UpdateSqlServerAsync<T>(SqlConnection connection, ForgeEntityMetadata metadata, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken, DbTransaction? transaction = null)
     {
         var plan = GetEntityPlan(metadata);
         if (plan.UpdateColumns.Length == 0)
             return 0;
 
-        await EnsureTableTypeAsync(connection, plan.UpdateTypeName, plan.UpdateTypeSql, cancellationToken).ConfigureAwait(false);
+        await EnsureTableTypeAsync(connection, plan.UpdateTypeName, plan.UpdateTypeSql, cancellationToken, transaction).ConfigureAwait(false);
 
         await using var command = connection.CreateCommand();
+        if (transaction is SqlTransaction sqlTransaction)
+            command.Transaction = sqlTransaction;
         command.CommandText = plan.UpdateSql;
         var parameter = command.Parameters.Add("@Rows", SqlDbType.Structured);
         parameter.TypeName = plan.UpdateTypeName;
@@ -100,14 +116,16 @@ internal static class ForgeSqlServerTvpBulkExecutor
         return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static async ValueTask<int> DeleteSqlServerAsync<TKey>(SqlConnection connection, string tableName, string keyColumn, IReadOnlyCollection<TKey> ids, CancellationToken cancellationToken)
+    private static async ValueTask<int> DeleteSqlServerAsync<TKey>(SqlConnection connection, string tableName, string keyColumn, IReadOnlyCollection<TKey> ids, CancellationToken cancellationToken, DbTransaction? transaction = null)
     {
         var key = $"{tableName}|{keyColumn}|{typeof(TKey).FullName}";
         var plan = KeyPlans.GetOrAdd(key, _ => BuildKeyPlan(tableName, keyColumn, typeof(TKey)));
 
-        await EnsureTableTypeAsync(connection, plan.TypeName, plan.TypeSql, cancellationToken).ConfigureAwait(false);
+        await EnsureTableTypeAsync(connection, plan.TypeName, plan.TypeSql, cancellationToken, transaction).ConfigureAwait(false);
 
         await using var command = connection.CreateCommand();
+        if (transaction is SqlTransaction sqlTransaction)
+            command.Transaction = sqlTransaction;
         command.CommandText = plan.DeleteSql;
         var parameter = command.Parameters.Add("@Rows", SqlDbType.Structured);
         parameter.TypeName = plan.TypeName;
@@ -116,12 +134,14 @@ internal static class ForgeSqlServerTvpBulkExecutor
         return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static async ValueTask EnsureTableTypeAsync(SqlConnection connection, string typeName, string typeSql, CancellationToken cancellationToken)
+    private static async ValueTask EnsureTableTypeAsync(SqlConnection connection, string typeName, string typeSql, CancellationToken cancellationToken, DbTransaction? transaction = null)
     {
         if (EnsuredTypes.ContainsKey(typeName))
             return;
 
         await using var command = connection.CreateCommand();
+        if (transaction is SqlTransaction sqlTransaction)
+            command.Transaction = sqlTransaction;
         command.CommandText = $"IF TYPE_ID(N'{EscapeSqlLiteral(typeName)}') IS NULL EXEC(N'{EscapeSqlLiteral(typeSql)}');";
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         EnsuredTypes[typeName] = 1;
@@ -202,7 +222,7 @@ internal static class ForgeSqlServerTvpBulkExecutor
 
     private static string BuildCreateTypeSql(string typeName, IReadOnlyList<SqlServerBulkColumn> columns)
     {
-        var definitions = string.Join(", ", columns.Select(c => $"{QuoteIdentifier(c.ColumnName)} {GetSqlTypeDefinition(c.PropertyType)} NULL"));
+        var definitions = string.Join(", ", columns.Select(c => $"{QuoteIdentifier(c.ColumnName)} {GetSqlTypeDefinition(c.StorageType)} NULL"));
         return $"CREATE TYPE {QuoteTypeName(typeName)} AS TABLE ({definitions})";
     }
 
@@ -212,19 +232,62 @@ internal static class ForgeSqlServerTvpBulkExecutor
     private static SqlServerBulkColumn CreateColumn(Type entityType, ForgePropertyMetadata property)
     {
         var propertyInfo = entityType.GetProperty(property.PropertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+        var storageType = ResolveStorageType(property.PropertyType, propertyInfo);
         return new SqlServerBulkColumn(
             property.PropertyName,
             property.ColumnName,
             property.PropertyType,
+            storageType,
             property.IsKey,
-            propertyInfo is null ? null : ForgeIlAccessors.Getter(propertyInfo));
+            propertyInfo is null ? null : ForgeIlAccessors.Getter(propertyInfo),
+            CreateTypedSetter(storageType));
+    }
+
+    private static Type ResolveStorageType(Type propertyType, PropertyInfo? propertyInfo)
+    {
+        var actual = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+        if (!actual.IsEnum)
+            return propertyType;
+
+        var storage = propertyInfo?.GetCustomAttribute<ForgeEnumStorageAttribute>()?.Storage ?? ForgeEnumStorage.String;
+        return storage == ForgeEnumStorage.Number ? Enum.GetUnderlyingType(actual) : typeof(string);
+    }
+
+    private static Action<SqlDataRecord, int, object?> CreateTypedSetter(Type storageType)
+    {
+        var actual = Nullable.GetUnderlyingType(storageType) ?? storageType;
+
+        if (actual == typeof(int))
+            return static (record, ordinal, value) => { if (value is null or DBNull) record.SetDBNull(ordinal); else record.SetInt32(ordinal, Convert.ToInt32(value, CultureInfo.InvariantCulture)); };
+        if (actual == typeof(long))
+            return static (record, ordinal, value) => { if (value is null or DBNull) record.SetDBNull(ordinal); else record.SetInt64(ordinal, Convert.ToInt64(value, CultureInfo.InvariantCulture)); };
+        if (actual == typeof(short))
+            return static (record, ordinal, value) => { if (value is null or DBNull) record.SetDBNull(ordinal); else record.SetInt16(ordinal, Convert.ToInt16(value, CultureInfo.InvariantCulture)); };
+        if (actual == typeof(byte))
+            return static (record, ordinal, value) => { if (value is null or DBNull) record.SetDBNull(ordinal); else record.SetByte(ordinal, Convert.ToByte(value, CultureInfo.InvariantCulture)); };
+        if (actual == typeof(bool))
+            return static (record, ordinal, value) => { if (value is null or DBNull) record.SetDBNull(ordinal); else record.SetBoolean(ordinal, Convert.ToBoolean(value, CultureInfo.InvariantCulture)); };
+        if (actual == typeof(decimal))
+            return static (record, ordinal, value) => { if (value is null or DBNull) record.SetDBNull(ordinal); else record.SetDecimal(ordinal, Convert.ToDecimal(value, CultureInfo.InvariantCulture)); };
+        if (actual == typeof(double))
+            return static (record, ordinal, value) => { if (value is null or DBNull) record.SetDBNull(ordinal); else record.SetDouble(ordinal, Convert.ToDouble(value, CultureInfo.InvariantCulture)); };
+        if (actual == typeof(float))
+            return static (record, ordinal, value) => { if (value is null or DBNull) record.SetDBNull(ordinal); else record.SetFloat(ordinal, Convert.ToSingle(value, CultureInfo.InvariantCulture)); };
+        if (actual == typeof(DateTime))
+            return static (record, ordinal, value) => { if (value is null or DBNull) record.SetDBNull(ordinal); else record.SetDateTime(ordinal, value is DateTime dt ? dt : Convert.ToDateTime(value, CultureInfo.InvariantCulture)); };
+        if (actual == typeof(Guid))
+            return static (record, ordinal, value) => { if (value is null or DBNull) record.SetDBNull(ordinal); else record.SetGuid(ordinal, value is Guid guid ? guid : Guid.Parse(Convert.ToString(value, CultureInfo.InvariantCulture)!)); };
+        if (actual == typeof(string))
+            return static (record, ordinal, value) => { if (value is null or DBNull) record.SetDBNull(ordinal); else record.SetString(ordinal, Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty); };
+
+        return static (record, ordinal, value) => record.SetValue(ordinal, value ?? DBNull.Value);
     }
 
     private static SqlMetaData[] CreateMetaData(IReadOnlyList<SqlServerBulkColumn> columns)
     {
         var metadata = new SqlMetaData[columns.Count];
         for (var i = 0; i < columns.Count; i++)
-            metadata[i] = CreateMetaData(columns[i].ColumnName, columns[i].PropertyType);
+            metadata[i] = CreateMetaData(columns[i].ColumnName, columns[i].StorageType);
         return metadata;
     }
 
@@ -282,14 +345,19 @@ internal static class ForgeSqlServerTvpBulkExecutor
         return "NVARCHAR(MAX)";
     }
 
-    private static object? ToSqlValue(object? value, Type type)
+    private static object? ToSqlValue(object? value, Type type, Type storageType)
     {
         if (value is null)
             return DBNull.Value;
 
         var actual = Nullable.GetUnderlyingType(type) ?? type;
         if (actual.IsEnum)
-            return value.ToString();
+        {
+            var target = Nullable.GetUnderlyingType(storageType) ?? storageType;
+            return target == typeof(string)
+                ? value.ToString()
+                : Convert.ChangeType(value, target, CultureInfo.InvariantCulture);
+        }
 
         return value;
     }
@@ -371,7 +439,7 @@ internal static class ForgeSqlServerTvpBulkExecutor
 
     private sealed record SqlServerBulkKeyPlan(string TypeName, string TypeSql, string DeleteSql, SqlMetaData[] KeyMetaData);
 
-    private sealed record SqlServerBulkColumn(string PropertyName, string ColumnName, Type PropertyType, bool IsKey, Func<object, object?>? Getter);
+    private sealed record SqlServerBulkColumn(string PropertyName, string ColumnName, Type PropertyType, Type StorageType, bool IsKey, Func<object, object?>? Getter, Action<SqlDataRecord, int, object?> Setter);
 
     private sealed class ForgeSqlDataRecordEnumerable<T> : IEnumerable<SqlDataRecord>
     {
@@ -396,7 +464,7 @@ internal static class ForgeSqlServerTvpBulkExecutor
                 {
                     var column = _columns[i];
                     var value = boxed is null || column.Getter is null ? null : column.Getter(boxed);
-                    record.SetValue(i, ToSqlValue(value, column.PropertyType));
+                    column.Setter(record, i, ToSqlValue(value, column.PropertyType, column.StorageType));
                 }
                 yield return record;
             }
@@ -409,11 +477,13 @@ internal static class ForgeSqlServerTvpBulkExecutor
     {
         private readonly IReadOnlyCollection<TKey> _ids;
         private readonly SqlMetaData[] _metadata;
+        private readonly Action<SqlDataRecord, int, object?> _setter;
 
         public ForgeSqlKeyDataRecordEnumerable(IReadOnlyCollection<TKey> ids, SqlMetaData[] metadata)
         {
             _ids = ids;
             _metadata = metadata;
+            _setter = CreateTypedSetter(typeof(TKey));
         }
 
         public IEnumerator<SqlDataRecord> GetEnumerator()
@@ -421,7 +491,7 @@ internal static class ForgeSqlServerTvpBulkExecutor
             foreach (var id in _ids)
             {
                 var record = new SqlDataRecord(_metadata);
-                record.SetValue(0, id is null ? DBNull.Value : id);
+                _setter(record, 0, id is null ? DBNull.Value : id);
                 yield return record;
             }
         }

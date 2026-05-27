@@ -227,7 +227,10 @@ public partial class ForgeDb
         var shape = ForgeEntityShape.For(entityType);
         var key = shape.KeyProperty ?? throw new InvalidOperationException($"ForgeORM graph update requires a key property on {entityType.Name}.");
         var keyValue = ForgeRuntimeAccessorCache.Get(key, entity);
-        var affected = await ExecuteSingleUpdateAsync(connection, transaction, entity, cancellationToken);
+
+        // Parent update now uses the same SQL Server TVP + MERGE executor as BulkUpdateAsync.
+        // For non-SQL Server providers the executor falls back to provider-safe row updates.
+        var affected = await ExecuteBulkUpdateRowsAsync(connection, transaction, entityType, new[] { entity }, ForgeEntityShape.ColumnName(key), cancellationToken);
 
         foreach (var collection in GetChildCollectionProperties(entityType))
         {
@@ -235,7 +238,8 @@ public partial class ForgeDb
             if (childType is null) continue;
 
             var fk = FindForeignKeyProperty(childType, entityType);
-            var childKey = ForgeEntityShape.For(childType).KeyProperty;
+            var childShapeForCollection = ForgeEntityShape.For(childType);
+            var childKey = childShapeForCollection.KeyProperty;
             var children = ReadEnumerable(ForgeRuntimeAccessorCache.Get(collection, entity)).ToList();
 
             if (deleteMissingChildren && fk is not null && keyValue is not null && childKey is not null)
@@ -249,6 +253,9 @@ public partial class ForgeDb
                 affected += await ForgeAdo.ExecuteAsync(connection, deleteSql, parameters, transaction, cancellationToken: cancellationToken);
             }
 
+            var updateRows = new List<object>();
+            var insertRows = new List<object>();
+
             foreach (var child in children)
             {
                 if (fk is not null && fk.CanWrite)
@@ -257,14 +264,19 @@ public partial class ForgeDb
                 var childShape = ForgeEntityShape.For(child.GetType());
                 var currentChildKey = childShape.KeyProperty is null ? null : ForgeRuntimeAccessorCache.Get(childShape.KeyProperty, child);
                 if (IsMeaningfulKey(currentChildKey))
-                {
-                    affected += await ExecuteSingleUpdateAsync(connection, transaction, child, cancellationToken);
-                }
+                    updateRows.Add(child);
                 else
-                {
-                    ResetDatabaseGeneratedIdentity(child, childShape);
-                    affected += await InsertSingleNodeAsync(connection, transaction, child, childShape, cancellationToken);
-                }
+                    insertRows.Add(child);
+            }
+
+            if (updateRows.Count > 0 && childKey is not null)
+                affected += await ExecuteBulkUpdateRowsAsync(connection, transaction, childType, updateRows, ForgeEntityShape.ColumnName(childKey), cancellationToken);
+
+            foreach (var child in insertRows)
+            {
+                var childShape = ForgeEntityShape.For(child.GetType());
+                ResetDatabaseGeneratedIdentity(child, childShape);
+                affected += await InsertSingleNodeAsync(connection, transaction, child, childShape, cancellationToken);
             }
         }
 
@@ -297,6 +309,51 @@ public partial class ForgeDb
         }
 
         return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static ForgeEntityMetadata CreateGraphBulkMetadata(Type entityType)
+    {
+        var shape = ForgeEntityShape.For(entityType);
+        var keyColumn = shape.KeyProperty is null ? "Id" : ForgeEntityShape.ColumnName(shape.KeyProperty);
+        var properties = new List<ForgePropertyMetadata>(shape.ScalarProperties.Count);
+
+        foreach (var property in shape.ScalarProperties)
+        {
+            if (!property.CanRead)
+                continue;
+
+            properties.Add(new ForgePropertyMetadata
+            {
+                PropertyName = property.Name,
+                ColumnName = ForgeEntityShape.ColumnName(property),
+                PropertyType = property.PropertyType,
+                IsKey = shape.KeyProperty is not null && string.Equals(property.Name, shape.KeyProperty.Name, StringComparison.OrdinalIgnoreCase),
+                IsComputed = ForgeEntityShape.IsComputed(property)
+            });
+        }
+
+        return new ForgeEntityMetadata
+        {
+            EntityType = entityType,
+            TableName = shape.TableName,
+            KeyColumn = keyColumn,
+            Properties = properties
+        };
+    }
+
+    private static ValueTask<int> ExecuteBulkUpdateRowsAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        Type entityType,
+        IReadOnlyCollection<object> rows,
+        string keyColumn,
+        CancellationToken cancellationToken)
+    {
+        if (rows.Count == 0)
+            return ValueTask.FromResult(0);
+
+        var metadata = CreateGraphBulkMetadata(entityType);
+        return ForgeSqlServerTvpBulkExecutor.UpdateObjectsAsync(connection, transaction, metadata, rows, keyColumn, cancellationToken);
     }
 
     private async ValueTask<int> ExecuteSingleUpdateAsync(DbConnection connection, DbTransaction transaction, object entity, CancellationToken cancellationToken)

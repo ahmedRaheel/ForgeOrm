@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Data;
 using System.Data.Common;
+using System.Globalization;
 using System.Linq.Expressions;
 using System.Reflection;
 using ForgeORM.Abstractions;
@@ -506,7 +507,7 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
 
     private async ValueTask ExecuteSqlServerTvpAsync(DbConnection connection, DbTransaction transaction, IReadOnlyList<TChildEntity> entities, CancellationToken cancellationToken)
     {
-        var table = ForgeTvpDataTable.Create(entities);
+        var records = ForgeTvpSqlDataRecords.Create(entities);
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = _procedure!;
@@ -514,7 +515,7 @@ public sealed class ForgeGraphChildOptions<TDto, TChildEntity, TChildDto> : IFor
 
         var parameter = command.CreateParameter();
         parameter.ParameterName = _parameterName;
-        parameter.Value = table;
+        parameter.Value = records;
         ForgeSqlServerParameterConfigurator.ConfigureStructured(parameter, _tableType!);
         command.Parameters.Add(parameter);
 
@@ -700,30 +701,69 @@ internal static class ForgeEnumConversion
     }
 }
 
-internal static class ForgeTvpDataTable
+internal static class ForgeTvpSqlDataRecords
 {
-    /// <summary>
-    /// Executes the T operation.
-    /// </summary>
-    /// <typeparam name="T">The type used by the operation.</typeparam>
-    /// <param name="rows">The rows value.</param>
-    /// <returns>The result of the T operation.</returns>
-    public static DataTable Create<T>(IReadOnlyList<T> rows)
+    /// <summary>Creates a streaming TVP payload without DataTable/DataRow allocations.</summary>
+    public static IEnumerable<Microsoft.SqlServer.Server.SqlDataRecord> Create<T>(IReadOnlyList<T> rows)
     {
         var shape = ForgeEntityShape.For(typeof(T));
         var props = ForgeGraphWriteHelpers.GetInsertProperties(shape);
-        var table = new DataTable();
+        var metadata = new Microsoft.SqlServer.Server.SqlMetaData[props.Count];
 
-        foreach (var prop in props)
-            table.Columns.Add(ForgeEntityShape.ColumnName(prop), ForgeEnumConversion.StorageType(prop));
+        for (var i = 0; i < props.Count; i++)
+            metadata[i] = CreateMetaData(ForgeEntityShape.ColumnName(props[i]), ForgeEnumConversion.StorageType(props[i]));
 
-        foreach (var row in rows)
+        for (var r = 0; r < rows.Count; r++)
         {
-            var values = props.Select(p => ForgeGraphWriteHelpers.NormalizeDatabaseValue(ForgeRuntimeAccessorCache.Get(p, row), p) ?? DBNull.Value).ToArray();
-            table.Rows.Add(values);
+            var record = new Microsoft.SqlServer.Server.SqlDataRecord(metadata);
+            var row = rows[r];
+            for (var i = 0; i < props.Count; i++)
+            {
+                var prop = props[i];
+                var value = ForgeGraphWriteHelpers.NormalizeDatabaseValue(ForgeRuntimeAccessorCache.Get(prop, row), prop);
+                SetRecordValue(record, i, value, ForgeEnumConversion.StorageType(prop));
+            }
+            yield return record;
+        }
+    }
+
+    private static Microsoft.SqlServer.Server.SqlMetaData CreateMetaData(string name, Type type)
+    {
+        type = Nullable.GetUnderlyingType(type) ?? type;
+        if (type == typeof(string)) return new Microsoft.SqlServer.Server.SqlMetaData(name, SqlDbType.NVarChar, 4000);
+        if (type == typeof(int)) return new Microsoft.SqlServer.Server.SqlMetaData(name, SqlDbType.Int);
+        if (type == typeof(long)) return new Microsoft.SqlServer.Server.SqlMetaData(name, SqlDbType.BigInt);
+        if (type == typeof(short)) return new Microsoft.SqlServer.Server.SqlMetaData(name, SqlDbType.SmallInt);
+        if (type == typeof(byte)) return new Microsoft.SqlServer.Server.SqlMetaData(name, SqlDbType.TinyInt);
+        if (type == typeof(bool)) return new Microsoft.SqlServer.Server.SqlMetaData(name, SqlDbType.Bit);
+        if (type == typeof(decimal)) return new Microsoft.SqlServer.Server.SqlMetaData(name, SqlDbType.Decimal, 38, 10);
+        if (type == typeof(double)) return new Microsoft.SqlServer.Server.SqlMetaData(name, SqlDbType.Float);
+        if (type == typeof(float)) return new Microsoft.SqlServer.Server.SqlMetaData(name, SqlDbType.Real);
+        if (type == typeof(DateTime)) return new Microsoft.SqlServer.Server.SqlMetaData(name, SqlDbType.DateTime2);
+        if (type == typeof(Guid)) return new Microsoft.SqlServer.Server.SqlMetaData(name, SqlDbType.UniqueIdentifier);
+        return new Microsoft.SqlServer.Server.SqlMetaData(name, SqlDbType.NVarChar, 4000);
+    }
+
+    private static void SetRecordValue(Microsoft.SqlServer.Server.SqlDataRecord record, int ordinal, object? value, Type type)
+    {
+        if (value is null or DBNull)
+        {
+            record.SetDBNull(ordinal);
+            return;
         }
 
-        return table;
+        type = Nullable.GetUnderlyingType(type) ?? type;
+        if (type == typeof(int)) { record.SetInt32(ordinal, Convert.ToInt32(value, CultureInfo.InvariantCulture)); return; }
+        if (type == typeof(long)) { record.SetInt64(ordinal, Convert.ToInt64(value, CultureInfo.InvariantCulture)); return; }
+        if (type == typeof(short)) { record.SetInt16(ordinal, Convert.ToInt16(value, CultureInfo.InvariantCulture)); return; }
+        if (type == typeof(byte)) { record.SetByte(ordinal, Convert.ToByte(value, CultureInfo.InvariantCulture)); return; }
+        if (type == typeof(bool)) { record.SetBoolean(ordinal, Convert.ToBoolean(value, CultureInfo.InvariantCulture)); return; }
+        if (type == typeof(decimal)) { record.SetDecimal(ordinal, Convert.ToDecimal(value, CultureInfo.InvariantCulture)); return; }
+        if (type == typeof(double)) { record.SetDouble(ordinal, Convert.ToDouble(value, CultureInfo.InvariantCulture)); return; }
+        if (type == typeof(float)) { record.SetFloat(ordinal, Convert.ToSingle(value, CultureInfo.InvariantCulture)); return; }
+        if (type == typeof(DateTime)) { record.SetDateTime(ordinal, value is DateTime dt ? dt : Convert.ToDateTime(value, CultureInfo.InvariantCulture)); return; }
+        if (type == typeof(Guid)) { record.SetGuid(ordinal, value is Guid g ? g : Guid.Parse(Convert.ToString(value, CultureInfo.InvariantCulture)!)); return; }
+        record.SetString(ordinal, Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty);
     }
 }
 

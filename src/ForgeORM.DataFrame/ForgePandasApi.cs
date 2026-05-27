@@ -388,6 +388,7 @@ internal static partial class ForgePandasExtensions
 
         return (start, end - start);
     }
+
     /// <summary>Alias for pandas sort_values().</summary>
     public static ForgeDataFrame SortValues(this ForgeDataFrame frame, string by, bool ascending = true)
         => frame.SortBy(by, descending: !ascending);

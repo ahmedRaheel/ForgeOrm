@@ -365,12 +365,12 @@ public sealed class ForgeDataFrame
                 if (!row.TryGetValue(c, out var current) || current is null || current is DBNull)
                     row[c] = value;
         return this;
-    }
-    /// <summary>
-    /// Shape of Dataframe
-    /// </summary>
-    /// <returns></returns>
-    public (int Rows, int Columns) Shape()  => (RowCount, Columns.Count);
+    } 
+       /// <summary>
+      /// Shape of Dataframe
+      /// </summary>
+      /// <returns></returns>
+    public (int Rows, int Columns) Shape() => (RowCount, Columns.Count);
 
     /// <summary>
     /// Datatypes of columns in dataframe
@@ -447,6 +447,7 @@ public sealed class ForgeDataFrame
 
         return new ForgeDataFrame(rows);
     }
+
     /// <summary>
     /// Executes the DropNa operation.
     /// </summary>
@@ -457,7 +458,6 @@ public sealed class ForgeDataFrame
         var targetColumns = columns.Length == 0 ? Columns : columns;
         return new(_rows.Where(row => targetColumns.All(c => row.TryGetValue(c, out var v) && v is not null && v is not DBNull)));
     }
-
     /// <summary>
     /// Converts the column value to capital case
     /// </summary>
@@ -1022,6 +1022,228 @@ public sealed class ForgeDataFrame
         return new StringDataFrameColumn(
             name,
             values.Select(v => v is null or DBNull ? null : v.ToString()));
+    }    
+    /// <summary>
+    /// Returns distinct values for a column.
+    /// </summary>
+    /// <param name="column">The column name.</param>
+    /// <param name="dropNa">Whether null-like values should be excluded.</param>
+    /// <returns>The distinct values in first-seen order.</returns>
+    public IReadOnlyList<object?> Unique(string column, bool dropNa = true)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(column);
+
+        var result = new List<object?>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 0; i < _rows.Count; i++)
+        {
+            var value = Get(_rows[i], column);
+            if (dropNa && IsNullLike(value))
+                continue;
+
+            var key = ToKey(value);
+            if (seen.Add(key))
+                result.Add(value);
+        }
+
+        return result;
+    }
+
+    ///// <summary>
+    ///// Returns value counts for a column.
+    ///// </summary>
+    ///// <param name="column">The column name.</param>
+    ///// <param name="descending">Whether counts are returned in descending frequency order.</param>
+    ///// <param name="dropNa">Whether null-like values should be excluded.</param>
+    ///// <returns>A dataframe containing Value and Count columns.</returns>
+    //public ForgeDataFrame ValueCounts(string column, bool descending = true, bool dropNa = true)
+    //{
+    //    ArgumentException.ThrowIfNullOrWhiteSpace(column);
+
+    //    var counts = new Dictionary<string, (object? Value, int Count)>(StringComparer.OrdinalIgnoreCase);
+
+    //    for (var i = 0; i < _rows.Count; i++)
+    //    {
+    //        var value = Get(_rows[i], column);
+    //        if (dropNa && IsNullLike(value))
+    //            continue;
+
+    //        var key = ToKey(value);
+    //        if (counts.TryGetValue(key, out var current))
+    //            counts[key] = (current.Value, current.Count + 1);
+    //        else
+    //            counts[key] = (value, 1);
+    //    }
+
+    //    var ordered = new List<KeyValuePair<string, (object? Value, int Count)>>(counts);
+    //    ordered.Sort((a, b) => descending
+    //        ? b.Value.Count.CompareTo(a.Value.Count)
+    //        : a.Value.Count.CompareTo(b.Value.Count));
+
+    //    var rows = new List<IDictionary<string, object?>>(ordered.Count);
+    //    for (var i = 0; i < ordered.Count; i++)
+    //    {
+    //        rows.Add(new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+    //        {
+    //            ["Value"] = ordered[i].Value.Value,
+    //            ["Count"] = ordered[i].Value.Count
+    //        });
+    //    }
+
+    //    return new ForgeDataFrame(rows);
+    //}
+
+    /// <summary>
+    /// Adds or replaces a string column using upper-case invariant text.
+    /// </summary>
+    /// <param name="column">The source column.</param>
+    /// <param name="alias">Optional output column. When omitted, the source column is replaced.</param>
+    /// <returns>The current dataframe.</returns>
+    public ForgeDataFrame StrUpper(string column, string? alias = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(column);
+        var target = string.IsNullOrWhiteSpace(alias) ? column : alias!;
+
+        for (var i = 0; i < _rows.Count; i++)
+        {
+            var value = Get(_rows[i], column);
+            _rows[i][target] = IsNullLike(value) ? null : Convert.ToString(value, CultureInfo.InvariantCulture)?.ToUpperInvariant();
+        }
+
+        return this;
+    }
+
+    /// <summary>
+    /// Extracts the month number from a date/time column.
+    /// </summary>
+    /// <param name="column">The source date/time column.</param>
+    /// <param name="alias">The output column name.</param>
+    /// <returns>The current dataframe.</returns>
+    public ForgeDataFrame DtMonth(string column, string alias = "Month")
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(column);
+        ArgumentException.ThrowIfNullOrWhiteSpace(alias);
+
+        for (var i = 0; i < _rows.Count; i++)
+        {
+            _rows[i][alias] = TryGetDateTime(Get(_rows[i], column), out var value) ? value.Month : null;
+        }
+
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a rolling mean column for a numeric column.
+    /// </summary>
+    /// <param name="column">The source numeric column.</param>
+    /// <param name="window">The rolling window size.</param>
+    /// <param name="alias">The output column name.</param>
+    /// <returns>The current dataframe.</returns>
+    public ForgeDataFrame RollingMean(string column, int window, string alias)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(column);
+        ArgumentException.ThrowIfNullOrWhiteSpace(alias);
+        if (window <= 0)
+            throw new ArgumentOutOfRangeException(nameof(window), "Window must be greater than zero.");
+
+        for (var i = 0; i < _rows.Count; i++)
+        {
+            decimal total = 0;
+            var count = 0;
+            var start = Math.Max(0, i - window + 1);
+
+            for (var j = start; j <= i; j++)
+            {
+                var number = ToDecimal(Get(_rows[j], column));
+                if (!number.HasValue)
+                    continue;
+
+                total += number.Value;
+                count++;
+            }
+
+            _rows[i][alias] = count == 0 ? null : total / count;
+        }
+
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a cumulative sum column for a numeric column.
+    /// </summary>
+    /// <param name="column">The source numeric column.</param>
+    /// <param name="alias">The output column name.</param>
+    /// <returns>The current dataframe.</returns>
+    public ForgeDataFrame CumSum(string column, string alias)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(column);
+        ArgumentException.ThrowIfNullOrWhiteSpace(alias);
+
+        decimal total = 0;
+        for (var i = 0; i < _rows.Count; i++)
+        {
+            var number = ToDecimal(Get(_rows[i], column));
+            if (number.HasValue)
+                total += number.Value;
+
+            _rows[i][alias] = total;
+        }
+
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a rank column for a numeric/text column.
+    /// </summary>
+    /// <param name="column">The source column.</param>
+    /// <param name="alias">The output column name.</param>
+    /// <param name="ascending">Whether lower values should receive lower ranks.</param>
+    /// <returns>The current dataframe.</returns>
+    public ForgeDataFrame RankValues(string column, string alias, bool ascending = true)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(column);
+        ArgumentException.ThrowIfNullOrWhiteSpace(alias);
+
+        var values = new List<(int Index, object? Value)>(_rows.Count);
+        for (var i = 0; i < _rows.Count; i++)
+            values.Add((i, Get(_rows[i], column)));
+
+        values.Sort((a, b) => ascending
+            ? CompareValues(a.Value, b.Value)
+            : CompareValues(b.Value, a.Value));
+
+        var rankByIndex = new int[_rows.Count];
+        var rank = 1;
+        for (var i = 0; i < values.Count; i++)
+        {
+            if (i > 0 && CompareValues(values[i].Value, values[i - 1].Value) != 0)
+                rank = i + 1;
+
+            rankByIndex[values[i].Index] = rank;
+        }
+
+        for (var i = 0; i < _rows.Count; i++)
+            _rows[i][alias] = rankByIndex[i];
+
+        return this;
+    }
+
+    private static bool TryGetDateTime(object? value, out DateTime dateTime)
+    {
+        if (value is DateTime date)
+        {
+            dateTime = date;
+            return true;
+        }
+
+        if (value is DateTimeOffset offset)
+        {
+            dateTime = offset.DateTime;
+            return true;
+        }
+
+        return DateTime.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out dateTime);
     }
 
     /// <summary>

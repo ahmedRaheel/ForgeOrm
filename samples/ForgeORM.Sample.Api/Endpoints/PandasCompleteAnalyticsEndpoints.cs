@@ -18,11 +18,11 @@ public static class PandasCompleteAnalyticsEndpoints
             });
 
             var cleaned = frame.FillNa(0, "Revenue")
-                .StrUpper("Region");
-                //.DtMonth("CreatedAt")
-                //.RollingMean("Revenue", 2, "RevenueRolling2")
-                //.CumSum("Revenue", "RevenueCumSum")
-                //.RankValues("Revenue", "RevenueRank", ascending: false);
+                .StrUpper("Region")
+                .DtMonth("CreatedAt")
+                .RollingMean("Revenue", 2, "RevenueRolling2")
+                .CumSum("Revenue", "RevenueCumSum")
+                .RankValues("Revenue", "RevenueRank", ascending: false);
 
             var grouped = cleaned.GroupBy("Region").Agg(
                 ForgeAggregation.Count(alias: "Rows"),

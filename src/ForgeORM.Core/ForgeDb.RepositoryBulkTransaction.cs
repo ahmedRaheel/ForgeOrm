@@ -282,33 +282,9 @@ public partial class ForgeDb
     public async ValueTask BulkInsertAsync<T>(string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default)
     {
         if (rows.Count == 0) return;
-        await InsertBulkAsync(tableName, rows, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>Inserts many rows using the provider-native bulk path. SQL Server uses TVP + INSERT SELECT.</summary>
-    public ValueTask<int> InsertBulkAsync<T>(IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default)
-        => InsertBulkAsync(_metadata.Resolve<T>().TableName, rows, cancellationToken);
-
-    /// <summary>Inserts many rows using the provider-native bulk path. SQL Server uses TVP + INSERT SELECT.</summary>
-    public async ValueTask<int> InsertBulkAsync<T>(string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default)
-    {
-        if (rows.Count == 0) return 0;
-        var metadata = _metadata.Resolve<T>();
-        if (!string.Equals(metadata.TableName, tableName, StringComparison.OrdinalIgnoreCase))
-        {
-            metadata = new ForgeEntityMetadata
-            {
-                EntityType = metadata.EntityType,
-                TableName = tableName,
-                KeyColumn = metadata.KeyColumn,
-                CodeColumn = metadata.CodeColumn,
-                Properties = metadata.Properties
-            };
-        }
-
         await using var c = CreateConnection();
-        await c.OpenAsync(cancellationToken).ConfigureAwait(false);
-        return await ForgeSqlServerTvpBulkExecutor.InsertAsync(c, metadata, rows, cancellationToken).ConfigureAwait(false);
+        await c.OpenAsync(cancellationToken);
+        await Provider.BulkInsertAsync(c, tableName, rows, cancellationToken);
     }
 
     /// <summary>
@@ -349,33 +325,9 @@ public partial class ForgeDb
     public async ValueTask BulkUpdateAsync<T>(string tableName, IReadOnlyCollection<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default)
     {
         if (rows.Count == 0) return;
-        await UpdateBulkAsync(tableName, rows, keyColumn, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>Updates many rows using the provider-native bulk path. SQL Server uses TVP + MERGE.</summary>
-    public ValueTask<int> UpdateBulkAsync<T>(IReadOnlyCollection<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default)
-        => UpdateBulkAsync(_metadata.Resolve<T>().TableName, rows, keyColumn, cancellationToken);
-
-    /// <summary>Updates many rows using the provider-native bulk path. SQL Server uses TVP + MERGE.</summary>
-    public async ValueTask<int> UpdateBulkAsync<T>(string tableName, IReadOnlyCollection<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default)
-    {
-        if (rows.Count == 0) return 0;
-        var metadata = _metadata.Resolve<T>();
-        if (!string.Equals(metadata.TableName, tableName, StringComparison.OrdinalIgnoreCase) || !string.Equals(metadata.KeyColumn, keyColumn, StringComparison.OrdinalIgnoreCase))
-        {
-            metadata = new ForgeEntityMetadata
-            {
-                EntityType = metadata.EntityType,
-                TableName = tableName,
-                KeyColumn = keyColumn,
-                CodeColumn = metadata.CodeColumn,
-                Properties = metadata.Properties
-            };
-        }
-
         await using var c = CreateConnection();
-        await c.OpenAsync(cancellationToken).ConfigureAwait(false);
-        return await ForgeSqlServerTvpBulkExecutor.UpdateAsync(c, metadata, rows, keyColumn, cancellationToken).ConfigureAwait(false);
+        await c.OpenAsync(cancellationToken);
+        await Provider.BulkUpdateAsync(c, tableName, rows, keyColumn, cancellationToken);
     }
 
     /// <summary>
@@ -408,28 +360,10 @@ public partial class ForgeDb
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the BulkDeleteAsync operation.</returns>
-    public async ValueTask<int> BulkDeleteAsync(string tableName, IReadOnlyCollection<int> ids, string keyColumn = "Id", CancellationToken cancellationToken = default)
-    {
-        if (ids.Count == 0) return 0;
-        await using var c = CreateConnection();
-        await c.OpenAsync(cancellationToken).ConfigureAwait(false);
-        return await ForgeSqlServerTvpBulkExecutor.DeleteAsync(c, tableName, keyColumn, ids, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>Deletes many rows using the provider-native bulk path. SQL Server uses key-only TVP + DELETE JOIN.</summary>
-    public ValueTask<int> DeleteBulkAsync<T>(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default)
-    {
-        var metadata = _metadata.Resolve<T>();
-        return DeleteBulkAsync(metadata.TableName, ids, metadata.KeyColumn, cancellationToken);
-    }
-
-    /// <summary>Deletes many rows using the provider-native bulk path. SQL Server uses key-only TVP + DELETE JOIN.</summary>
-    public async ValueTask<int> DeleteBulkAsync(string tableName, IReadOnlyCollection<int> ids, string keyColumn = "Id", CancellationToken cancellationToken = default)
-    {
-        if (ids.Count == 0) return 0;
-        await using var c = CreateConnection();
-        await c.OpenAsync(cancellationToken).ConfigureAwait(false);
-        return await ForgeSqlServerTvpBulkExecutor.DeleteAsync(c, tableName, keyColumn, ids, cancellationToken).ConfigureAwait(false);
+    public ValueTask<int> BulkDeleteAsync(string tableName, IReadOnlyCollection<int> ids, string keyColumn = "Id", CancellationToken cancellationToken = default)
+    {        
+        var cmd = Provider.BuildBulkDelete(tableName, keyColumn, ids);
+        return ExecuteAsync(cmd.CommandText, cmd.Parameters, cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -451,7 +385,10 @@ public partial class ForgeDb
     public async ValueTask BulkMergeAsync<T>(IReadOnlyCollection<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default)
     {
         if (rows.Count == 0) return;
-        await UpdateBulkAsync(rows, keyColumn, cancellationToken).ConfigureAwait(false);
+        var table = _metadata.Resolve<T>().TableName;
+        await using var c = CreateConnection();
+        await c.OpenAsync(cancellationToken);
+        await Provider.BulkMergeAsync(c, table, rows, keyColumn, cancellationToken);
     }
 
     /// <summary>

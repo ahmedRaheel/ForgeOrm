@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace ForgeORM.Core;
 
-internal static class BulkFallback
+public static class BulkFallback
 {
     private static readonly ConcurrentDictionary<(Type Type, string Table, string Key), string> UpdateSqlStatementCache = new();
     private static readonly ConcurrentDictionary<(Type Type, string Table), string> InsertSqlStatementCache = new();
@@ -89,6 +89,41 @@ internal static class BulkFallback
 
         var task = ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, cancellationToken);
         return task.IsCompletedSuccessfully ? default : AwaitDiscard(task);
+    }
+
+
+    public static async ValueTask DeleteAsync<TKey>(
+        DbConnection connection,
+        string tableName,
+        IReadOnlyCollection<TKey> keys,
+        string keyColumn,
+        CancellationToken cancellationToken)
+    {
+        if (keys is null || keys.Count == 0)
+            return;
+
+        await using var tx = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            foreach (var key in keys)
+            {
+                await using var command = connection.CreateCommand();
+                command.Transaction = tx;
+                command.CommandText = $"DELETE FROM {tableName} WHERE {keyColumn} = @Id";
+                var parameter = command.CreateParameter();
+                parameter.ParameterName = "@Id";
+                parameter.Value = key;
+                command.Parameters.Add(parameter);
+                await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await tx.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            throw;
+        }
     }
 
     private static async ValueTask AwaitDiscard(ValueTask<int> task)

@@ -6,7 +6,7 @@ using System.Globalization;
 using System.Reflection;
 using ForgeORM.Abstractions;
 using Microsoft.Data.SqlClient;
-using Microsoft.SqlServer.Server;
+using Microsoft.Data.SqlClient.Server;
 
 namespace ForgeORM.Core;
 

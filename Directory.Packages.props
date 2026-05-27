@@ -1,45 +1,32 @@
 <Project>
-
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
-
   <ItemGroup>
-
-  
     <!-- ASP.NET / Swagger -->
     <PackageVersion Include="Swashbuckle.AspNetCore" Version="6.6.2" />
-
-    <!-- Dependency Injection -->
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
-
-    <!-- Caching -->
-    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="8.0.1" />
-    <PackageVersion Include="Microsoft.Extensions.Caching.Abstractions" Version="8.0.0" />
-
-    <!-- ASP.NET -->
     <PackageVersion Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
-
-    <!-- Logging -->
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
-
+    <!-- Microsoft Extensions - aligned with Microsoft.Data.SqlClient 7.0.0 dependency chain -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Abstractions" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Primitives" Version="10.0.0" />
     <!-- SQL Server -->
-    <PackageVersion Include="Microsoft.Data.SqlClient" Version="5.2.2" />
-
+    <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.0.1" />
+    <PackageVersion Include="Microsoft.SqlServer.Server" Version="1.0.0" />
     <!-- PostgreSQL -->
     <PackageVersion Include="Npgsql" Version="8.0.5" />
-
     <!-- MySQL -->
     <PackageVersion Include="MySqlConnector" Version="2.3.7" />
-
     <!-- Oracle -->
     <PackageVersion Include="Oracle.ManagedDataAccess.Core" Version="23.6.1" />
-
     <!-- SQLite -->
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="8.0.10" />
-   
-  <PackageVersion Include="Microsoft.Data.Analysis" Version="0.23.0" />
-   <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.10.0" PrivateAssets="all" />
+    <!-- DataFrame / Analytics -->
+    <PackageVersion Include="Microsoft.Data.Analysis" Version="0.23.0" />
+    <!-- Roslyn -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.10.0" />
   </ItemGroup>
-
 </Project>

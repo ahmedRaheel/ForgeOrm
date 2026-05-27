@@ -1,4 +1,5 @@
 using ForgeORM.Abstractions;
+using Microsoft.Data.SqlClient;
 using Oracle.ManagedDataAccess.Client;
 using System.Collections.Concurrent;
 using System.Data;
@@ -156,6 +157,36 @@ public sealed class OracleForgeProvider : IForgeDatabaseProvider
 internal static class BulkFallback
 {
     private static readonly ConcurrentDictionary<(Type Type, string Table, string Key), string> UpdateSqlCache = new();
+
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <typeparam name="TKey"></typeparam>
+    /// <param name="connection"></param>
+    /// <param name="tableName"></param>
+    /// <param name="keys"></param>
+    /// <param name="keyColumn"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public static async ValueTask<int> DeleteAsync<TKey>(
+    DbConnection connection,
+    string tableName,
+    IReadOnlyCollection<TKey> keys,
+    string keyColumn,
+    CancellationToken cancellationToken = default)
+    {
+        if (keys.Count == 0)
+            return 0;
+        await
+                 OracleNativeBulk.BulkDeleteAsync(
+                     connection,
+                     tableName,
+                     keys,
+                     keyColumn,
+                     cancellationToken);
+        return 1;
+    }
+
     /// <summary>
     /// Executes the T operation.
     /// </summary>

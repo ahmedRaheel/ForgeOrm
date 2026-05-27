@@ -1,4 +1,5 @@
 using ForgeORM.Abstractions;
+using Microsoft.Data.SqlClient;
 using MySqlConnector;
 using System;
 using System.Collections.Concurrent;
@@ -145,6 +146,44 @@ public sealed class MySqlForgeProvider : IForgeDatabaseProvider
 internal static class BulkFallback
 {
     private static readonly ConcurrentDictionary<(Type Type, string Table, string Key), string> UpdateSqlStatementCache = new();
+
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <typeparam name="TKey"></typeparam>
+    /// <param name="connection"></param>
+    /// <param name="tableName"></param>
+    /// <param name="keys"></param>
+    /// <param name="keyColumn"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public static async ValueTask<int> DeleteAsync<TKey>(
+    DbConnection connection,
+    string tableName,
+    IReadOnlyCollection<TKey> keys,
+    string keyColumn,
+    CancellationToken cancellationToken = default)
+    {
+        if (keys.Count == 0)
+            return 0;
+       await MySqlNativeBulk.BulkDeleteAsync(
+                    connection,
+                    tableName,
+                    keys,
+                    keyColumn,
+                    cancellationToken);
+        return 1;
+
+    }
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="connection"></param>
+    /// <param name="tableName"></param>
+    /// <param name="rows"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
     public static ValueTask InsertAsync<T>(
        DbConnection connection,
        string tableName,

@@ -1,3 +1,4 @@
+using ForgeORM.Core.Graph;
 using System.Data.Common;
 
 namespace ForgeORM.Core;

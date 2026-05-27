@@ -160,43 +160,12 @@ internal static class BulkFallback
         if (keys.Count == 0)
             return ValueTask.FromResult(0);
 
-        return connection switch
-        {
-            SqlConnection sql =>
-                SqlServerNativeBulk.BulkDeleteAsync(
-                    sql,
-                    tableName,
-                    keys,
-                    keyColumn,
-                    cancellationToken),
-
-            NpgsqlConnection pg =>
-                PostgreSqlNativeBulk.BulkDeleteAsync(
-                    pg,
-                    tableName,
-                    keys,
-                    keyColumn,
-                    cancellationToken),
-
-            MySqlConnection my =>
-                MySqlNativeBulk.BulkDeleteAsync(
-                    my,
-                    tableName,
-                    keys,
-                    keyColumn,
-                    cancellationToken),
-
-            OracleConnection oracle =>
-                OracleNativeBulk.BulkDeleteAsync(
-                    oracle,
-                    tableName,
-                    keys,
-                    keyColumn,
-                    cancellationToken),
-
-            _ => throw new NotSupportedException(
-                $"Bulk delete is not supported for provider '{connection.GetType().Name}'.")
-        };
+     return   SqlServerNativeBulk.BulkDeleteAsync(
+                     connection,
+                     tableName,
+                     keys,
+                     keyColumn,
+                     cancellationToken);
     }
 
     /// <summary>

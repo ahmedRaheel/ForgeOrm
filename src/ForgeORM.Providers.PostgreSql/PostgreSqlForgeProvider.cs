@@ -1,7 +1,8 @@
+using ForgeORM.Abstractions;
+using Microsoft.Data.SqlClient;
+using Npgsql;
 using System.Data.Common;
 using System.Reflection;
-using ForgeORM.Abstractions;
-using Npgsql;
 
 namespace ForgeORM.Providers.PostgreSql;
 
@@ -151,6 +152,35 @@ public sealed class PostgreSqlForgeProvider : IForgeDatabaseProvider
 
 internal static class BulkFallback
 {
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <typeparam name="TKey"></typeparam>
+    /// <param name="connection"></param>
+    /// <param name="tableName"></param>
+    /// <param name="keys"></param>
+    /// <param name="keyColumn"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    public static async ValueTask<int> DeleteAsync<TKey>(
+    DbConnection connection,
+    string tableName,
+    IReadOnlyCollection<TKey> keys,
+    string keyColumn,
+    CancellationToken cancellationToken = default)
+    {
+        if (keys.Count == 0)
+            return 0;
+
+       await  PostgreSqlNativeBulk.BulkDeleteAsync(
+                    connection,
+                    tableName,
+                    keys,
+                    keyColumn,
+                    cancellationToken);
+        return 1;
+    }
+
     /// <summary>
     /// Executes the T operation.
     /// </summary>

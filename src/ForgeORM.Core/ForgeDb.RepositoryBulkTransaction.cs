@@ -110,7 +110,15 @@ public partial class ForgeDb
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="c">The c value.</param>
     /// <returns>The result of the T operation.</returns>
-    public int Update<T>(T entity) { var c = Provider.BuildUpdate(_metadata.Resolve<T>(), entity!); return Execute(c.CommandText, c.Parameters); }
+    public int Update<T>(T entity)
+    {
+        var metadata = _metadata.Resolve<T>();
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return ForgeSqlServerProviderDirectHotPath.UpdateEntity(_connectionString, metadata, entity!, timeoutSeconds: null);
+
+        var c = Provider.BuildUpdate(metadata, entity!);
+        return Execute(c.CommandText, c.Parameters);
+    }
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -118,14 +126,41 @@ public partial class ForgeDb
     /// <param name="entity">The entity value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public ValueTask<int> UpdateAsync<T>(T entity, CancellationToken cancellationToken = default) { var c = Provider.BuildUpdate(_metadata.Resolve<T>(), entity!); return ExecuteAsync(c.CommandText, c.Parameters, cancellationToken: cancellationToken); }
+    public ValueTask<int> UpdateAsync<T>(T entity, CancellationToken cancellationToken = default)
+    {
+        var metadata = _metadata.Resolve<T>();
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return ForgeSqlServerProviderDirectHotPath.UpdateEntityAsync(_connectionString, metadata, entity!, timeoutSeconds: null, cancellationToken);
+
+        var c = Provider.BuildUpdate(metadata, entity!);
+        return ExecuteAsync(c.CommandText, c.Parameters, cancellationToken: cancellationToken);
+    }
     /// <summary>
     /// Executes the T operation.
     /// </summary>
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="c">The c value.</param>
     /// <returns>The result of the T operation.</returns>
-    public int Delete<T>(object id) { var c = Provider.BuildDelete(_metadata.Resolve<T>(), id); return Execute(c.CommandText, c.Parameters); }
+    public int Delete<T>(object id)
+    {
+        var metadata = _metadata.Resolve<T>();
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return ForgeSqlServerProviderDirectHotPath.DeleteEntity(_connectionString, metadata, id, timeoutSeconds: null);
+
+        var c = Provider.BuildDelete(metadata, id);
+        return Execute(c.CommandText, c.Parameters);
+    }
+
+    /// <summary>Deletes one row by the configured key without boxing the key value at the public API.</summary>
+    public int Delete<T, TKey>(TKey id)
+    {
+        var metadata = _metadata.Resolve<T>();
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return ForgeSqlServerProviderDirectHotPath.DeleteEntity(_connectionString, metadata, id!, timeoutSeconds: null);
+
+        var c = Provider.BuildDelete(metadata, id!);
+        return Execute(c.CommandText, c.Parameters);
+    }
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -133,7 +168,26 @@ public partial class ForgeDb
     /// <param name="id">The id value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public ValueTask<int> DeleteAsync<T>(object id, CancellationToken cancellationToken = default) { var c = Provider.BuildDelete(_metadata.Resolve<T>(), id); return ExecuteAsync(c.CommandText, c.Parameters, cancellationToken: cancellationToken); }
+    public ValueTask<int> DeleteAsync<T>(object id, CancellationToken cancellationToken = default)
+    {
+        var metadata = _metadata.Resolve<T>();
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return ForgeSqlServerProviderDirectHotPath.DeleteEntityAsync(_connectionString, metadata, id, timeoutSeconds: null, cancellationToken);
+
+        var c = Provider.BuildDelete(metadata, id);
+        return ExecuteAsync(c.CommandText, c.Parameters, cancellationToken: cancellationToken);
+    }
+
+    /// <summary>Deletes one row by the configured key without boxing the key value at the public API.</summary>
+    public ValueTask<int> DeleteAsync<T, TKey>(TKey id, CancellationToken cancellationToken = default)
+    {
+        var metadata = _metadata.Resolve<T>();
+        if (ForgeSqlServerProviderDirectHotPath.CanUse(Provider))
+            return ForgeSqlServerProviderDirectHotPath.DeleteEntityAsync(_connectionString, metadata, id!, timeoutSeconds: null, cancellationToken);
+
+        var c = Provider.BuildDelete(metadata, id!);
+        return ExecuteAsync(c.CommandText, c.Parameters, cancellationToken: cancellationToken);
+    }
 
     /// <summary>
     /// Executes the T operation.

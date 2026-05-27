@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using System.Reflection;
+using System.Linq.Expressions;
 using System.Text;
 using ForgeORM.Abstractions;
 using ForgeORM.Core;
@@ -19,6 +20,9 @@ namespace ForgeORM.Core.Performance;
 internal static class ForgeSqlServerProviderDirectHotPath
 {
     private static readonly ConcurrentDictionary<Type, SqlServerEntityPlan> GetByIdPlans = new();
+    private static readonly ConcurrentDictionary<Type, SqlServerUpdatePlan> UpdatePlans = new();
+    private static readonly ConcurrentDictionary<Type, SqlServerDeletePlan> DeletePlans = new();
+    private static readonly ConcurrentDictionary<PropertyAccessorKey, Func<object, object?>> PropertyAccessors = new();
     private static readonly ConcurrentDictionary<SqlQueryPlanKey, SqlQueryPlan> QueryPlans = new();
     private static readonly ConcurrentDictionary<string, string[]> SqlParameterTokenCache = new(StringComparer.Ordinal);
 
@@ -103,6 +107,76 @@ internal static class ForgeSqlServerProviderDirectHotPath
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var command = CreateTextCommand(connection, sql, parameters, null, timeoutSeconds);
         return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+
+    public static int UpdateEntity<T>(string connectionString, ForgeEntityMetadata metadata, T entity, int? timeoutSeconds)
+    {
+        var plan = UpdatePlans.GetOrAdd(metadata.EntityType, _ => BuildUpdatePlan(metadata));
+        using var connection = new SqlConnection(connectionString);
+        connection.Open();
+        using var command = CreateUpdateCommand(connection, plan, entity!, null, timeoutSeconds);
+        return command.ExecuteNonQuery();
+    }
+
+    public static async ValueTask<int> UpdateEntityAsync<T>(string connectionString, ForgeEntityMetadata metadata, T entity, int? timeoutSeconds, CancellationToken cancellationToken)
+    {
+        var plan = UpdatePlans.GetOrAdd(metadata.EntityType, _ => BuildUpdatePlan(metadata));
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = CreateUpdateCommand(connection, plan, entity!, null, timeoutSeconds);
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public static int DeleteEntity(string connectionString, ForgeEntityMetadata metadata, object id, int? timeoutSeconds)
+    {
+        var plan = DeletePlans.GetOrAdd(metadata.EntityType, _ => BuildDeletePlan(metadata));
+        using var connection = new SqlConnection(connectionString);
+        connection.Open();
+        using var command = CreateDeleteCommand(connection, plan, id, null, timeoutSeconds);
+        return command.ExecuteNonQuery();
+    }
+
+    public static async ValueTask<int> DeleteEntityAsync(string connectionString, ForgeEntityMetadata metadata, object id, int? timeoutSeconds, CancellationToken cancellationToken)
+    {
+        var plan = DeletePlans.GetOrAdd(metadata.EntityType, _ => BuildDeletePlan(metadata));
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = CreateDeleteCommand(connection, plan, id, null, timeoutSeconds);
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static SqlCommand CreateUpdateCommand(SqlConnection connection, SqlServerUpdatePlan plan, object entity, SqlTransaction? transaction, int? timeoutSeconds)
+    {
+        var command = connection.CreateCommand();
+        command.CommandText = plan.Sql;
+        command.CommandType = CommandType.Text;
+        if (transaction is not null)
+            command.Transaction = transaction;
+        if (timeoutSeconds.HasValue)
+            command.CommandTimeout = timeoutSeconds.Value;
+
+        for (var i = 0; i < plan.Properties.Length; i++)
+        {
+            var property = plan.Properties[i];
+            var value = plan.Accessors[i](entity);
+            AddTypedParameter(command, plan.ParameterNames[i], value, property.PropertyType);
+        }
+
+        return command;
+    }
+
+    private static SqlCommand CreateDeleteCommand(SqlConnection connection, SqlServerDeletePlan plan, object id, SqlTransaction? transaction, int? timeoutSeconds)
+    {
+        var command = connection.CreateCommand();
+        command.CommandText = plan.Sql;
+        command.CommandType = CommandType.Text;
+        if (transaction is not null)
+            command.Transaction = transaction;
+        if (timeoutSeconds.HasValue)
+            command.CommandTimeout = timeoutSeconds.Value;
+        AddTypedParameter(command, plan.ParameterName, id, plan.KeyType);
+        return command;
     }
 
     public static T? ExecuteScalar<T>(string connectionString, string sql, object? parameters, int? timeoutSeconds)
@@ -192,6 +266,93 @@ internal static class ForgeSqlServerProviderDirectHotPath
         EnsureReferencedSqlParametersAreBound(command, plan.ParameterNames, parameters);
         ValidateNoUnboundSqlParameters(command, plan.ParameterNames);
         return command;
+    }
+
+
+    private static SqlServerUpdatePlan BuildUpdatePlan(ForgeEntityMetadata metadata)
+    {
+        ForgePropertyMetadata? key = null;
+        var mutable = new List<ForgePropertyMetadata>(metadata.Properties.Count);
+
+        for (var i = 0; i < metadata.Properties.Count; i++)
+        {
+            var property = metadata.Properties[i];
+            if (property.IsKey || string.Equals(property.ColumnName, metadata.KeyColumn, StringComparison.OrdinalIgnoreCase))
+            {
+                key ??= property;
+                continue;
+            }
+
+            if (property.IsComputed || string.IsNullOrWhiteSpace(property.ColumnName))
+                continue;
+
+            mutable.Add(property);
+        }
+
+        key ??= FindKeyProperty(metadata);
+        if (key is null)
+            throw new InvalidOperationException($"ForgeORM cannot build an update plan for '{metadata.EntityType.FullName}' because no key column/property was found.");
+
+        var builder = new StringBuilder(metadata.Properties.Count * 32);
+        builder.Append("UPDATE ").Append(metadata.TableName).Append(" SET ");
+        for (var i = 0; i < mutable.Count; i++)
+        {
+            if (i != 0)
+                builder.Append(", ");
+            builder.Append(mutable[i].ColumnName).Append(" = @").Append(mutable[i].PropertyName);
+        }
+        builder.Append(" WHERE ").Append(metadata.KeyColumn).Append(" = @").Append(key.PropertyName);
+
+        var allProperties = new ForgePropertyMetadata[mutable.Count + 1];
+        var parameterNames = new string[allProperties.Length];
+        var accessors = new Func<object, object?>[allProperties.Length];
+        for (var i = 0; i < mutable.Count; i++)
+        {
+            allProperties[i] = mutable[i];
+            parameterNames[i] = "@" + mutable[i].PropertyName;
+            accessors[i] = GetPropertyAccessor(metadata.EntityType, mutable[i].PropertyName);
+        }
+
+        allProperties[^1] = key;
+        parameterNames[^1] = "@" + key.PropertyName;
+        accessors[^1] = GetPropertyAccessor(metadata.EntityType, key.PropertyName);
+        return new SqlServerUpdatePlan(builder.ToString(), allProperties, parameterNames, accessors);
+    }
+
+    private static SqlServerDeletePlan BuildDeletePlan(ForgeEntityMetadata metadata)
+    {
+        var key = FindKeyProperty(metadata);
+        var parameterName = "@" + (key?.PropertyName ?? metadata.KeyColumn);
+        var sql = $"DELETE FROM {metadata.TableName} WHERE {metadata.KeyColumn} = {parameterName}";
+        return new SqlServerDeletePlan(sql, parameterName, key?.PropertyType ?? typeof(object));
+    }
+
+    private static ForgePropertyMetadata? FindKeyProperty(ForgeEntityMetadata metadata)
+    {
+        for (var i = 0; i < metadata.Properties.Count; i++)
+        {
+            var property = metadata.Properties[i];
+            if (property.IsKey || string.Equals(property.ColumnName, metadata.KeyColumn, StringComparison.OrdinalIgnoreCase) || string.Equals(property.PropertyName, metadata.KeyColumn, StringComparison.OrdinalIgnoreCase))
+                return property;
+        }
+
+        return null;
+    }
+
+    private static Func<object, object?> GetPropertyAccessor(Type entityType, string propertyName)
+        => PropertyAccessors.GetOrAdd(new PropertyAccessorKey(entityType, propertyName), static key => BuildPropertyAccessor(key.EntityType, key.PropertyName));
+
+    private static Func<object, object?> BuildPropertyAccessor(Type entityType, string propertyName)
+    {
+        var property = entityType.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+        if (property is null || !property.CanRead)
+            throw new InvalidOperationException($"ForgeORM cannot build a write plan for '{entityType.FullName}' because readable property '{propertyName}' was not found.");
+
+        var instance = Expression.Parameter(typeof(object), "entity");
+        var converted = Expression.Convert(instance, entityType);
+        var access = Expression.Property(converted, property);
+        var boxed = Expression.Convert(access, typeof(object));
+        return Expression.Lambda<Func<object, object?>>(boxed, instance).Compile();
     }
 
     private static SqlServerEntityPlan BuildGetByIdPlan(ForgeEntityMetadata metadata)
@@ -627,6 +788,9 @@ internal static class ForgeSqlServerProviderDirectHotPath
 
     private readonly record struct ExpandedSql(string Sql, object? Parameters);
     private sealed record SqlServerEntityPlan(string Sql, string ParameterName, Type KeyType);
+    private sealed record SqlServerUpdatePlan(string Sql, ForgePropertyMetadata[] Properties, string[] ParameterNames, Func<object, object?>[] Accessors);
+    private sealed record SqlServerDeletePlan(string Sql, string ParameterName, Type KeyType);
+    private readonly record struct PropertyAccessorKey(Type EntityType, string PropertyName);
     private readonly record struct SqlQueryPlanKey(string Sql, Type? ParameterType);
     private sealed record SqlQueryPlan(string Sql, string[] ParameterNames);
 }

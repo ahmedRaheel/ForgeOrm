@@ -1,3 +1,4 @@
+using ForgeORM.Core;
 using Oracle.ManagedDataAccess.Client;
 
 namespace ForgeORM.Providers.Oracle;
@@ -11,7 +12,7 @@ internal static class OracleNativeBulkRouting
 {
     public static async ValueTask<int> InsertAsync<T>(
         OracleConnection connection,
-        OracleBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken = default)
     {
@@ -24,7 +25,7 @@ internal static class OracleNativeBulkRouting
 
     public static async ValueTask<int> UpdateAsync<T>(
         OracleConnection connection,
-        OracleBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         string keyColumn,
         CancellationToken cancellationToken = default)
@@ -38,7 +39,7 @@ internal static class OracleNativeBulkRouting
 
     public static async ValueTask<int> DeleteAsync<TKey>(
         OracleConnection connection,
-        OracleBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<TKey> keys,
         string keyColumn,
         CancellationToken cancellationToken = default)

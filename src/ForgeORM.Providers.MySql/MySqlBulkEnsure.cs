@@ -1,4 +1,5 @@
 using System.Text;
+using ForgeORM.Core;
 using MySqlConnector;
 
 namespace ForgeORM.Providers.MySql;
@@ -7,7 +8,7 @@ internal static class MySqlBulkEnsure
 {
     public static async ValueTask EnsureTempTableAsync(
         MySqlConnection connection,
-        MySqlBulkPlan plan,
+        ForgeBulkPlan plan,
         CancellationToken cancellationToken = default)
     {
         await using var command = connection.CreateCommand();
@@ -15,7 +16,7 @@ internal static class MySqlBulkEnsure
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static string BuildCreateTempTableSql(MySqlBulkPlan plan)
+    private static string BuildCreateTempTableSql(ForgeBulkPlan plan)
     {
         var sb = new StringBuilder();
         sb.Append("CREATE TEMPORARY TABLE IF NOT EXISTS ").Append(Quote(plan.TempTableName)).Append(" (");

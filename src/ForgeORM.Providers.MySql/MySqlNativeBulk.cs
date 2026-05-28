@@ -6,17 +6,18 @@ namespace ForgeORM.Providers.MySql;
 
 internal static class MySqlNativeBulk
 {
-    public static async ValueTask BulkInsertAsync<T>(
+    public static async ValueTask<int> BulkInsertAsync<T>(
         DbConnection connection,
         string tableName,
         IReadOnlyCollection<T> rows,
         CancellationToken cancellationToken = default)
     {
         if (rows is null || rows.Count == 0)
-            return;
+            return 0;
 
         await BulkFallback.InsertAsync(connection, tableName, rows, cancellationToken)
             .ConfigureAwait(false);
+        return rows.Count;
     }
 
     public static async ValueTask BulkUpdateAsync<T>(
@@ -30,10 +31,10 @@ internal static class MySqlNativeBulk
             return;
 
         await BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken)
-            .ConfigureAwait(false);
+            .ConfigureAwait(false);        
     }
 
-    public static async ValueTask BulkDeleteAsync<TKey>(
+    public static async ValueTask<int> BulkDeleteAsync<TKey>(
         DbConnection connection,
         string tableName,
         IReadOnlyCollection<TKey> keys,
@@ -41,10 +42,11 @@ internal static class MySqlNativeBulk
         CancellationToken cancellationToken = default)
     {
         if (keys is null || keys.Count == 0)
-            return;
+            return  0;
 
         await BulkFallback.DeleteAsync(connection, tableName, keys, keyColumn, cancellationToken)
             .ConfigureAwait(false);
+        return keys.Count;
     }
 
     internal static PropertyInfo[] GetBulkProperties<T>()

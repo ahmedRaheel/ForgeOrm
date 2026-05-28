@@ -1,3 +1,4 @@
+using ForgeORM.Core;
 using Npgsql;
 
 namespace ForgeORM.Providers.PostgreSql;
@@ -13,7 +14,7 @@ internal static class PostgreSqlNativeBulkRouting
 {
     public static async ValueTask<int> InsertAsync<T>(
         NpgsqlConnection connection,
-        PostgreSqlBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken = default)
     {
@@ -26,7 +27,7 @@ internal static class PostgreSqlNativeBulkRouting
 
     public static async ValueTask<int> UpdateAsync<T>(
         NpgsqlConnection connection,
-        PostgreSqlBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         string keyColumn,
         CancellationToken cancellationToken = default)
@@ -34,13 +35,14 @@ internal static class PostgreSqlNativeBulkRouting
         await PostgreSqlBulkEnsure.EnsureTempTableAsync(connection, plan, cancellationToken)
             .ConfigureAwait(false);
 
-        return await PostgreSqlNativeBulk.BulkUpdateAsync(connection, plan.TableName, rows, keyColumn, cancellationToken)
+        await PostgreSqlNativeBulk.BulkUpdateAsync(connection, plan.TableName, rows, keyColumn, cancellationToken)
             .ConfigureAwait(false);
+        return rows.Count;
     }
 
     public static async ValueTask<int> DeleteAsync<TKey>(
         NpgsqlConnection connection,
-        PostgreSqlBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<TKey> keys,
         string keyColumn,
         CancellationToken cancellationToken = default)
@@ -48,7 +50,8 @@ internal static class PostgreSqlNativeBulkRouting
         await PostgreSqlBulkEnsure.EnsureTempTableAsync(connection, plan, cancellationToken)
             .ConfigureAwait(false);
 
-        return await PostgreSqlNativeBulk.BulkDeleteAsync(connection, plan.TableName, keys, keyColumn, cancellationToken)
+        await PostgreSqlNativeBulk.BulkDeleteAsync(connection, plan.TableName, keys, keyColumn, cancellationToken)
             .ConfigureAwait(false);
+        return keys.Count;
     }
 }

@@ -1,3 +1,4 @@
+using ForgeORM.Core;
 using MySqlConnector;
 
 namespace ForgeORM.Providers.MySql;
@@ -13,7 +14,7 @@ internal static class MySqlNativeBulkRouting
 {
     public static async ValueTask<int> InsertAsync<T>(
         MySqlConnection connection,
-        MySqlBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken = default)
     {
@@ -26,7 +27,7 @@ internal static class MySqlNativeBulkRouting
 
     public static async ValueTask<int> UpdateAsync<T>(
         MySqlConnection connection,
-        MySqlBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         string keyColumn,
         CancellationToken cancellationToken = default)
@@ -34,13 +35,14 @@ internal static class MySqlNativeBulkRouting
         await MySqlBulkEnsure.EnsureTempTableAsync(connection, plan, cancellationToken)
             .ConfigureAwait(false);
 
-        return await MySqlNativeBulk.BulkUpdateAsync(connection, plan.TableName, rows, keyColumn, cancellationToken)
+        await MySqlNativeBulk.BulkUpdateAsync(connection, plan.TableName, rows, keyColumn, cancellationToken)
             .ConfigureAwait(false);
+        return rows.Count;
     }
 
     public static async ValueTask<int> DeleteAsync<TKey>(
         MySqlConnection connection,
-        MySqlBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<TKey> keys,
         string keyColumn,
         CancellationToken cancellationToken = default)

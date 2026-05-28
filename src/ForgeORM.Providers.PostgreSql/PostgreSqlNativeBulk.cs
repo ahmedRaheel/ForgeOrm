@@ -7,17 +7,18 @@ namespace ForgeORM.Providers.PostgreSql;
 
 internal static class PostgreSqlNativeBulk
 {
-    public static async ValueTask BulkInsertAsync<T>(
+    public static async ValueTask<int> BulkInsertAsync<T>(
         DbConnection connection,
         string tableName,
         IReadOnlyCollection<T> rows,
         CancellationToken cancellationToken = default)
     {
         if (rows is null || rows.Count == 0)
-            return;
+            return 0;
 
         // COPY can be plugged in here. Safe provider-native fallback uses batched parameterized SQL.
         await BulkFallback.InsertAsync(connection, tableName, rows, cancellationToken).ConfigureAwait(false);
+        return rows.Count;
     }
 
     public static async ValueTask BulkUpdateAsync<T>(

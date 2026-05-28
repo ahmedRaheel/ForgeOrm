@@ -1,0 +1,42 @@
+FINAL FORGEORM BULK ARCHITECTURE
+
+SUPPORTED:
+- provider-native bulk pipelines
+- operation-specific strategy selection
+- default fastest provider strategy
+- SQL Server SqlDataRecord
+- SQL Server TVP fallback
+- optional SqlBulkCopy
+- PostgreSQL COPY/temp-table flow
+- MySQL temp-table join flow
+- Oracle array-binding/MERGE flow
+- graph updates
+- MERGE updates
+- DELETE JOIN
+- enterprise scalability
+
+DEFAULT MATRIX
+
+SQL Server
+Insert      -> SqlDataRecord
+Update      -> SqlDataRecord
+Delete      -> SqlDataRecord
+GraphUpdate -> SqlDataRecord
+
+PostgreSQL
+Insert      -> PostgreSqlCopy
+Update      -> PostgreSqlTempTable
+Delete      -> PostgreSqlTempTable
+GraphUpdate -> PostgreSqlTempTable
+
+MySQL
+Insert      -> MySqlMultiRow
+Update      -> MySqlTempTable
+Delete      -> MySqlTempTable
+GraphUpdate -> MySqlTempTable
+
+Oracle
+Insert      -> OracleArrayBinding
+Update      -> OracleMerge
+Delete      -> OracleMerge
+GraphUpdate -> OracleMerge

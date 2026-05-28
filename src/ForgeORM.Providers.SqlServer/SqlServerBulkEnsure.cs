@@ -1,8 +1,9 @@
+using ForgeORM.Core;
+using Microsoft.Data.SqlClient;
 using System.Collections.Concurrent;
 using System.Data;
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.Data.SqlClient;
 
 namespace ForgeORM.Providers.SqlServer;
 
@@ -32,14 +33,14 @@ internal static class SqlServerBulkEnsure
 
     public static async ValueTask EnsureTableTypeCompatibleAsync(
         SqlConnection connection,
-        SqlServerBulkPlan plan,
+        ForgeBulkPlan plan,
         SqlServerTableTypePurpose purpose,
         CancellationToken cancellationToken = default)
     {
         var schema = string.IsNullOrWhiteSpace(plan.SchemaName) ? "dbo" : plan.SchemaName;
         var typeName = purpose == SqlServerTableTypePurpose.DeleteKeyOnly
-            ? plan.KeyTableTypeName
-            : plan.TableTypeName;
+            ? plan.TvpTypeName
+            : plan.TvpTypeName;
 
         var expectedHash = BuildHash(plan, purpose);
         var cacheKey = $"{connection.DataSource}|{connection.Database}|{schema}.{typeName}|{expectedHash}";
@@ -115,7 +116,7 @@ internal static class SqlServerBulkEnsure
         return Sha256(sb.ToString());
     }
 
-    private static string BuildHash(SqlServerBulkPlan plan, SqlServerTableTypePurpose purpose)
+    private static string BuildHash(ForgeBulkPlan plan, SqlServerTableTypePurpose purpose)
     {
         var sb = new StringBuilder();
 
@@ -143,7 +144,7 @@ internal static class SqlServerBulkEnsure
         SqlConnection connection,
         string schema,
         string typeName,
-        SqlServerBulkPlan plan,
+        ForgeBulkPlan plan,
         SqlServerTableTypePurpose purpose,
         CancellationToken cancellationToken)
     {
@@ -169,7 +170,7 @@ internal static class SqlServerBulkEnsure
     private static string BuildCreateTypeSql(
         string schema,
         string typeName,
-        SqlServerBulkPlan plan,
+        ForgeBulkPlan plan,
         SqlServerTableTypePurpose purpose)
     {
         var sb = new StringBuilder();

@@ -1,3 +1,4 @@
+using ForgeORM.Core;
 using ForgeORM.Core.Bulk;
 using Npgsql;
 
@@ -14,7 +15,7 @@ internal static class PostgreSqlBulkCompleteRouter
 {
     public static async ValueTask<int> InsertBulkAsync<T>(
         NpgsqlConnection connection,
-        PostgreSqlBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         ForgeProviderBulkOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -29,7 +30,7 @@ internal static class PostgreSqlBulkCompleteRouter
 
     public static async ValueTask<int> UpdateBulkAsync<T>(
         NpgsqlConnection connection,
-        PostgreSqlBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         string keyColumn,
         ForgeProviderBulkOptions? options = null,
@@ -37,12 +38,13 @@ internal static class PostgreSqlBulkCompleteRouter
     {
         if (rows.Count == 0) return 0;
         await PostgreSqlBulkEnsure.EnsureTempTableAsync(connection, plan, cancellationToken).ConfigureAwait(false);
-        return await PostgreSqlNativeBulk.BulkUpdateAsync(connection, plan.TableName, rows, keyColumn, cancellationToken).ConfigureAwait(false);
+        await PostgreSqlNativeBulk.BulkUpdateAsync(connection, plan.TableName, rows, keyColumn, cancellationToken).ConfigureAwait(false);
+        return rows.Count;
     }
 
     public static async ValueTask<int> DeleteBulkAsync<TKey>(
         NpgsqlConnection connection,
-        PostgreSqlBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<TKey> keys,
         string keyColumn,
         ForgeProviderBulkOptions? options = null,
@@ -50,12 +52,13 @@ internal static class PostgreSqlBulkCompleteRouter
     {
         if (keys.Count == 0) return 0;
         await PostgreSqlBulkEnsure.EnsureTempTableAsync(connection, plan, cancellationToken).ConfigureAwait(false);
-        return await PostgreSqlNativeBulk.BulkDeleteAsync(connection, plan.TableName, keys, keyColumn, cancellationToken).ConfigureAwait(false);
+        await PostgreSqlNativeBulk.BulkDeleteAsync(connection, plan.TableName, keys, keyColumn, cancellationToken).ConfigureAwait(false);
+        return keys.Count;  
     }
 
     public static ValueTask<int> GraphUpdateAsync<T>(
         NpgsqlConnection connection,
-        PostgreSqlBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         string keyColumn,
         ForgeProviderBulkOptions? options = null,
@@ -64,7 +67,7 @@ internal static class PostgreSqlBulkCompleteRouter
 
     private static async ValueTask<int> InsertViaTempTableAsync<T>(
         NpgsqlConnection connection,
-        PostgreSqlBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken)
     {

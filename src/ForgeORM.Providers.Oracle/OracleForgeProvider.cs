@@ -114,7 +114,7 @@ public sealed class OracleForgeProvider : IForgeDatabaseProvider
     /// <param name="rows">The rows value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public ValueTask BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default) => OracleNativeBulk.BulkInsertAsync(connection, tableName, rows, cancellationToken);
+    public ValueTask<int> BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default) => OracleNativeBulk.BulkInsertAsync(connection, tableName, rows, cancellationToken);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -125,7 +125,7 @@ public sealed class OracleForgeProvider : IForgeDatabaseProvider
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public ValueTask BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+    public ValueTask<int> BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
     /// <summary>
     /// Executes the T operation.
     /// </summary>

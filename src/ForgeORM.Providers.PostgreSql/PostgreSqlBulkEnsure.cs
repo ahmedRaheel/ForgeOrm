@@ -1,4 +1,5 @@
 using System.Text;
+using ForgeORM.Core;
 using Npgsql;
 
 namespace ForgeORM.Providers.PostgreSql;
@@ -7,7 +8,7 @@ internal static class PostgreSqlBulkEnsure
 {
     public static async ValueTask EnsureTempTableAsync(
         NpgsqlConnection connection,
-        PostgreSqlBulkPlan plan,
+        ForgeBulkPlan plan,
         CancellationToken cancellationToken = default)
     {
         await using var command = connection.CreateCommand();
@@ -15,7 +16,7 @@ internal static class PostgreSqlBulkEnsure
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static string BuildCreateTempTableSql(PostgreSqlBulkPlan plan)
+    private static string BuildCreateTempTableSql(ForgeBulkPlan plan)
     {
         var sb = new StringBuilder();
         sb.Append("CREATE TEMP TABLE IF NOT EXISTS ").Append(Quote(plan.TempTableName)).Append(" (");

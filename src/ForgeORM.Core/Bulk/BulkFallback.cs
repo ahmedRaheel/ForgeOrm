@@ -53,3 +53,15 @@ internal static class BulkFallback
         _ = await task.ConfigureAwait(false);
     }
 }
+
+public sealed class ForgeBulkColumn
+{
+    public required string ColumnName { get; init; }
+    public required string QuotedColumnName { get; init; }
+    public required Type ClrType { get; init; }
+    public required Func<object, object?> Getter { get; init; }
+
+    public int? Length { get; init; }
+    public byte? Precision { get; init; }
+    public byte? Scale { get; init; }
+}

@@ -1,3 +1,4 @@
+using ForgeORM.Core;
 using ForgeORM.Core.Bulk;
 using Oracle.ManagedDataAccess.Client;
 
@@ -14,7 +15,7 @@ internal static class OracleBulkCompleteRouter
 {
     public static async ValueTask<int> InsertBulkAsync<T>(
         OracleConnection connection,
-        OracleBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         ForgeProviderBulkOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -26,7 +27,7 @@ internal static class OracleBulkCompleteRouter
 
     public static async ValueTask<int> UpdateBulkAsync<T>(
         OracleConnection connection,
-        OracleBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         string keyColumn,
         ForgeProviderBulkOptions? options = null,
@@ -39,7 +40,7 @@ internal static class OracleBulkCompleteRouter
 
     public static async ValueTask<int> DeleteBulkAsync<TKey>(
         OracleConnection connection,
-        OracleBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<TKey> keys,
         string keyColumn,
         ForgeProviderBulkOptions? options = null,
@@ -52,7 +53,7 @@ internal static class OracleBulkCompleteRouter
 
     public static ValueTask<int> GraphUpdateAsync<T>(
         OracleConnection connection,
-        OracleBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         string keyColumn,
         ForgeProviderBulkOptions? options = null,

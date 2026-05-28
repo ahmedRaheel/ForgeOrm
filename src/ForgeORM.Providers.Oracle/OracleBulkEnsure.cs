@@ -1,3 +1,4 @@
+using ForgeORM.Core;
 using Oracle.ManagedDataAccess.Client;
 
 namespace ForgeORM.Providers.Oracle;
@@ -6,7 +7,7 @@ internal static class OracleBulkEnsure
 {
     public static ValueTask EnsureArrayBindingReadyAsync(
         OracleConnection connection,
-        OracleBulkPlan plan,
+        ForgeBulkPlan plan,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(connection);

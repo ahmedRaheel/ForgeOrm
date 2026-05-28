@@ -1,8 +1,9 @@
 using System.Collections;
 using System.Data;
+using ForgeORM.Core;
 using ForgeORM.Core.Bulk;
 using Microsoft.Data.SqlClient;
-using Microsoft.SqlServer.Server;
+using Microsoft.Data.SqlClient.Server;
 
 namespace ForgeORM.Providers.SqlServer;
 
@@ -16,7 +17,7 @@ internal static class SqlServerBulkCompleteRouter
 {
     public static async ValueTask<int> InsertBulkAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         ForgeProviderBulkOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -62,7 +63,7 @@ internal static class SqlServerBulkCompleteRouter
 
     public static async ValueTask<int> UpdateBulkAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         ForgeProviderBulkOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -102,7 +103,7 @@ internal static class SqlServerBulkCompleteRouter
 
     public static async ValueTask<int> DeleteBulkAsync<TKey>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<TKey> keys,
         ForgeProviderBulkOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -142,7 +143,7 @@ internal static class SqlServerBulkCompleteRouter
 
     public static ValueTask<int> GraphUpdateAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         ForgeProviderBulkOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -150,7 +151,7 @@ internal static class SqlServerBulkCompleteRouter
 
     private static async ValueTask<int> InsertWithSqlDataRecordTvpAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken)
     {
@@ -166,7 +167,7 @@ internal static class SqlServerBulkCompleteRouter
 
     private static async ValueTask<int> UpdateWithSqlDataRecordTvpAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken)
     {
@@ -182,7 +183,7 @@ internal static class SqlServerBulkCompleteRouter
 
     private static async ValueTask<int> DeleteWithSqlDataRecordTvpAsync<TKey>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<TKey> keys,
         CancellationToken cancellationToken)
     {
@@ -198,7 +199,7 @@ internal static class SqlServerBulkCompleteRouter
 
     private static async ValueTask<int> InsertWithDataTableTvpAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken)
     {
@@ -216,7 +217,7 @@ internal static class SqlServerBulkCompleteRouter
 
     private static async ValueTask<int> UpdateWithDataTableTvpAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken)
     {
@@ -234,7 +235,7 @@ internal static class SqlServerBulkCompleteRouter
 
     private static async ValueTask<int> DeleteWithDataTableTvpAsync<TKey>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<TKey> keys,
         CancellationToken cancellationToken)
     {
@@ -252,7 +253,7 @@ internal static class SqlServerBulkCompleteRouter
 
     private static async ValueTask<int> InsertWithSqlBulkCopyAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         ForgeProviderBulkOptions options,
         CancellationToken cancellationToken)
@@ -280,9 +281,9 @@ internal static class SqlServerBulkCompleteRouter
     private sealed class SqlDataRecordRows<T> : IEnumerable<SqlDataRecord>
     {
         private readonly IReadOnlyList<T> _rows;
-        private readonly SqlServerInsertPlan _plan;
+        private readonly ForgeBulkPlan _plan;
 
-        public SqlDataRecordRows(IReadOnlyList<T> rows, SqlServerInsertPlan plan)
+        public SqlDataRecordRows(IReadOnlyList<T> rows, ForgeBulkPlan plan)
         {
             _rows = rows;
             _plan = plan;
@@ -311,9 +312,9 @@ internal static class SqlServerBulkCompleteRouter
     private sealed class SqlDataRecordKeyRows<TKey> : IEnumerable<SqlDataRecord>
     {
         private readonly IReadOnlyList<TKey> _keys;
-        private readonly SqlServerInsertPlan _plan;
+        private readonly ForgeBulkPlan _plan;
 
-        public SqlDataRecordKeyRows(IReadOnlyList<TKey> keys, SqlServerInsertPlan plan)
+        public SqlDataRecordKeyRows(IReadOnlyList<TKey> keys, ForgeBulkPlan plan)
         {
             _keys = keys;
             _plan = plan;

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Reflection.Emit;
 
@@ -7,7 +8,22 @@ namespace ForgeORM.Providers.SqlServer;
 internal static class ForgeProviderAccessors
 {
     private static readonly ConcurrentDictionary<PropertyInfo, Func<object, object?>> Getters = new();
+    public static Func<object, object?> CreateGetter(PropertyInfo property)
+    {
+        ArgumentNullException.ThrowIfNull(property);
 
+        var instance = Expression.Parameter(typeof(object), "instance");
+
+        var cast = Expression.Convert(instance, property.DeclaringType!);
+
+        var propertyAccess = Expression.Property(cast, property);
+
+        var convert = Expression.Convert(propertyAccess, typeof(object));
+
+        return Expression
+            .Lambda<Func<object, object?>>(convert, instance)
+            .Compile();
+    }
     public static object? Get(PropertyInfo? property, object instance)
     {
         if (property is null) return null;

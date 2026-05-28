@@ -128,7 +128,7 @@ public sealed class MySqlForgeProvider : IForgeDatabaseProvider
         => ForgeCommand.Text($"SELECT {functionName}()", parameters);
 
     public ValueTask BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default)
-        => MySqlNativeBulk.BulkInsertAsync(connection, tableName, rows, cancellationToken);
+        { _ = await MySqlNativeBulk.BulkInsertAsync(connection, tableName, rows, cancellationToken).ConfigureAwait(false); }
 
     public ValueTask BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default)
     {

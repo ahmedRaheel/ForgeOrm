@@ -1,74 +1,25 @@
 using System.Data.Common;
-using System.Reflection;
 using ForgeORM.Core;
 
 namespace ForgeORM.Providers.MySql;
 
 internal static class MySqlNativeBulk
 {
-    public static async ValueTask<int> BulkInsertAsync<T>(
-        DbConnection connection,
-        string tableName,
-        IReadOnlyCollection<T> rows,
-        CancellationToken cancellationToken = default)
+    public static async ValueTask<int> BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default)
     {
-        if (rows is null || rows.Count == 0)
-            return 0;
-
-        await BulkFallback.InsertAsync(connection, tableName, rows, cancellationToken)
-            .ConfigureAwait(false);
-        return rows.Count;
+        if (rows is null || rows.Count == 0) return 0;
+        // Default MySQL strategy: multi-row insert.
+        return await ForgeProviderBulkFallback.InsertRowsAsync(connection, tableName, rows as IReadOnlyList<T> ?? rows.ToArray(), cancellationToken).ConfigureAwait(false);
     }
-
-    public static async ValueTask BulkUpdateAsync<T>(
-        DbConnection connection,
-        string tableName,
-        IReadOnlyCollection<T> rows,
-        string keyColumn,
-        CancellationToken cancellationToken = default)
+    public static async ValueTask<int> BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default)
     {
-        if (rows is null || rows.Count == 0)
-            return;
-
-        await BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken)
-            .ConfigureAwait(false);        
+        if (rows is null || rows.Count == 0) return 0;
+        // Default MySQL strategy: temp table + UPDATE JOIN. Safe implementation uses batched update.
+        return await ForgeProviderBulkFallback.UpdateRowsAsync(connection, tableName, rows as IReadOnlyList<T> ?? rows.ToArray(), keyColumn, cancellationToken).ConfigureAwait(false);
     }
-
-    public static async ValueTask<int> BulkDeleteAsync<TKey>(
-        DbConnection connection,
-        string tableName,
-        IReadOnlyCollection<TKey> keys,
-        string keyColumn,
-        CancellationToken cancellationToken = default)
+    public static async ValueTask<int> BulkDeleteAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, CancellationToken cancellationToken = default)
     {
-        if (keys is null || keys.Count == 0)
-            return  0;
-
-        await BulkFallback.DeleteAsync(connection, tableName, keys, keyColumn, cancellationToken)
-            .ConfigureAwait(false);
-        return keys.Count;
-    }
-
-    internal static PropertyInfo[] GetBulkProperties<T>()
-        => typeof(T)
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanRead && IsScalar(p.PropertyType))
-            .ToArray();
-
-    private static bool IsScalar(Type type)
-    {
-        var actual = Nullable.GetUnderlyingType(type) ?? type;
-
-        return actual.IsPrimitive
-            || actual.IsEnum
-            || actual == typeof(string)
-            || actual == typeof(Guid)
-            || actual == typeof(decimal)
-            || actual == typeof(DateTime)
-            || actual == typeof(DateTimeOffset)
-            || actual == typeof(DateOnly)
-            || actual == typeof(TimeOnly)
-            || actual == typeof(TimeSpan)
-            || actual == typeof(byte[]);
+        if (keys is null || keys.Count == 0) return 0;
+        return await ForgeProviderBulkFallback.DeleteRowsAsync(connection, tableName, keys as IReadOnlyList<TKey> ?? keys.ToArray(), keyColumn, cancellationToken).ConfigureAwait(false);
     }
 }

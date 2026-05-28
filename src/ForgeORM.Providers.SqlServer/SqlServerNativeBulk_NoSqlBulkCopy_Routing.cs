@@ -1,3 +1,4 @@
+using ForgeORM.Core;
 using Microsoft.Data.SqlClient;
 
 namespace ForgeORM.Providers.SqlServer;
@@ -12,7 +13,7 @@ internal static class SqlServerNativeBulkNoSqlBulkCopyRouting
 {
     public static async ValueTask<int> InsertAsync<T>(
         SqlConnection sqlConnection,
-        SqlServerBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> list,
         CancellationToken cancellationToken = default)
     {
@@ -45,7 +46,7 @@ internal static class SqlServerNativeBulkNoSqlBulkCopyRouting
 
     public static async ValueTask<int> UpdateAsync<T>(
         SqlConnection sqlConnection,
-        SqlServerBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> list,
         string keyColumn,
         CancellationToken cancellationToken = default)
@@ -81,7 +82,7 @@ internal static class SqlServerNativeBulkNoSqlBulkCopyRouting
 
     public static async ValueTask<int> DeleteAsync<TKey>(
         SqlConnection sqlConnection,
-        SqlServerBulkPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<TKey> keys,
         string keyColumn,
         CancellationToken cancellationToken = default)

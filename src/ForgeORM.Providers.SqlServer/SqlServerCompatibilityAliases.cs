@@ -1,10 +1,8 @@
 
+using ForgeORM.Core;
 using ForgeORM.Core.Bulk;
 
 namespace ForgeORM.Providers.SqlServer;
-
-global using SqlServerInsertPlan = ForgeORM.Core.Bulk.ForgeBulkPlan;
-global using SqlServerBulkPlan = ForgeORM.Core.Bulk.ForgeBulkPlan;
 
 internal static class SqlServerBulkPlanCache<T>
 {
@@ -40,12 +38,4 @@ internal static class SqlServerBulkPlanCache<T>
             DeleteSql = string.Empty,
             KeyColumn = keyColumn
         };
-}
-
-internal static class SqlServerSqlDataRecordTvpBulk
-{
-}
-
-internal static class SqlServerDataTableTvpBulk
-{
 }

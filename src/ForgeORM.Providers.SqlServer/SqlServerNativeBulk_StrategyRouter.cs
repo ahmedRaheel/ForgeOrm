@@ -1,8 +1,9 @@
-using System.Collections;
-using System.Data;
+using ForgeORM.Core;
 using ForgeORM.Core.Bulk;
 using Microsoft.Data.SqlClient;
-using Microsoft.SqlServer.Server;
+using Microsoft.Data.SqlClient.Server;
+using System.Collections;
+using System.Data;
 
 namespace ForgeORM.Providers.SqlServer;
 
@@ -17,7 +18,7 @@ internal static class SqlServerNativeBulkStrategyRouter
 {
     public static async ValueTask<int> InsertAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         ForgeBulkOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -53,7 +54,7 @@ internal static class SqlServerNativeBulkStrategyRouter
 
     public static async ValueTask<int> UpdateAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         ForgeBulkOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -85,7 +86,7 @@ internal static class SqlServerNativeBulkStrategyRouter
 
     public static async ValueTask<int> DeleteAsync<TKey>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<TKey> keys,
         ForgeBulkOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -117,7 +118,7 @@ internal static class SqlServerNativeBulkStrategyRouter
 
     private static async ValueTask<int> InsertWithSqlDataRecordPrimaryAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken)
     {
@@ -135,7 +136,7 @@ internal static class SqlServerNativeBulkStrategyRouter
 
     private static async ValueTask<int> UpdateWithSqlDataRecordPrimaryAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken)
     {
@@ -153,7 +154,7 @@ internal static class SqlServerNativeBulkStrategyRouter
 
     private static async ValueTask<int> DeleteWithSqlDataRecordPrimaryAsync<TKey>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<TKey> keys,
         CancellationToken cancellationToken)
     {
@@ -171,7 +172,7 @@ internal static class SqlServerNativeBulkStrategyRouter
 
     private static async ValueTask<int> InsertWithSqlDataRecordTvpAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken)
     {
@@ -187,7 +188,7 @@ internal static class SqlServerNativeBulkStrategyRouter
 
     private static async ValueTask<int> InsertWithDataTableFallbackAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken)
     {
@@ -205,7 +206,7 @@ internal static class SqlServerNativeBulkStrategyRouter
 
     private static async ValueTask<int> InsertWithSqlBulkCopyAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         ForgeBulkOptions options,
         CancellationToken cancellationToken)
@@ -223,7 +224,7 @@ internal static class SqlServerNativeBulkStrategyRouter
             EnableStreaming = true
         };
 
-        for (var i = 0; i < plan.ColumnNames.Length; i++)
+        for (var i = 0; i < plan.Columns.Count; i++)
             bulk.ColumnMappings.Add(plan.ColumnNames[i], plan.ColumnNames[i]);
 
         await bulk.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
@@ -232,7 +233,7 @@ internal static class SqlServerNativeBulkStrategyRouter
 
     private static async ValueTask<int> UpdateWithSqlDataRecordTvpAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken)
     {
@@ -248,7 +249,7 @@ internal static class SqlServerNativeBulkStrategyRouter
 
     private static async ValueTask<int> UpdateWithDataTableFallbackAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken)
     {
@@ -266,7 +267,7 @@ internal static class SqlServerNativeBulkStrategyRouter
 
     private static async ValueTask<int> DeleteWithSqlDataRecordTvpAsync<TKey>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<TKey> keys,
         CancellationToken cancellationToken)
     {
@@ -282,7 +283,7 @@ internal static class SqlServerNativeBulkStrategyRouter
 
     private static async ValueTask<int> DeleteWithDataTableFallbackAsync<TKey>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<TKey> keys,
         CancellationToken cancellationToken)
     {
@@ -301,9 +302,9 @@ internal static class SqlServerNativeBulkStrategyRouter
     private sealed class SqlDataRecordRows<T> : IEnumerable<SqlDataRecord>
     {
         private readonly IReadOnlyList<T> _rows;
-        private readonly SqlServerInsertPlan _plan;
+        private readonly ForgeBulkPlan _plan;
 
-        public SqlDataRecordRows(IReadOnlyList<T> rows, SqlServerInsertPlan plan)
+        public SqlDataRecordRows(IReadOnlyList<T> rows, ForgeBulkPlan plan)
         {
             _rows = rows;
             _plan = plan;
@@ -316,7 +317,7 @@ internal static class SqlServerNativeBulkStrategyRouter
                 var record = new SqlDataRecord(_plan.SqlMetaData);
                 var entity = _rows[r]!;
 
-                for (var c = 0; c < _plan.ColumnNames.Length; c++)
+                for (var c = 0; c < _plan.Columns.Length; c++)
                 {
                     var value = NormalizeValue(_plan.GetValue(entity, c), _plan.GetDeclaredType(c));
                     SetRecordValue(record, c, value, _plan.GetDeclaredType(c));
@@ -332,9 +333,9 @@ internal static class SqlServerNativeBulkStrategyRouter
     private sealed class SqlDataRecordKeyRows<TKey> : IEnumerable<SqlDataRecord>
     {
         private readonly IReadOnlyList<TKey> _keys;
-        private readonly SqlServerInsertPlan _plan;
+        private readonly ForgeBulkPlan _plan;
 
-        public SqlDataRecordKeyRows(IReadOnlyList<TKey> keys, SqlServerInsertPlan plan)
+        public SqlDataRecordKeyRows(IReadOnlyList<TKey> keys, ForgeBulkPlan plan)
         {
             _keys = keys;
             _plan = plan;

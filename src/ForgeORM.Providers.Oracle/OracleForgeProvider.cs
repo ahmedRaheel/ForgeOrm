@@ -1,5 +1,4 @@
 using ForgeORM.Abstractions;
-using Microsoft.Data.SqlClient;
 using Oracle.ManagedDataAccess.Client;
 using System.Collections.Concurrent;
 using System.Data;
@@ -136,7 +135,10 @@ public sealed class OracleForgeProvider : IForgeDatabaseProvider
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+    public async ValueTask<int> BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default)
+    {
+       return await BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken).ConfigureAwait(false);
+    }
 
     private string BuildInsertSql(ForgeEntityMetadata e)
     {
@@ -215,7 +217,7 @@ internal static class BulkFallback
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="ct">The ct value.</param>
     /// <returns>The result of the T operation.</returns>
-    public static ValueTask UpdateAsync<T>(
+    public static async ValueTask<int> UpdateAsync<T>(
         DbConnection connection,
         string tableName,
         IReadOnlyCollection<T> rows,
@@ -224,7 +226,7 @@ internal static class BulkFallback
     {
         // 1. Guard clause to avoid processing overhead or state machine instantiation
         if (rows == null || rows.Count == 0)
-            return ValueTask.CompletedTask;
+            return 0;
 
         // 2. Retrieve or compile the SQL update string. This executes exactly ONCE per unique schema setup.
         var sql = UpdateSqlCache.GetOrAdd((typeof(T), tableName, keyColumn), static key =>
@@ -249,7 +251,8 @@ internal static class BulkFallback
 
         // 3. Perfect-forward the ValueTask straight down to the optimized batch executor.
         // This elides the async state machine wrapper allocation entirely.
-        return ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
+        await ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
+        return rows.Count;
     }
     private static bool IsScalar(Type type)
     {

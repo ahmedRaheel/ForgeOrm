@@ -1,7 +1,8 @@
 using System.Collections;
 using System.Data;
+using ForgeORM.Core;
 using Microsoft.Data.SqlClient;
-using Microsoft.SqlServer.Server;
+using Microsoft.Data.SqlClient.Server;
 
 namespace ForgeORM.Providers.SqlServer;
 
@@ -15,7 +16,7 @@ internal static class SqlServerNativeBulkTvpOnly
 {
     public static async ValueTask<int> InsertAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken = default)
     {
@@ -48,7 +49,7 @@ internal static class SqlServerNativeBulkTvpOnly
 
     public static async ValueTask<int> UpdateAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken = default)
     {
@@ -81,7 +82,7 @@ internal static class SqlServerNativeBulkTvpOnly
 
     public static async ValueTask<int> DeleteAsync<TKey>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<TKey> keys,
         CancellationToken cancellationToken = default)
     {
@@ -114,7 +115,7 @@ internal static class SqlServerNativeBulkTvpOnly
 
     private static async ValueTask<int> InsertWithSqlDataRecordTvpAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken)
     {
@@ -130,7 +131,7 @@ internal static class SqlServerNativeBulkTvpOnly
 
     private static async ValueTask<int> InsertWithDataTableFallbackAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken)
     {
@@ -148,7 +149,7 @@ internal static class SqlServerNativeBulkTvpOnly
 
     private static async ValueTask<int> UpdateWithSqlDataRecordTvpAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken)
     {
@@ -164,7 +165,7 @@ internal static class SqlServerNativeBulkTvpOnly
 
     private static async ValueTask<int> UpdateWithDataTableFallbackAsync<T>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken)
     {
@@ -182,7 +183,7 @@ internal static class SqlServerNativeBulkTvpOnly
 
     private static async ValueTask<int> DeleteWithSqlDataRecordTvpAsync<TKey>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<TKey> keys,
         CancellationToken cancellationToken)
     {
@@ -198,7 +199,7 @@ internal static class SqlServerNativeBulkTvpOnly
 
     private static async ValueTask<int> DeleteWithDataTableFallbackAsync<TKey>(
         SqlConnection connection,
-        SqlServerInsertPlan plan,
+        ForgeBulkPlan plan,
         IReadOnlyList<TKey> keys,
         CancellationToken cancellationToken)
     {
@@ -217,9 +218,9 @@ internal static class SqlServerNativeBulkTvpOnly
     private sealed class SqlDataRecordRows<T> : IEnumerable<SqlDataRecord>
     {
         private readonly IReadOnlyList<T> _rows;
-        private readonly SqlServerInsertPlan _plan;
+        private readonly ForgeBulkPlan _plan;
 
-        public SqlDataRecordRows(IReadOnlyList<T> rows, SqlServerInsertPlan plan)
+        public SqlDataRecordRows(IReadOnlyList<T> rows, ForgeBulkPlan plan)
         {
             _rows = rows;
             _plan = plan;
@@ -248,9 +249,9 @@ internal static class SqlServerNativeBulkTvpOnly
     private sealed class SqlDataRecordKeyRows<TKey> : IEnumerable<SqlDataRecord>
     {
         private readonly IReadOnlyList<TKey> _keys;
-        private readonly SqlServerInsertPlan _plan;
+        private readonly ForgeBulkPlan _plan;
 
-        public SqlDataRecordKeyRows(IReadOnlyList<TKey> keys, SqlServerInsertPlan plan)
+        public SqlDataRecordKeyRows(IReadOnlyList<TKey> keys, ForgeBulkPlan plan)
         {
             _keys = keys;
             _plan = plan;

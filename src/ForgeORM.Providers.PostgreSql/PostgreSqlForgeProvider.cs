@@ -1,5 +1,4 @@
 using ForgeORM.Abstractions;
-using Microsoft.Data.SqlClient;
 using Npgsql;
 using System.Data.Common;
 using System.Reflection;
@@ -110,32 +109,32 @@ public sealed class PostgreSqlForgeProvider : IForgeDatabaseProvider
     /// <param name="rows">The rows value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public async ValueTask BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default)
+    public ValueTask<int> BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default) => PostgreSqlNativeBulk.BulkInsertAsync(connection, tableName, rows, cancellationToken);
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="connection">The connection value.</param>
+    /// <param name="tableName">The tableName value.</param>
+    /// <param name="rows">The rows value.</param>
+    /// <param name="keyColumn">The keyColumn value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the T operation.</returns>
+    public ValueTask<int> BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => PostgreSqlNativeBulk.BulkUpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="connection">The connection value.</param>
+    /// <param name="tableName">The tableName value.</param>
+    /// <param name="rows">The rows value.</param>
+    /// <param name="keyColumn">The keyColumn value.</param>
+    /// <param name="cancellationToken">The cancellationToken value.</param>
+    /// <returns>The result of the T operation.</returns>
+    public async ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default)
     {
-        _ = await PostgreSqlNativeBulk.BulkInsertAsync(connection, tableName, rows, cancellationToken).ConfigureAwait(false);
+        _ = await PostgreSqlNativeBulk.BulkUpdateAsync(connection, tableName, rows, keyColumn, cancellationToken).ConfigureAwait(false);
     }
-    /// <summary>
-    /// Executes the T operation.
-    /// </summary>
-    /// <typeparam name="T">The type used by the operation.</typeparam>
-    /// <param name="connection">The connection value.</param>
-    /// <param name="tableName">The tableName value.</param>
-    /// <param name="rows">The rows value.</param>
-    /// <param name="keyColumn">The keyColumn value.</param>
-    /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The result of the T operation.</returns>
-    public ValueTask BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
-    /// <summary>
-    /// Executes the T operation.
-    /// </summary>
-    /// <typeparam name="T">The type used by the operation.</typeparam>
-    /// <param name="connection">The connection value.</param>
-    /// <param name="tableName">The tableName value.</param>
-    /// <param name="rows">The rows value.</param>
-    /// <param name="keyColumn">The keyColumn value.</param>
-    /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The result of the T operation.</returns>
-    public ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
 
     private string BuildInsertSql(ForgeEntityMetadata e)
     {

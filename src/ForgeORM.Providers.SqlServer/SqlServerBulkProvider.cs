@@ -23,7 +23,8 @@ public sealed class SqlServerBulkProvider : IForgeBulkProvider
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken = default)
     {
-        return await SqlServerNativeBulk.BulkInsertAsync(connection, tableName, rows, cancellationToken).ConfigureAwait(false);
+        await SqlServerNativeBulk.BulkInsertAsync(connection, tableName, rows, cancellationToken).ConfigureAwait(false);
+        return rows.Count;
     }
 
     public async ValueTask<int> UpdateBulkAsync<T>(
@@ -33,7 +34,8 @@ public sealed class SqlServerBulkProvider : IForgeBulkProvider
         string keyColumn = "Id",
         CancellationToken cancellationToken = default)
     {
-        return await SqlServerNativeBulk.BulkUpdateAsync(connection, tableName, rows, keyColumn, cancellationToken).ConfigureAwait(false);
+        await SqlServerNativeBulk.BulkUpdateAsync(connection, tableName, rows, keyColumn, cancellationToken).ConfigureAwait(false);
+        return rows.Count;
     }
 
     public async ValueTask<int> DeleteBulkAsync<TKey>(

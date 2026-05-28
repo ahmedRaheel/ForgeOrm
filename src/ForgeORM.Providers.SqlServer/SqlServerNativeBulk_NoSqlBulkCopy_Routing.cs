@@ -1,29 +1,26 @@
-using System.Data;
 using Microsoft.Data.SqlClient;
 
 namespace ForgeORM.Providers.SqlServer;
 
 /// <summary>
-/// SQL Server native bulk provider.
-/// Primary: SqlDataRecord TVP.
-/// Fallback: DataTable TVP/table-type parameter.
-/// No ForgeSqlBulkCopyRemoved_DoNotUse is used here.
+/// Final SQL Server bulk routing:
+/// 1. Try SqlDataRecord TVP first.
+/// 2. If capability/setup failure occurs, fallback to DataTable TVP table-type parameter.
+/// 3. Never use SqlBulkCopy.
 /// </summary>
-internal static class SqlServerNativeBulk
+internal static class SqlServerNativeBulkNoSqlBulkCopyRouting
 {
-    public static async ValueTask<int> BulkInsertAsync<T>(
-        SqlConnection connection,
-        string tableName,
-        IReadOnlyList<T> rows,
+    public static async ValueTask<int> InsertAsync<T>(
+        SqlConnection sqlConnection,
+        SqlServerBulkPlan plan,
+        IReadOnlyList<T> list,
         CancellationToken cancellationToken = default)
     {
-        if (rows.Count == 0)
+        if (list.Count == 0)
             return 0;
 
-        var plan = SqlServerBulkPlanCache<T>.GetInsertPlan(tableName);
-
         await SqlServerBulkEnsure.EnsureTableTypeCompatibleAsync(
-            connection,
+            sqlConnection,
             plan,
             SqlServerTableTypePurpose.InsertOrUpdate,
             cancellationToken).ConfigureAwait(false);
@@ -31,35 +28,33 @@ internal static class SqlServerNativeBulk
         try
         {
             return await SqlServerSqlDataRecordTvpBulk.InsertAsync(
-                connection,
+                sqlConnection,
                 plan,
-                rows,
+                list,
                 cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (SqlServerBulkRoutingPolicy.CanFallback(ex))
+        catch (Exception ex) when (SqlServerBulkFallbackPolicy.CanFallback(ex))
         {
             return await SqlServerDataTableTvpBulk.InsertAsync(
-                connection,
+                sqlConnection,
                 plan,
-                rows,
+                list,
                 cancellationToken).ConfigureAwait(false);
         }
     }
 
-    public static async ValueTask<int> BulkUpdateAsync<T>(
-        SqlConnection connection,
-        string tableName,
-        IReadOnlyList<T> rows,
+    public static async ValueTask<int> UpdateAsync<T>(
+        SqlConnection sqlConnection,
+        SqlServerBulkPlan plan,
+        IReadOnlyList<T> list,
         string keyColumn,
         CancellationToken cancellationToken = default)
     {
-        if (rows.Count == 0)
+        if (list.Count == 0)
             return 0;
 
-        var plan = SqlServerBulkPlanCache<T>.GetUpdatePlan(tableName, keyColumn);
-
         await SqlServerBulkEnsure.EnsureTableTypeCompatibleAsync(
-            connection,
+            sqlConnection,
             plan,
             SqlServerTableTypePurpose.InsertOrUpdate,
             cancellationToken).ConfigureAwait(false);
@@ -67,26 +62,26 @@ internal static class SqlServerNativeBulk
         try
         {
             return await SqlServerSqlDataRecordTvpBulk.UpdateAsync(
-                connection,
+                sqlConnection,
                 plan,
-                rows,
+                list,
                 keyColumn,
                 cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (SqlServerBulkRoutingPolicy.CanFallback(ex))
+        catch (Exception ex) when (SqlServerBulkFallbackPolicy.CanFallback(ex))
         {
             return await SqlServerDataTableTvpBulk.UpdateAsync(
-                connection,
+                sqlConnection,
                 plan,
-                rows,
+                list,
                 keyColumn,
                 cancellationToken).ConfigureAwait(false);
         }
     }
 
-    public static async ValueTask<int> BulkDeleteAsync<TKey>(
-        SqlConnection connection,
-        string tableName,
+    public static async ValueTask<int> DeleteAsync<TKey>(
+        SqlConnection sqlConnection,
+        SqlServerBulkPlan plan,
         IReadOnlyList<TKey> keys,
         string keyColumn,
         CancellationToken cancellationToken = default)
@@ -94,10 +89,8 @@ internal static class SqlServerNativeBulk
         if (keys.Count == 0)
             return 0;
 
-        var plan = SqlServerBulkPlanCache<TKey>.GetDeletePlan(tableName, keyColumn);
-
         await SqlServerBulkEnsure.EnsureTableTypeCompatibleAsync(
-            connection,
+            sqlConnection,
             plan,
             SqlServerTableTypePurpose.DeleteKeyOnly,
             cancellationToken).ConfigureAwait(false);
@@ -105,16 +98,16 @@ internal static class SqlServerNativeBulk
         try
         {
             return await SqlServerSqlDataRecordTvpBulk.DeleteAsync(
-                connection,
+                sqlConnection,
                 plan,
                 keys,
                 keyColumn,
                 cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (SqlServerBulkRoutingPolicy.CanFallback(ex))
+        catch (Exception ex) when (SqlServerBulkFallbackPolicy.CanFallback(ex))
         {
             return await SqlServerDataTableTvpBulk.DeleteAsync(
-                connection,
+                sqlConnection,
                 plan,
                 keys,
                 keyColumn,

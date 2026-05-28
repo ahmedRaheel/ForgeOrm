@@ -1,12 +1,18 @@
-using Microsoft.Data.SqlClient;
+using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using System.Reflection;
+using ForgeORM.Core;
+using Microsoft.Data.SqlClient;
 
 namespace ForgeORM.Providers.SqlServer;
 
 internal static class SqlServerNativeBulk
 {
+    private static readonly ConcurrentDictionary<(Type EntityType, string TableName), SqlServerInsertPlan> InsertPlanCache = new();
+    private static readonly ConcurrentDictionary<(Type EntityType, string TableName, string KeyColumn), SqlServerUpdatePlan> UpdatePlanCache = new();
+    private static readonly ConcurrentDictionary<(Type KeyType, string TableName, string KeyColumn), SqlServerDeletePlan> DeletePlanCache = new();
+
     public static async ValueTask BulkInsertAsync<T>(
         DbConnection connection,
         string tableName,
@@ -22,26 +28,33 @@ internal static class SqlServerNativeBulk
             return;
         }
 
+        var list = rows as IReadOnlyList<T> ?? rows.ToArray();
+
         if (sqlConnection.State != ConnectionState.Open)
             await sqlConnection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        var list = rows as IReadOnlyList<T> ?? rows.ToArray();
-        var properties = GetBulkProperties<T>(includeIdentity: false);
-        if (properties.Length == 0)
+        var plan = InsertPlanCache.GetOrAdd(
+            (typeof(T), tableName),
+            static key => SqlServerInsertPlan.Create(key.EntityType, key.TableName));
+
+        if (plan.Properties.Length == 0)
             return;
 
-        var table = CreateDataTable(properties, list);
+        var table = plan.CreateTable(list);
 
-        using var bulk = new SqlBulkCopy(sqlConnection, SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.CheckConstraints, externalTransaction: null)
+        using var bulk = new SqlBulkCopy(
+            sqlConnection,
+            SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.CheckConstraints,
+            externalTransaction: null)
         {
-            DestinationTableName = tableName,
+            DestinationTableName = plan.QuotedTableName,
             BatchSize = Math.Min(Math.Max(list.Count, 1), 5000),
             BulkCopyTimeout = 0,
             EnableStreaming = true
         };
 
-        for (var i = 0; i < properties.Length; i++)
-            bulk.ColumnMappings.Add(properties[i].Name, properties[i].Name);
+        for (var i = 0; i < plan.ColumnNames.Length; i++)
+            bulk.ColumnMappings.Add(plan.ColumnNames[i], plan.ColumnNames[i]);
 
         await bulk.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
     }
@@ -65,23 +78,18 @@ internal static class SqlServerNativeBulk
         if (sqlConnection.State != ConnectionState.Open)
             await sqlConnection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        var properties = GetBulkProperties<T>(includeIdentity: true);
-        var key = FindProperty(properties, keyColumn);
-        if (key is null)
-            throw new InvalidOperationException($"Bulk update requires key column '{keyColumn}' on '{typeof(T).Name}'.");
+        var plan = UpdatePlanCache.GetOrAdd(
+            (typeof(T), tableName, keyColumn),
+            static key => SqlServerUpdatePlan.Create(key.EntityType, key.TableName, key.KeyColumn));
 
-        var updateProperties = properties
-            .Where(p => !string.Equals(p.Name, key.Name, StringComparison.OrdinalIgnoreCase))
-            .ToArray();
-
-        if (updateProperties.Length == 0)
+        if (plan.UpdateColumnNames.Length == 0)
             return 0;
 
         var tempTable = "#ForgeBulkUpdate_" + Guid.NewGuid().ToString("N");
-        var table = CreateDataTable(properties, rows);
+        var table = plan.CreateTable(rows);
 
         await using var create = sqlConnection.CreateCommand();
-        create.CommandText = BuildTempTableSql(tempTable, properties);
+        create.CommandText = plan.CreateTempTableSql(tempTable);
         await create.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
         using (var bulk = new SqlBulkCopy(sqlConnection, SqlBulkCopyOptions.TableLock, externalTransaction: null)
@@ -92,14 +100,14 @@ internal static class SqlServerNativeBulk
             EnableStreaming = true
         })
         {
-            for (var i = 0; i < properties.Length; i++)
-                bulk.ColumnMappings.Add(properties[i].Name, properties[i].Name);
+            for (var i = 0; i < plan.ColumnNames.Length; i++)
+                bulk.ColumnMappings.Add(plan.ColumnNames[i], plan.ColumnNames[i]);
 
             await bulk.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
         }
 
         await using var merge = sqlConnection.CreateCommand();
-        merge.CommandText = BuildMergeUpdateSql(tableName, tempTable, key.Name, updateProperties);
+        merge.CommandText = plan.CreateMergeSql(tempTable);
         return await merge.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -122,23 +130,15 @@ internal static class SqlServerNativeBulk
         if (sqlConnection.State != ConnectionState.Open)
             await sqlConnection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
+        var plan = DeletePlanCache.GetOrAdd(
+            (typeof(TKey), tableName, keyColumn),
+            static key => SqlServerDeletePlan.Create(key.KeyType, key.TableName, key.KeyColumn));
+
         var tempTable = "#ForgeBulkDelete_" + Guid.NewGuid().ToString("N");
-        var keyType = Nullable.GetUnderlyingType(typeof(TKey)) ?? typeof(TKey);
-        if (keyType.IsEnum)
-            keyType = typeof(string);
-
-        var table = new DataTable();
-        table.Columns.Add(keyColumn, keyType);
-
-        for (var i = 0; i < keys.Count; i++)
-        {
-            var row = table.NewRow();
-            row[0] = NormalizeValue(keys[i], typeof(TKey)) ?? DBNull.Value;
-            table.Rows.Add(row);
-        }
+        var table = plan.CreateTable(keys);
 
         await using var create = sqlConnection.CreateCommand();
-        create.CommandText = $"CREATE TABLE {tempTable} ({QuoteIdentifier(keyColumn)} {ToSqlType(keyType)} NULL);";
+        create.CommandText = plan.CreateTempTableSql(tempTable);
         await create.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
         using (var bulk = new SqlBulkCopy(sqlConnection, SqlBulkCopyOptions.TableLock, externalTransaction: null)
@@ -149,26 +149,246 @@ internal static class SqlServerNativeBulk
             EnableStreaming = true
         })
         {
-            bulk.ColumnMappings.Add(keyColumn, keyColumn);
+            bulk.ColumnMappings.Add(plan.KeyColumn, plan.KeyColumn);
             await bulk.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
         }
 
         await using var delete = sqlConnection.CreateCommand();
-        delete.CommandText =
-            $"DELETE Target FROM {QuoteTable(tableName)} AS Target INNER JOIN {tempTable} AS Source ON Target.{QuoteIdentifier(keyColumn)} = Source.{QuoteIdentifier(keyColumn)};";
+        delete.CommandText = plan.CreateDeleteSql(tempTable);
         return await delete.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static PropertyInfo[] GetBulkProperties<T>(bool includeIdentity)
+    private sealed class SqlServerInsertPlan
     {
-        var props = typeof(T)
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanRead && IsScalar(p.PropertyType));
+        private readonly Func<object, object?>[] _getters;
+        private readonly Type[] _declaredTypes;
+        private readonly DataTable _schema;
 
-        if (!includeIdentity)
-            props = props.Where(p => !IsIdentityConvention(p));
+        private SqlServerInsertPlan(
+            string quotedTableName,
+            PropertyInfo[] properties,
+            string[] columnNames,
+            Func<object, object?>[] getters,
+            Type[] declaredTypes,
+            DataTable schema)
+        {
+            QuotedTableName = quotedTableName;
+            Properties = properties;
+            ColumnNames = columnNames;
+            _getters = getters;
+            _declaredTypes = declaredTypes;
+            _schema = schema;
+        }
 
-        return props.ToArray();
+        public string QuotedTableName { get; }
+        public PropertyInfo[] Properties { get; }
+        public string[] ColumnNames { get; }
+
+        public static SqlServerInsertPlan Create(Type entityType, string tableName)
+        {
+            var properties = GetBulkProperties(entityType, includeIdentity: false);
+            return new SqlServerInsertPlan(
+                QuoteTable(tableName),
+                properties,
+                BuildColumnNames(properties),
+                BuildGetters(properties),
+                BuildDeclaredTypes(properties),
+                CreateSchema(properties));
+        }
+
+        public DataTable CreateTable<T>(IReadOnlyList<T> rows)
+        {
+            var table = _schema.Clone();
+            table.BeginLoadData();
+
+            for (var r = 0; r < rows.Count; r++)
+            {
+                var dataRow = table.NewRow();
+                var entity = rows[r]!;
+                for (var c = 0; c < _getters.Length; c++)
+                    dataRow[c] = NormalizeValue(_getters[c](entity), _declaredTypes[c]) ?? DBNull.Value;
+                table.Rows.Add(dataRow);
+            }
+
+            table.EndLoadData();
+            return table;
+        }
+    }
+
+    private sealed class SqlServerUpdatePlan
+    {
+        private readonly Func<object, object?>[] _getters;
+        private readonly Type[] _declaredTypes;
+        private readonly DataTable _schema;
+        private readonly string _tempTableTemplate;
+        private readonly string _mergeTemplate;
+
+        private SqlServerUpdatePlan(
+            string quotedTableName,
+            string keyColumn,
+            PropertyInfo[] properties,
+            string[] columnNames,
+            string[] updateColumnNames,
+            Func<object, object?>[] getters,
+            Type[] declaredTypes,
+            DataTable schema,
+            string tempTableTemplate,
+            string mergeTemplate)
+        {
+            QuotedTableName = quotedTableName;
+            KeyColumn = keyColumn;
+            Properties = properties;
+            ColumnNames = columnNames;
+            UpdateColumnNames = updateColumnNames;
+            _getters = getters;
+            _declaredTypes = declaredTypes;
+            _schema = schema;
+            _tempTableTemplate = tempTableTemplate;
+            _mergeTemplate = mergeTemplate;
+        }
+
+        public string QuotedTableName { get; }
+        public string KeyColumn { get; }
+        public PropertyInfo[] Properties { get; }
+        public string[] ColumnNames { get; }
+        public string[] UpdateColumnNames { get; }
+
+        public static SqlServerUpdatePlan Create(Type entityType, string tableName, string keyColumn)
+        {
+            var properties = GetBulkProperties(entityType, includeIdentity: true);
+            var key = FindProperty(properties, keyColumn)
+                ?? throw new InvalidOperationException($"Bulk update requires key column '{keyColumn}' on '{entityType.Name}'.");
+
+            var updateProperties = new List<PropertyInfo>(properties.Length);
+            for (var i = 0; i < properties.Length; i++)
+            {
+                if (!string.Equals(properties[i].Name, key.Name, StringComparison.OrdinalIgnoreCase))
+                    updateProperties.Add(properties[i]);
+            }
+
+            var columnNames = BuildColumnNames(properties);
+            var updateColumnNames = BuildColumnNames(updateProperties.ToArray());
+            var tempTemplate = BuildTempTableSqlTemplate(properties);
+            var mergeTemplate = BuildMergeUpdateSqlTemplate(tableName, key.Name, updateProperties.ToArray());
+
+            return new SqlServerUpdatePlan(
+                QuoteTable(tableName),
+                key.Name,
+                properties,
+                columnNames,
+                updateColumnNames,
+                BuildGetters(properties),
+                BuildDeclaredTypes(properties),
+                CreateSchema(properties),
+                tempTemplate,
+                mergeTemplate);
+        }
+
+        public string CreateTempTableSql(string tempTable) => string.Format(System.Globalization.CultureInfo.InvariantCulture, _tempTableTemplate, tempTable);
+        public string CreateMergeSql(string tempTable) => string.Format(System.Globalization.CultureInfo.InvariantCulture, _mergeTemplate, tempTable);
+
+        public DataTable CreateTable<T>(IReadOnlyList<T> rows)
+        {
+            var table = _schema.Clone();
+            table.BeginLoadData();
+
+            for (var r = 0; r < rows.Count; r++)
+            {
+                var dataRow = table.NewRow();
+                var entity = rows[r]!;
+                for (var c = 0; c < _getters.Length; c++)
+                    dataRow[c] = NormalizeValue(_getters[c](entity), _declaredTypes[c]) ?? DBNull.Value;
+                table.Rows.Add(dataRow);
+            }
+
+            table.EndLoadData();
+            return table;
+        }
+    }
+
+    private sealed class SqlServerDeletePlan
+    {
+        private readonly DataTable _schema;
+        private readonly Type _keyDeclaredType;
+        private readonly string _tempTableTemplate;
+        private readonly string _deleteTemplate;
+
+        private SqlServerDeletePlan(
+            string tableName,
+            string keyColumn,
+            Type keyDeclaredType,
+            DataTable schema,
+            string tempTableTemplate,
+            string deleteTemplate)
+        {
+            TableName = tableName;
+            KeyColumn = keyColumn;
+            _keyDeclaredType = keyDeclaredType;
+            _schema = schema;
+            _tempTableTemplate = tempTableTemplate;
+            _deleteTemplate = deleteTemplate;
+        }
+
+        public string TableName { get; }
+        public string KeyColumn { get; }
+
+        public static SqlServerDeletePlan Create(Type keyType, string tableName, string keyColumn)
+        {
+            var actual = Nullable.GetUnderlyingType(keyType) ?? keyType;
+            if (actual.IsEnum)
+                actual = typeof(string);
+            if (actual == typeof(DateOnly) || actual == typeof(TimeOnly))
+                actual = typeof(string);
+
+            var schema = new DataTable();
+            schema.Columns.Add(keyColumn, actual);
+
+            var tempTemplate = $"CREATE TABLE {{0}} ({QuoteIdentifier(keyColumn)} {ToSqlType(keyType)} NULL);";
+            var deleteTemplate =
+                $"DELETE Target FROM {QuoteTable(tableName)} AS Target INNER JOIN {{0}} AS Source ON Target.{QuoteIdentifier(keyColumn)} = Source.{QuoteIdentifier(keyColumn)};";
+
+            return new SqlServerDeletePlan(tableName, keyColumn, keyType, schema, tempTemplate, deleteTemplate);
+        }
+
+        public string CreateTempTableSql(string tempTable) => string.Format(System.Globalization.CultureInfo.InvariantCulture, _tempTableTemplate, tempTable);
+        public string CreateDeleteSql(string tempTable) => string.Format(System.Globalization.CultureInfo.InvariantCulture, _deleteTemplate, tempTable);
+
+        public DataTable CreateTable<TKey>(IReadOnlyList<TKey> keys)
+        {
+            var table = _schema.Clone();
+            table.BeginLoadData();
+
+            for (var i = 0; i < keys.Count; i++)
+            {
+                var row = table.NewRow();
+                row[0] = NormalizeValue(keys[i], _keyDeclaredType) ?? DBNull.Value;
+                table.Rows.Add(row);
+            }
+
+            table.EndLoadData();
+            return table;
+        }
+    }
+
+    private static PropertyInfo[] GetBulkProperties(Type entityType, bool includeIdentity)
+    {
+        var all = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        var selected = new List<PropertyInfo>(all.Length);
+
+        for (var i = 0; i < all.Length; i++)
+        {
+            var property = all[i];
+
+            if (!property.CanRead || !IsScalar(property.PropertyType))
+                continue;
+
+            if (!includeIdentity && IsIdentityConvention(property))
+                continue;
+
+            selected.Add(property);
+        }
+
+        return selected.ToArray();
     }
 
     private static PropertyInfo? FindProperty(PropertyInfo[] properties, string name)
@@ -182,40 +402,50 @@ internal static class SqlServerNativeBulk
         return null;
     }
 
-    private static DataTable CreateDataTable<T>(PropertyInfo[] properties, IReadOnlyList<T> rows)
+    private static string[] BuildColumnNames(PropertyInfo[] properties)
     {
-        var table = new DataTable();
+        var names = new string[properties.Length];
+        for (var i = 0; i < properties.Length; i++)
+            names[i] = properties[i].Name;
+        return names;
+    }
+
+    private static Type[] BuildDeclaredTypes(PropertyInfo[] properties)
+    {
+        var types = new Type[properties.Length];
+        for (var i = 0; i < properties.Length; i++)
+            types[i] = properties[i].PropertyType;
+        return types;
+    }
+
+    private static Func<object, object?>[] BuildGetters(PropertyInfo[] properties)
+    {
+        var getters = new Func<object, object?>[properties.Length];
+        for (var i = 0; i < properties.Length; i++)
+            getters[i] = ForgeProviderAccessors.CreateGetter(properties[i]);
+        return getters;
+    }
+
+    private static DataTable CreateSchema(PropertyInfo[] properties)
+    {
+        var schema = new DataTable();
 
         for (var i = 0; i < properties.Length; i++)
         {
             var type = Nullable.GetUnderlyingType(properties[i].PropertyType) ?? properties[i].PropertyType;
-            if (type.IsEnum)
-                type = typeof(string);
-            if (type == typeof(DateOnly) || type == typeof(TimeOnly))
+            if (type.IsEnum || type == typeof(DateOnly) || type == typeof(TimeOnly))
                 type = typeof(string);
 
-            table.Columns.Add(properties[i].Name, type);
+            schema.Columns.Add(properties[i].Name, type);
         }
 
-        for (var r = 0; r < rows.Count; r++)
-        {
-            var dataRow = table.NewRow();
-
-            for (var c = 0; c < properties.Length; c++)
-            {
-                dataRow[c] = NormalizeValue(ForgeProviderAccessors.Get(properties[c], rows[r]!), properties[c].PropertyType) ?? DBNull.Value;
-            }
-
-            table.Rows.Add(dataRow);
-        }
-
-        return table;
+        return schema;
     }
 
-    private static string BuildTempTableSql(string tempTable, PropertyInfo[] properties)
+    private static string BuildTempTableSqlTemplate(PropertyInfo[] properties)
     {
         var sql = new System.Text.StringBuilder(256 + properties.Length * 64);
-        sql.Append("CREATE TABLE ").Append(tempTable).Append(" (");
+        sql.Append("CREATE TABLE {0} (");
 
         for (var i = 0; i < properties.Length; i++)
         {
@@ -230,13 +460,13 @@ internal static class SqlServerNativeBulk
         return sql.ToString();
     }
 
-    private static string BuildMergeUpdateSql(string tableName, string sourceTable, string keyColumn, PropertyInfo[] updateProperties)
+    private static string BuildMergeUpdateSqlTemplate(string tableName, string keyColumn, PropertyInfo[] updateProperties)
     {
         var sql = new System.Text.StringBuilder(512 + updateProperties.Length * 64);
         var key = QuoteIdentifier(keyColumn);
 
         sql.Append("MERGE ").Append(QuoteTable(tableName)).Append(" AS Target ")
-           .Append("USING ").Append(sourceTable).Append(" AS Source ")
+           .Append("USING {0} AS Source ")
            .Append("ON Target.").Append(key).Append(" = Source.").Append(key).Append(' ')
            .Append("WHEN MATCHED THEN UPDATE SET ");
 

@@ -20,6 +20,9 @@ internal static class ForgeProviderBulkFallback
 
     private static readonly ConcurrentDictionary<(Type Type, string Table), BulkShape> InsertShapeCache = new();
     private static readonly ConcurrentDictionary<(Type Type, string Table, string Key), BulkShape> UpdateShapeCache = new();
+    private static readonly ConcurrentDictionary<(string Provider, Type Type, string Table, int Rows), string> InsertSqlCache = new();
+    private static readonly ConcurrentDictionary<(string Provider, Type Type, string Table, string Key, int Rows), string> UpdateSqlCache = new();
+    private static readonly ConcurrentDictionary<(string Provider, string Table, string Key, int Rows), string> DeleteSqlCache = new();
 
     public static ValueTask<int> InsertRowsAsync<T>(
         DbConnection connection,
@@ -60,7 +63,10 @@ internal static class ForgeProviderBulkFallback
             var count = Math.Min(batchSize, rows.Count - offset);
             await using var command = connection.CreateCommand();
             command.CommandType = CommandType.Text;
-            command.CommandText = BuildInsertSql(connection, shape, count);
+            var providerKey = connection.GetType().FullName ?? string.Empty;
+            command.CommandText = InsertSqlCache.GetOrAdd(
+                (providerKey, typeof(T), shape.TableName, count),
+                _ => BuildInsertSql(connection, shape, count));
             AddInsertParameters(command, shape, rows, offset, count);
             affected += await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -111,7 +117,10 @@ internal static class ForgeProviderBulkFallback
             var count = Math.Min(batchSize, rows.Count - offset);
             await using var command = connection.CreateCommand();
             command.CommandType = CommandType.Text;
-            command.CommandText = BuildUpdateSql(connection, shape, count);
+            var providerKey = connection.GetType().FullName ?? string.Empty;
+            command.CommandText = UpdateSqlCache.GetOrAdd(
+                (providerKey, typeof(T), shape.TableName, keyColumn, count),
+                _ => BuildUpdateSql(connection, shape, count));
             AddUpdateParameters(command, shape, rows, offset, count);
             affected += await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -144,7 +153,10 @@ internal static class ForgeProviderBulkFallback
             var count = Math.Min(batchSize, keys.Count - offset);
             await using var command = connection.CreateCommand();
             command.CommandType = CommandType.Text;
-            command.CommandText = BuildDeleteSql(connection, tableName, keyColumn, count);
+            var providerKey = connection.GetType().FullName ?? string.Empty;
+            command.CommandText = DeleteSqlCache.GetOrAdd(
+                (providerKey, tableName, keyColumn, count),
+                _ => BuildDeleteSql(connection, tableName, keyColumn, count));
             AddDeleteParameters(command, keys, offset, count);
             affected += await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -284,7 +296,7 @@ internal static class ForgeProviderBulkFallback
             var item = rows[offset + r]!;
             for (var c = 0; c < shape.Columns.Length; c++)
             {
-                AddParameter(command, "p" + r + "_" + c, NormalizeValue(shape.Columns[c].Property.GetValue(item), shape.Columns[c].ClrType));
+                AddParameter(command, "p" + r + "_" + c, NormalizeValue(ForgeProviderAccessors.Get(shape.Columns[c].Property, item!), shape.Columns[c].ClrType));
             }
         }
     }
@@ -297,11 +309,11 @@ internal static class ForgeProviderBulkFallback
         for (var r = 0; r < count; r++)
         {
             var item = rows[offset + r]!;
-            AddParameter(command, "k" + r, NormalizeValue(shape.Key.Property.GetValue(item), shape.Key.ClrType));
+            AddParameter(command, "k" + r, NormalizeValue(ForgeProviderAccessors.Get(shape.Key.Property, item!), shape.Key.ClrType));
 
             for (var c = 0; c < shape.Columns.Length; c++)
             {
-                AddParameter(command, "p" + r + "_" + c, NormalizeValue(shape.Columns[c].Property.GetValue(item), shape.Columns[c].ClrType));
+                AddParameter(command, "p" + r + "_" + c, NormalizeValue(ForgeProviderAccessors.Get(shape.Columns[c].Property, item!), shape.Columns[c].ClrType));
             }
         }
     }

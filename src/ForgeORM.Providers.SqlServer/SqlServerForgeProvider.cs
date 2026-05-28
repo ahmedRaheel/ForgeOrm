@@ -118,7 +118,10 @@ public sealed class SqlServerForgeProvider : IForgeDatabaseProvider
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public ValueTask BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+    public async ValueTask BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default)
+    {
+        _ = await SqlServerNativeBulk.BulkUpdateAsync(connection, tableName, rows as IReadOnlyList<T> ?? rows.ToArray(), keyColumn, cancellationToken).ConfigureAwait(false);
+    }
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -129,7 +132,10 @@ public sealed class SqlServerForgeProvider : IForgeDatabaseProvider
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+    public async ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default)
+    {
+        _ = await SqlServerNativeBulk.BulkUpdateAsync(connection, tableName, rows as IReadOnlyList<T> ?? rows.ToArray(), keyColumn, cancellationToken).ConfigureAwait(false);
+    }
 
     private string BuildInsertSql(ForgeEntityMetadata e)
     {
@@ -145,153 +151,4 @@ public sealed class SqlServerForgeProvider : IForgeDatabaseProvider
         var sets = string.Join(", ", props.Select(p => p.ColumnName + " = " + Dialect.Parameter(p.PropertyName)));
         return $"UPDATE {e.TableName} SET {sets} WHERE {e.KeyColumn} = {Dialect.Parameter(e.KeyColumn)}";
     }
-}
-
-internal static class BulkFallback
-{
-
-    public static ValueTask<int> DeleteAsync<TKey>(
-    DbConnection connection,
-    string tableName,
-    IReadOnlyList<TKey> keys,
-    string keyColumn,
-    CancellationToken cancellationToken = default)
-    {
-        if (keys.Count == 0)
-            return ValueTask.FromResult(0);
-
-     return   SqlServerNativeBulk.BulkDeleteAsync(
-                     connection,
-                     tableName,
-                     keys,
-                     keyColumn,
-                     cancellationToken);
-    }
-
-    /// <summary>
-    /// Executes the T operation.
-    /// </summary>
-    /// <typeparam name="T">The type used by the operation.</typeparam>
-    /// <param name="connection">The connection value.</param>
-    /// <param name="tableName">The tableName value.</param>
-    /// <param name="rows">The rows value.</param>
-    /// <param name="ct">The ct value.</param>
-    /// <returns>The result of the T operation.</returns>
-    public static async ValueTask InsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken ct)
-    {
-        var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanRead && IsScalar(p.PropertyType))
-            .Where(p => !p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase))
-            .ToList();
-        var columns = string.Join(", ", props.Select(p => p.Name));
-        var values = string.Join(", ", props.Select(p => "@" + p.Name));
-        var sql = $"INSERT INTO {tableName} ({columns}) VALUES ({values})";
-        await ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
-    }
-
-    /// <summary>
-    /// Executes the T operation.
-    /// </summary>
-    /// <typeparam name="T">The type used by the operation.</typeparam>
-    /// <param name="connection">The connection value.</param>
-    /// <param name="tableName">The tableName value.</param>
-    /// <param name="rows">The rows value.</param>
-    /// <param name="keyColumn">The keyColumn value.</param>
-    /// <param name="ct">The ct value.</param>
-    /// <returns>The result of the T operation.</returns>
-    public static async ValueTask UpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken ct)
-    {
-        var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead && IsScalar(p.PropertyType) && !p.Name.Equals(keyColumn, StringComparison.OrdinalIgnoreCase)).ToList();
-        var set = string.Join(", ", props.Select(p => p.Name + " = @" + p.Name));
-        var sql = $"UPDATE {tableName} SET {set} WHERE {keyColumn} = @{keyColumn}";
-        await ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
-    }
-    private static bool IsScalar(Type type)
-    {
-        var actual = Nullable.GetUnderlyingType(type) ?? type;
-        return actual.IsPrimitive
-               || actual.IsEnum
-               || actual == typeof(string)
-               || actual == typeof(Guid)
-               || actual == typeof(decimal)
-               || actual == typeof(DateTime)
-               || actual == typeof(DateTimeOffset)
-               || actual == typeof(DateOnly)
-               || actual == typeof(TimeOnly)
-               || actual == typeof(TimeSpan)
-               || actual == typeof(byte[]);
-    }
-
-}
-
-
-internal static class ForgeProviderAdo
-{
-    /// <summary>
-    /// Executes the T operation.
-    /// </summary>
-    /// <typeparam name="T">The type used by the operation.</typeparam>
-    /// <param name="connection">The connection value.</param>
-    /// <param name="sql">The sql value.</param>
-    /// <param name="rows">The rows value.</param>
-    /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The result of the T operation.</returns>
-    public static async ValueTask<int> ExecuteManyAsync<T>(DbConnection connection, string sql, IReadOnlyCollection<T> rows, CancellationToken cancellationToken)
-    {
-        var total = 0;
-        foreach (var row in rows)
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText = sql;
-            foreach (var prop in typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead && IsScalar(p.PropertyType)))
-            {
-                var parameter = command.CreateParameter();
-                parameter.ParameterName = "@" + prop.Name;
-                parameter.Value = NormalizeValue(ForgeProviderAccessors.Get(prop, row!), prop.PropertyType) ?? DBNull.Value;
-                command.Parameters.Add(parameter);
-            }
-            total += await command.ExecuteNonQueryAsync(cancellationToken);
-        }
-        return total;
-    }
-    private static bool IsScalar(Type type)
-    {
-        var actual = Nullable.GetUnderlyingType(type) ?? type;
-        return actual.IsPrimitive
-               || actual.IsEnum
-               || actual == typeof(string)
-               || actual == typeof(Guid)
-               || actual == typeof(decimal)
-               || actual == typeof(DateTime)
-               || actual == typeof(DateTimeOffset)
-               || actual == typeof(DateOnly)
-               || actual == typeof(TimeOnly)
-               || actual == typeof(TimeSpan)
-               || actual == typeof(byte[]);
-    }
-
-    private static object? NormalizeValue(object? value, Type declaredType)
-    {
-        if (value is null)
-            return null;
-
-        var actual = Nullable.GetUnderlyingType(declaredType) ?? declaredType;
-
-        if (actual == typeof(DateTime))
-        {
-            var dateTime = (DateTime)value;
-            return dateTime == default || dateTime < new DateTime(1753, 1, 1)
-                ? DateTime.UtcNow
-                : dateTime;
-        }
-
-        if (actual == typeof(DateTimeOffset))
-        {
-            var dto = (DateTimeOffset)value;
-            return dto == default ? DateTimeOffset.UtcNow : dto;
-        }
-
-        return value;
-    }
-
 }

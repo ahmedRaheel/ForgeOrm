@@ -9,6 +9,7 @@ namespace ForgeORM.Providers.SqlServer;
 
 internal static class SqlServerNativeBulk
 {
+    private const int SmallBatchThreshold = 256;
     private static readonly ConcurrentDictionary<(Type EntityType, string TableName), SqlServerInsertPlan> InsertPlanCache = new();
     private static readonly ConcurrentDictionary<(Type EntityType, string TableName, string KeyColumn), SqlServerUpdatePlan> UpdatePlanCache = new();
     private static readonly ConcurrentDictionary<(Type KeyType, string TableName, string KeyColumn), SqlServerDeletePlan> DeletePlanCache = new();
@@ -29,6 +30,14 @@ internal static class SqlServerNativeBulk
         }
 
         var list = rows as IReadOnlyList<T> ?? rows.ToArray();
+
+        // For small batches, a cached multi-row INSERT is faster than SqlBulkCopy setup.
+        // SqlBulkCopy wins for large batches; the threshold keeps benchmark and production paths balanced.
+        if (list.Count <= SmallBatchThreshold)
+        {
+            await BulkFallback.InsertAsync(sqlConnection, tableName, list, cancellationToken).ConfigureAwait(false);
+            return;
+        }
 
         if (sqlConnection.State != ConnectionState.Open)
             await sqlConnection.OpenAsync(cancellationToken).ConfigureAwait(false);
@@ -72,6 +81,13 @@ internal static class SqlServerNativeBulk
         if (connection is not SqlConnection sqlConnection)
         {
             await BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken).ConfigureAwait(false);
+            return rows.Count;
+        }
+
+        // For small batches, cached CASE-based batched UPDATE avoids temp table + SqlBulkCopy overhead.
+        if (rows.Count <= SmallBatchThreshold)
+        {
+            await BulkFallback.UpdateAsync(sqlConnection, tableName, rows, keyColumn, cancellationToken).ConfigureAwait(false);
             return rows.Count;
         }
 
@@ -124,6 +140,13 @@ internal static class SqlServerNativeBulk
         if (connection is not SqlConnection sqlConnection)
         {
             await BulkFallback.DeleteAsync(connection, tableName, keys, keyColumn, cancellationToken).ConfigureAwait(false);
+            return keys.Count;
+        }
+
+        // For small key batches, a cached IN-delete is faster than temp table + SqlBulkCopy setup.
+        if (keys.Count <= SmallBatchThreshold)
+        {
+            await BulkFallback.DeleteAsync(sqlConnection, tableName, keys, keyColumn, cancellationToken).ConfigureAwait(false);
             return keys.Count;
         }
 

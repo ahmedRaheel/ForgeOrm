@@ -1,15 +1,16 @@
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using System.Reflection;
 using ForgeORM.Core;
 using Microsoft.Data.SqlClient;
+using Microsoft.SqlServer.Server;
 
 namespace ForgeORM.Providers.SqlServer;
 
 internal static class SqlServerNativeBulk
 {
-    private const int SmallBatchThreshold = 256;
     private static readonly ConcurrentDictionary<(Type EntityType, string TableName), SqlServerInsertPlan> InsertPlanCache = new();
     private static readonly ConcurrentDictionary<(Type EntityType, string TableName, string KeyColumn), SqlServerUpdatePlan> UpdatePlanCache = new();
     private static readonly ConcurrentDictionary<(Type KeyType, string TableName, string KeyColumn), SqlServerDeletePlan> DeletePlanCache = new();
@@ -31,14 +32,6 @@ internal static class SqlServerNativeBulk
 
         var list = rows as IReadOnlyList<T> ?? rows.ToArray();
 
-        // For small batches, a cached multi-row INSERT is faster than SqlBulkCopy setup.
-        // SqlBulkCopy wins for large batches; the threshold keeps benchmark and production paths balanced.
-        if (list.Count <= SmallBatchThreshold)
-        {
-            await BulkFallback.InsertAsync(sqlConnection, tableName, list, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
         if (sqlConnection.State != ConnectionState.Open)
             await sqlConnection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
@@ -49,23 +42,15 @@ internal static class SqlServerNativeBulk
         if (plan.Properties.Length == 0)
             return;
 
-        var table = plan.CreateTable(list);
-
-        using var bulk = new SqlBulkCopy(
-            sqlConnection,
-            SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.CheckConstraints,
-            externalTransaction: null)
+        try
         {
-            DestinationTableName = plan.QuotedTableName,
-            BatchSize = Math.Min(Math.Max(list.Count, 1), 5000),
-            BulkCopyTimeout = 0,
-            EnableStreaming = true
-        };
-
-        for (var i = 0; i < plan.ColumnNames.Length; i++)
-            bulk.ColumnMappings.Add(plan.ColumnNames[i], plan.ColumnNames[i]);
-
-        await bulk.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
+            await InsertWithSqlDataRecordTvpAsync(sqlConnection, plan, list, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+        catch (Exception ex) when (SqlServerBulkFallbackPolicy.CanFallback(ex))
+        {
+            await InsertWithDataTableFallbackAsync(sqlConnection, plan, list, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public static async ValueTask<int> BulkUpdateAsync<T>(
@@ -81,13 +66,6 @@ internal static class SqlServerNativeBulk
         if (connection is not SqlConnection sqlConnection)
         {
             await BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken).ConfigureAwait(false);
-            return rows.Count;
-        }
-
-        // For small batches, cached CASE-based batched UPDATE avoids temp table + SqlBulkCopy overhead.
-        if (rows.Count <= SmallBatchThreshold)
-        {
-            await BulkFallback.UpdateAsync(sqlConnection, tableName, rows, keyColumn, cancellationToken).ConfigureAwait(false);
             return rows.Count;
         }
 
@@ -143,13 +121,6 @@ internal static class SqlServerNativeBulk
             return keys.Count;
         }
 
-        // For small key batches, a cached IN-delete is faster than temp table + SqlBulkCopy setup.
-        if (keys.Count <= SmallBatchThreshold)
-        {
-            await BulkFallback.DeleteAsync(sqlConnection, tableName, keys, keyColumn, cancellationToken).ConfigureAwait(false);
-            return keys.Count;
-        }
-
         if (sqlConnection.State != ConnectionState.Open)
             await sqlConnection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
@@ -189,35 +160,51 @@ internal static class SqlServerNativeBulk
 
         private SqlServerInsertPlan(
             string quotedTableName,
+            string tvpTypeName,
+            string insertSql,
             PropertyInfo[] properties,
             string[] columnNames,
             Func<object, object?>[] getters,
             Type[] declaredTypes,
-            DataTable schema)
+            DataTable schema,
+            SqlMetaData[] sqlMetaData)
         {
             QuotedTableName = quotedTableName;
+            TvpTypeName = tvpTypeName;
+            InsertSql = insertSql;
             Properties = properties;
             ColumnNames = columnNames;
             _getters = getters;
             _declaredTypes = declaredTypes;
             _schema = schema;
+            SqlMetaData = sqlMetaData;
         }
 
         public string QuotedTableName { get; }
+        public string TvpTypeName { get; }
+        public string InsertSql { get; }
+        public SqlMetaData[] SqlMetaData { get; }
         public PropertyInfo[] Properties { get; }
         public string[] ColumnNames { get; }
 
         public static SqlServerInsertPlan Create(Type entityType, string tableName)
         {
             var properties = GetBulkProperties(entityType, includeIdentity: false);
+            var columnNames = BuildColumnNames(properties);
             return new SqlServerInsertPlan(
                 QuoteTable(tableName),
+                BuildTvpTypeName(entityType),
+                BuildInsertFromTvpSql(tableName, columnNames),
                 properties,
-                BuildColumnNames(properties),
+                columnNames,
                 BuildGetters(properties),
                 BuildDeclaredTypes(properties),
-                CreateSchema(properties));
+                CreateSchema(properties),
+                BuildSqlMetaData(properties));
         }
+
+        public object? GetValue(object entity, int ordinal) => _getters[ordinal](entity);
+        public Type GetDeclaredType(int ordinal) => _declaredTypes[ordinal];
 
         public DataTable CreateTable<T>(IReadOnlyList<T> rows)
         {
@@ -236,6 +223,79 @@ internal static class SqlServerNativeBulk
             table.EndLoadData();
             return table;
         }
+    }
+
+
+    private static async ValueTask InsertWithSqlDataRecordTvpAsync<T>(
+        SqlConnection connection,
+        SqlServerInsertPlan plan,
+        IReadOnlyList<T> rows,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = plan.InsertSql;
+
+        var parameter = command.Parameters.Add("@Rows", SqlDbType.Structured);
+        parameter.TypeName = plan.TvpTypeName;
+        parameter.Value = new SqlDataRecordRows<T>(rows, plan);
+
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async ValueTask InsertWithDataTableFallbackAsync<T>(
+        SqlConnection connection,
+        SqlServerInsertPlan plan,
+        IReadOnlyList<T> rows,
+        CancellationToken cancellationToken)
+    {
+        var table = plan.CreateTable(rows);
+
+        using var bulk = new SqlBulkCopy(
+            connection,
+            SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.CheckConstraints,
+            externalTransaction: null)
+        {
+            DestinationTableName = plan.QuotedTableName,
+            BatchSize = Math.Min(Math.Max(rows.Count, 1), 5000),
+            BulkCopyTimeout = 0,
+            EnableStreaming = true
+        };
+
+        for (var i = 0; i < plan.ColumnNames.Length; i++)
+            bulk.ColumnMappings.Add(plan.ColumnNames[i], plan.ColumnNames[i]);
+
+        await bulk.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
+    }
+
+    private sealed class SqlDataRecordRows<T> : IEnumerable<SqlDataRecord>
+    {
+        private readonly IReadOnlyList<T> _rows;
+        private readonly SqlServerInsertPlan _plan;
+
+        public SqlDataRecordRows(IReadOnlyList<T> rows, SqlServerInsertPlan plan)
+        {
+            _rows = rows;
+            _plan = plan;
+        }
+
+        public IEnumerator<SqlDataRecord> GetEnumerator()
+        {
+            for (var r = 0; r < _rows.Count; r++)
+            {
+                var record = new SqlDataRecord(_plan.SqlMetaData);
+                var entity = _rows[r]!;
+
+                for (var c = 0; c < _plan.ColumnNames.Length; c++)
+                {
+                    var value = NormalizeValue(_plan.GetValue(entity, c), _plan.GetDeclaredType(c));
+                    SetRecordValue(record, c, value, _plan.GetDeclaredType(c));
+                }
+
+                yield return record;
+            }
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     private sealed class SqlServerUpdatePlan
@@ -309,6 +369,9 @@ internal static class SqlServerNativeBulk
 
         public string CreateTempTableSql(string tempTable) => string.Format(System.Globalization.CultureInfo.InvariantCulture, _tempTableTemplate, tempTable);
         public string CreateMergeSql(string tempTable) => string.Format(System.Globalization.CultureInfo.InvariantCulture, _mergeTemplate, tempTable);
+
+        public object? GetValue(object entity, int ordinal) => _getters[ordinal](entity);
+        public Type GetDeclaredType(int ordinal) => _declaredTypes[ordinal];
 
         public DataTable CreateTable<T>(IReadOnlyList<T> rows)
         {
@@ -504,6 +567,89 @@ internal static class SqlServerNativeBulk
 
         sql.Append(';');
         return sql.ToString();
+    }
+
+
+    private static string BuildTvpTypeName(Type entityType)
+        => "dbo." + entityType.Name + "TableType";
+
+    private static string BuildInsertFromTvpSql(string tableName, string[] columnNames)
+    {
+        var columns = string.Join(", ", columnNames.Select(QuoteIdentifier));
+        return $"INSERT INTO {QuoteTable(tableName)} ({columns}) SELECT {columns} FROM @Rows;";
+    }
+
+    private static SqlMetaData[] BuildSqlMetaData(PropertyInfo[] properties)
+    {
+        var meta = new SqlMetaData[properties.Length];
+        for (var i = 0; i < properties.Length; i++)
+            meta[i] = CreateSqlMetaData(properties[i].Name, properties[i].PropertyType);
+        return meta;
+    }
+
+    private static SqlMetaData CreateSqlMetaData(string name, Type type)
+    {
+        var actual = Nullable.GetUnderlyingType(type) ?? type;
+
+        if (actual.IsEnum) return new SqlMetaData(name, SqlDbType.NVarChar, 128);
+        if (actual == typeof(string)) return new SqlMetaData(name, SqlDbType.NVarChar, -1);
+        if (actual == typeof(int)) return new SqlMetaData(name, SqlDbType.Int);
+        if (actual == typeof(long)) return new SqlMetaData(name, SqlDbType.BigInt);
+        if (actual == typeof(short)) return new SqlMetaData(name, SqlDbType.SmallInt);
+        if (actual == typeof(byte)) return new SqlMetaData(name, SqlDbType.TinyInt);
+        if (actual == typeof(bool)) return new SqlMetaData(name, SqlDbType.Bit);
+        if (actual == typeof(decimal)) return new SqlMetaData(name, SqlDbType.Decimal, 38, 10);
+        if (actual == typeof(float)) return new SqlMetaData(name, SqlDbType.Real);
+        if (actual == typeof(double)) return new SqlMetaData(name, SqlDbType.Float);
+        if (actual == typeof(DateTime)) return new SqlMetaData(name, SqlDbType.DateTime2);
+        if (actual == typeof(DateTimeOffset)) return new SqlMetaData(name, SqlDbType.DateTimeOffset);
+        if (actual == typeof(Guid)) return new SqlMetaData(name, SqlDbType.UniqueIdentifier);
+        if (actual == typeof(byte[])) return new SqlMetaData(name, SqlDbType.VarBinary, -1);
+        if (actual == typeof(TimeSpan)) return new SqlMetaData(name, SqlDbType.Time);
+        if (actual == typeof(DateOnly) || actual == typeof(TimeOnly)) return new SqlMetaData(name, SqlDbType.NVarChar, 32);
+
+        return new SqlMetaData(name, SqlDbType.NVarChar, -1);
+    }
+
+    private static void SetRecordValue(SqlDataRecord record, int ordinal, object? value, Type declaredType)
+    {
+        if (value is null || value is DBNull)
+        {
+            record.SetDBNull(ordinal);
+            return;
+        }
+
+        var actual = Nullable.GetUnderlyingType(declaredType) ?? declaredType;
+
+        if (actual.IsEnum)
+        {
+            record.SetString(ordinal, value.ToString()!);
+            return;
+        }
+
+        if (actual == typeof(int)) { record.SetInt32(ordinal, Convert.ToInt32(value)); return; }
+        if (actual == typeof(long)) { record.SetInt64(ordinal, Convert.ToInt64(value)); return; }
+        if (actual == typeof(short)) { record.SetInt16(ordinal, Convert.ToInt16(value)); return; }
+        if (actual == typeof(byte)) { record.SetByte(ordinal, Convert.ToByte(value)); return; }
+        if (actual == typeof(bool)) { record.SetBoolean(ordinal, Convert.ToBoolean(value)); return; }
+        if (actual == typeof(decimal)) { record.SetDecimal(ordinal, Convert.ToDecimal(value)); return; }
+        if (actual == typeof(float)) { record.SetFloat(ordinal, Convert.ToSingle(value)); return; }
+        if (actual == typeof(double)) { record.SetDouble(ordinal, Convert.ToDouble(value)); return; }
+        if (actual == typeof(DateTime)) { record.SetDateTime(ordinal, Convert.ToDateTime(value)); return; }
+        if (actual == typeof(Guid)) { record.SetGuid(ordinal, value is Guid g ? g : Guid.Parse(value.ToString()!)); return; }
+        if (actual == typeof(string)) { record.SetString(ordinal, value.ToString()!); return; }
+        if (actual == typeof(byte[])) { record.SetBytes(ordinal, 0, (byte[])value, 0, ((byte[])value).Length); return; }
+
+        record.SetValue(ordinal, value);
+    }
+
+    private static class SqlServerBulkFallbackPolicy
+    {
+        public static bool CanFallback(Exception ex)
+            => ex is TypeLoadException
+                or MissingMethodException
+                or InvalidCastException
+                or NotSupportedException;
     }
 
     private static string ToSqlType(Type type)

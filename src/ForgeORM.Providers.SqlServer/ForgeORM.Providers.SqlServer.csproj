@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>ForgeORM.Providers.SqlServer</PackageId>
          <Version>1.3.8</Version>
@@ -22,8 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\ForgeORM.Abstractions\ForgeORM.Abstractions.csproj" />
 	  <ProjectReference Include="..\ForgeORM.Core\ForgeORM.Core.csproj" />
-    <PackageReference Include="Microsoft.Data.SqlClient"  />
-    <PackageReference Include="System.Data.SqlClient" Version="4.9.0" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />

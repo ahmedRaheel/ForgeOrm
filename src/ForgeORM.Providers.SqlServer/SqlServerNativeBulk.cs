@@ -5,7 +5,8 @@ using System.Data.Common;
 using System.Reflection;
 using ForgeORM.Core;
 using Microsoft.Data.SqlClient;
-using Microsoft.SqlServer.Server;
+using Microsoft.Data.SqlClient.Server;
+
 
 namespace ForgeORM.Providers.SqlServer;
 

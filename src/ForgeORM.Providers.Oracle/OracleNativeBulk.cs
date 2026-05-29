@@ -107,14 +107,29 @@ internal static class OracleNativeBulk
     private static ValueTask UpdateWithTempTableStrategyAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken)
         => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
 
-    private static async ValueTask DeleteWithNativeStrategyAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, CancellationToken cancellationToken)
-    { 
-        _ = BulkFallback.DeleteAsync(connection, tableName, keys, keyColumn, cancellationToken); 
-    }
+    private static ValueTask DeleteWithNativeStrategyAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, CancellationToken cancellationToken)
+        => DeleteRowsDirectAsync(connection, tableName, keys, keyColumn, ":", cancellationToken);
 
-    private static async ValueTask DeleteWithTempTableStrategyAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, CancellationToken cancellationToken)
-    { 
-       _= BulkFallback.DeleteAsync(connection, tableName, keys, keyColumn, cancellationToken); 
+    private static ValueTask DeleteWithTempTableStrategyAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, CancellationToken cancellationToken)
+        => DeleteRowsDirectAsync(connection, tableName, keys, keyColumn, ":", cancellationToken);
+
+    private static async ValueTask DeleteRowsDirectAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, string parameterPrefix, CancellationToken cancellationToken)
+    {
+        if (connection.State != System.Data.ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        await using var command = connection.CreateCommand();
+        var parameterName = parameterPrefix + "p0";
+        command.CommandText = $"DELETE FROM {tableName} WHERE {keyColumn} = {parameterName}";
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = parameterName;
+        command.Parameters.Add(parameter);
+
+        foreach (var key in keys)
+        {
+            parameter.Value = key is null ? DBNull.Value : key;
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
     internal static PropertyInfo[] GetBulkProperties<T>()

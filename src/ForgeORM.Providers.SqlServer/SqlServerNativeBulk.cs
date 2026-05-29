@@ -155,21 +155,61 @@ internal static class SqlServerNativeBulk
         }
     }
 
-    private static ValueTask<int> UpdateWithSqlDataRecordTvpAsync<T>(
+    private static async ValueTask<int> UpdateWithSqlDataRecordTvpAsync<T>(
         SqlConnection connection,
         SqlServerUpdatePlan plan,
         IReadOnlyList<T> rows,
         ForgeProviderBulkOptions options,
         CancellationToken cancellationToken)
-        => UpdateWithSqlBulkCopyTempTableAsync(connection, plan, rows, options, cancellationToken);
+    {
+        var typeName = CreateTransientSqlServerTypeName(plan.QuotedTableName, "Update");
 
-    private static ValueTask<int> UpdateWithDataTableTableTypeParameterAsync<T>(
+        await CreateTableTypeAsync(connection, typeName, plan.Properties, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = plan.CreateMergeSql("@Rows");
+            command.CommandTimeout = options.CommandTimeoutSeconds;
+
+            var parameter = command.Parameters.Add("@Rows", SqlDbType.Structured);
+            parameter.TypeName = typeName;
+            parameter.Value = new SqlServerRowRecordRows<T>(rows, plan);
+
+            return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await DropTableTypeAsync(connection, typeName, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static async ValueTask<int> UpdateWithDataTableTableTypeParameterAsync<T>(
         SqlConnection connection,
         SqlServerUpdatePlan plan,
         IReadOnlyList<T> rows,
         ForgeProviderBulkOptions options,
         CancellationToken cancellationToken)
-        => UpdateWithSqlBulkCopyTempTableAsync(connection, plan, rows, options, cancellationToken);
+    {
+        var typeName = CreateTransientSqlServerTypeName(plan.QuotedTableName, "Update");
+
+        await CreateTableTypeAsync(connection, typeName, plan.Properties, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = plan.CreateMergeSql("@Rows");
+            command.CommandTimeout = options.CommandTimeoutSeconds;
+
+            var parameter = command.Parameters.Add("@Rows", SqlDbType.Structured);
+            parameter.TypeName = typeName;
+            parameter.Value = plan.CreateTable(rows);
+
+            return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await DropTableTypeAsync(connection, typeName, cancellationToken).ConfigureAwait(false);
+        }
+    }
 
     private static async ValueTask<int> UpdateWithSqlBulkCopyTempTableAsync<T>(
         SqlConnection sqlConnection,
@@ -200,27 +240,74 @@ internal static class SqlServerNativeBulk
             await bulk.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
         }
 
-        await using var merge = sqlConnection.CreateCommand();
-        merge.CommandText = plan.CreateMergeSql(tempTable);
-        merge.CommandTimeout = options.CommandTimeoutSeconds;
-        return await merge.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using var merge = sqlConnection.CreateCommand();
+            merge.CommandText = plan.CreateMergeSql(tempTable);
+            merge.CommandTimeout = options.CommandTimeoutSeconds;
+            return await merge.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await DropTempTableAsync(sqlConnection, tempTable, cancellationToken).ConfigureAwait(false);
+        }
     }
 
-    private static ValueTask<int> DeleteWithSqlDataRecordTvpAsync<TKey>(
+    private static async ValueTask<int> DeleteWithSqlDataRecordTvpAsync<TKey>(
         SqlConnection connection,
         SqlServerDeletePlan plan,
         IReadOnlyList<TKey> keys,
         ForgeProviderBulkOptions options,
         CancellationToken cancellationToken)
-        => DeleteWithSqlBulkCopyTempTableAsync(connection, plan, keys, options, cancellationToken);
+    {
+        var typeName = CreateTransientSqlServerTypeName(plan.TableName, "Delete");
 
-    private static ValueTask<int> DeleteWithDataTableTableTypeParameterAsync<TKey>(
+        await CreateTableTypeAsync(connection, typeName, plan.KeyColumn, plan.KeyDeclaredType, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = plan.CreateDeleteSql("@Rows");
+            command.CommandTimeout = options.CommandTimeoutSeconds;
+
+            var parameter = command.Parameters.Add("@Rows", SqlDbType.Structured);
+            parameter.TypeName = typeName;
+            parameter.Value = new SqlServerKeyRecordRows<TKey>(keys, plan.KeyColumn, plan.KeyDeclaredType);
+
+            return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await DropTableTypeAsync(connection, typeName, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static async ValueTask<int> DeleteWithDataTableTableTypeParameterAsync<TKey>(
         SqlConnection connection,
         SqlServerDeletePlan plan,
         IReadOnlyList<TKey> keys,
         ForgeProviderBulkOptions options,
         CancellationToken cancellationToken)
-        => DeleteWithSqlBulkCopyTempTableAsync(connection, plan, keys, options, cancellationToken);
+    {
+        var typeName = CreateTransientSqlServerTypeName(plan.TableName, "Delete");
+
+        await CreateTableTypeAsync(connection, typeName, plan.KeyColumn, plan.KeyDeclaredType, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = plan.CreateDeleteSql("@Rows");
+            command.CommandTimeout = options.CommandTimeoutSeconds;
+
+            var parameter = command.Parameters.Add("@Rows", SqlDbType.Structured);
+            parameter.TypeName = typeName;
+            parameter.Value = plan.CreateTable(keys);
+
+            return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await DropTableTypeAsync(connection, typeName, cancellationToken).ConfigureAwait(false);
+        }
+    }
 
     private static async ValueTask<int> DeleteWithSqlBulkCopyTempTableAsync<TKey>(
         SqlConnection sqlConnection,
@@ -249,10 +336,17 @@ internal static class SqlServerNativeBulk
             await bulk.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
         }
 
-        await using var delete = sqlConnection.CreateCommand();
-        delete.CommandText = plan.CreateDeleteSql(tempTable);
-        delete.CommandTimeout = options.CommandTimeoutSeconds;
-        return await delete.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using var delete = sqlConnection.CreateCommand();
+            delete.CommandText = plan.CreateDeleteSql(tempTable);
+            delete.CommandTimeout = options.CommandTimeoutSeconds;
+            return await delete.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await DropTempTableAsync(sqlConnection, tempTable, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private static async ValueTask InsertWithSqlDataRecordTvpAsync<T>(
@@ -261,14 +355,24 @@ internal static class SqlServerNativeBulk
        IReadOnlyList<T> rows,
        CancellationToken cancellationToken)
     {
-        await using var command = connection.CreateCommand();
-        command.CommandText = plan.InsertSql;
+        var typeName = CreateTransientSqlServerTypeName(plan.QuotedTableName, "Insert");
 
-        var parameter = command.Parameters.Add("@Rows", SqlDbType.Structured);
-        parameter.TypeName = plan.TvpTypeName;
-        parameter.Value = new SqlDataRecordRows<T>(rows, plan);
+        await CreateTableTypeAsync(connection, typeName, plan.Properties, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = plan.InsertSql;
 
-        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            var parameter = command.Parameters.Add("@Rows", SqlDbType.Structured);
+            parameter.TypeName = typeName;
+            parameter.Value = new SqlDataRecordRows<T>(rows, plan);
+
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await DropTableTypeAsync(connection, typeName, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private static async ValueTask InsertWithDataTableFallbackAsync<T>(
@@ -277,23 +381,24 @@ internal static class SqlServerNativeBulk
         IReadOnlyList<T> rows,
         CancellationToken cancellationToken)
     {
-        var table = plan.CreateTable(rows);
+        var typeName = CreateTransientSqlServerTypeName(plan.QuotedTableName, "Insert");
 
-        using var bulk = new SqlBulkCopy(
-            connection,
-            SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.CheckConstraints,
-            externalTransaction: null)
+        await CreateTableTypeAsync(connection, typeName, plan.Properties, cancellationToken).ConfigureAwait(false);
+        try
         {
-            DestinationTableName = plan.QuotedTableName,
-            BatchSize = Math.Min(Math.Max(rows.Count, 1), 5000),
-            BulkCopyTimeout = 0,
-            EnableStreaming = true
-        };
+            await using var command = connection.CreateCommand();
+            command.CommandText = plan.InsertSql;
 
-        for (var i = 0; i < plan.ColumnNames.Length; i++)
-            bulk.ColumnMappings.Add(plan.ColumnNames[i], plan.ColumnNames[i]);
+            var parameter = command.Parameters.Add("@Rows", SqlDbType.Structured);
+            parameter.TypeName = typeName;
+            parameter.Value = plan.CreateTable(rows);
 
-        await bulk.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await DropTableTypeAsync(connection, typeName, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private sealed class SqlServerInsertPlan
@@ -393,6 +498,68 @@ internal static class SqlServerNativeBulk
                     SetRecordValue(record, c, value, _plan.GetDeclaredType(c));
                 }
 
+                yield return record;
+            }
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private sealed class SqlServerRowRecordRows<T> : IEnumerable<SqlDataRecord>
+    {
+        private readonly IReadOnlyList<T> _rows;
+        private readonly SqlServerUpdatePlan _plan;
+
+        public SqlServerRowRecordRows(IReadOnlyList<T> rows, SqlServerUpdatePlan plan)
+        {
+            _rows = rows;
+            _plan = plan;
+        }
+
+        public IEnumerator<SqlDataRecord> GetEnumerator()
+        {
+            var metadata = BuildSqlMetaData(_plan.Properties);
+
+            for (var r = 0; r < _rows.Count; r++)
+            {
+                var record = new SqlDataRecord(metadata);
+                var entity = _rows[r]!;
+
+                for (var c = 0; c < _plan.ColumnNames.Length; c++)
+                {
+                    var value = NormalizeValue(_plan.GetValue(entity, c), _plan.GetDeclaredType(c));
+                    SetRecordValue(record, c, value, _plan.GetDeclaredType(c));
+                }
+
+                yield return record;
+            }
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private sealed class SqlServerKeyRecordRows<TKey> : IEnumerable<SqlDataRecord>
+    {
+        private readonly IReadOnlyList<TKey> _keys;
+        private readonly string _keyColumn;
+        private readonly Type _keyType;
+
+        public SqlServerKeyRecordRows(IReadOnlyList<TKey> keys, string keyColumn, Type keyType)
+        {
+            _keys = keys;
+            _keyColumn = keyColumn;
+            _keyType = keyType;
+        }
+
+        public IEnumerator<SqlDataRecord> GetEnumerator()
+        {
+            var metadata = new[] { CreateSqlMetaData(_keyColumn, _keyType) };
+
+            for (var i = 0; i < _keys.Count; i++)
+            {
+                var record = new SqlDataRecord(metadata);
+                var value = NormalizeValue(_keys[i], _keyType);
+                SetRecordValue(record, 0, value, _keyType);
                 yield return record;
             }
         }
@@ -519,6 +686,7 @@ internal static class SqlServerNativeBulk
 
         public string TableName { get; }
         public string KeyColumn { get; }
+        public Type KeyDeclaredType => _keyDeclaredType;
 
         public static SqlServerDeletePlan Create(Type keyType, string tableName, string keyColumn)
         {
@@ -671,6 +839,89 @@ internal static class SqlServerNativeBulk
         return sql.ToString();
     }
 
+
+    private static async ValueTask CreateTableTypeAsync(
+        SqlConnection connection,
+        string typeName,
+        PropertyInfo[] properties,
+        CancellationToken cancellationToken)
+    {
+        var sql = new System.Text.StringBuilder(256 + properties.Length * 64);
+        sql.Append("CREATE TYPE ").Append(typeName).Append(" AS TABLE (");
+
+        for (var i = 0; i < properties.Length; i++)
+        {
+            if (i > 0)
+                sql.Append(", ");
+
+            sql.Append(QuoteIdentifier(properties[i].Name))
+               .Append(' ')
+               .Append(ToSqlType(properties[i].PropertyType))
+               .Append(" NULL");
+        }
+
+        sql.Append(");");
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql.ToString();
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async ValueTask CreateTableTypeAsync(
+        SqlConnection connection,
+        string typeName,
+        string keyColumn,
+        Type keyType,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"CREATE TYPE {typeName} AS TABLE ({QuoteIdentifier(keyColumn)} {ToSqlType(keyType)} NULL);";
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async ValueTask DropTempTableAsync(
+        SqlConnection connection,
+        string tempTable,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = "DROP TABLE IF EXISTS " + tempTable + ";";
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (SqlException)
+        {
+            // Best effort cleanup.
+        }
+    }
+
+    private static async ValueTask DropTableTypeAsync(
+        SqlConnection connection,
+        string typeName,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = "DROP TYPE " + typeName + ";";
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (SqlException)
+        {
+            // Best effort cleanup. The bulk operation result must not be hidden by cleanup failure.
+        }
+    }
+
+    private static string CreateTransientSqlServerTypeName(string tableName, string operation)
+    {
+        var clean = tableName
+            .Replace("[", string.Empty, StringComparison.Ordinal)
+            .Replace("]", string.Empty, StringComparison.Ordinal)
+            .Replace(".", "_", StringComparison.Ordinal);
+
+        return "dbo.ForgeBulk_" + operation + "_" + clean + "_" + Guid.NewGuid().ToString("N");
+    }
 
     private static string BuildTvpTypeName(Type entityType)
         => "dbo." + entityType.Name + "TableType";

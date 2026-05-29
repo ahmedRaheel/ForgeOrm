@@ -136,7 +136,7 @@ public sealed class OracleForgeProvider : IForgeDatabaseProvider
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default) => OracleNativeBulk.BulkUpdateAsync(connection, tableName, rows, keyColumn, bulkOptions ?? ForgeProviderBulkOptionsDefaults.Current, cancellationToken);
+    public ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default) => OracleNativeBulk.BulkUpdateAsync(connection, tableName, rows, keyColumn, ForgeProviderBulkOptionsDefaults.Current, cancellationToken);
 
     /// <summary>Executes a provider-native bulk delete operation.</summary>
     public ValueTask BulkDeleteAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default)
@@ -187,6 +187,7 @@ internal static class BulkFallback
                      tableName,
                      keys,
                      keyColumn,
+                     ForgeProviderBulkOptionsDefaults.Current,
                      cancellationToken);
         return 1;
     }

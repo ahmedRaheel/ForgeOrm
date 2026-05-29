@@ -368,7 +368,8 @@ public partial class ForgeDb
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
         var effectiveOptions = bulkOptions ?? ForgeProviderBulkOptionsDefaults.Current;
-        await Provider.BulkDeleteAsync(c, tableName, ids, keyColumn, effectiveOptions, cancellationToken);
+        
+        await Provider.BulkDeleteAsync<int>(c, tableName, ids, keyColumn, effectiveOptions, cancellationToken);
         return ids.Count;
     }
 

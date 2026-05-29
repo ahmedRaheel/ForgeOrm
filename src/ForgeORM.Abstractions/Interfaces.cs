@@ -1608,4 +1608,16 @@ public interface IForgeDatabaseProvider
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
     ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Delete the TKey operation
+    /// </summary>
+    /// <typeparam name="TKey"></typeparam>
+    /// <param name="connection"></param>
+    /// <param name="tableName"></param>
+    /// <param name="keys"></param>
+    /// <param name="keyColumn"></param>
+    /// <param name="options"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    ValueTask BulkDeleteAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, ForgeProviderBulkOptions options = null, CancellationToken cancellationToken = default);
 }

@@ -135,10 +135,10 @@ public sealed class MySqlForgeProvider : IForgeDatabaseProvider
         return MySqlNativeBulk.BulkUpdateAsync(connection, tableName, rows, keyColumn, bulkOptions ?? ForgeProviderBulkOptionsDefaults.Current, cancellationToken);
     }
 
-    public ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default)
+    public ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default)
     {
         if (rows is null || rows.Count == 0) return ValueTask.CompletedTask;
-        return MySqlNativeBulk.BulkUpdateAsync(connection, tableName, rows, keyColumn, bulkOptions ?? ForgeProviderBulkOptionsDefaults.Current, cancellationToken);
+        return MySqlNativeBulk.BulkUpdateAsync(connection, tableName, rows, keyColumn,  ForgeProviderBulkOptionsDefaults.Current, cancellationToken);
     }
 
     /// <summary>Executes a provider-native bulk delete operation.</summary>
@@ -174,6 +174,7 @@ internal static class BulkFallback
                     tableName,
                     keys,
                     keyColumn,
+                    ForgeProviderBulkOptionsDefaults.Current,
                     cancellationToken);
         return 1;
 

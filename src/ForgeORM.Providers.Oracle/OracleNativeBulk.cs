@@ -107,11 +107,15 @@ internal static class OracleNativeBulk
     private static ValueTask UpdateWithTempTableStrategyAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken)
         => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
 
-    private static ValueTask DeleteWithNativeStrategyAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, CancellationToken cancellationToken)
-        => BulkFallback.DeleteAsync(connection, tableName, keys, keyColumn, cancellationToken);
+    private static async ValueTask DeleteWithNativeStrategyAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, CancellationToken cancellationToken)
+    { 
+        _ = BulkFallback.DeleteAsync(connection, tableName, keys, keyColumn, cancellationToken); 
+    }
 
-    private static ValueTask DeleteWithTempTableStrategyAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, CancellationToken cancellationToken)
-        => BulkFallback.DeleteAsync(connection, tableName, keys, keyColumn, cancellationToken);
+    private static async ValueTask DeleteWithTempTableStrategyAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, CancellationToken cancellationToken)
+    { 
+       _= BulkFallback.DeleteAsync(connection, tableName, keys, keyColumn, cancellationToken); 
+    }
 
     internal static PropertyInfo[] GetBulkProperties<T>()
         => typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance)

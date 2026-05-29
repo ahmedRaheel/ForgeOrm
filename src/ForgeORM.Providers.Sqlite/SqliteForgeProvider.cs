@@ -128,7 +128,7 @@ public sealed class SqliteForgeProvider : IForgeDatabaseProvider
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default) => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+    public ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn,  CancellationToken cancellationToken = default) => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
 
     /// <summary>Executes a provider bulk delete operation.</summary>
     public ValueTask BulkDeleteAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default)
@@ -186,6 +186,24 @@ internal static class BulkFallback
         var set = string.Join(", ", props.Select(p => p.Name + " = @" + p.Name));
         var sql = $"UPDATE {tableName} SET {set} WHERE {keyColumn} = @{keyColumn}";
        await ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
+    }
+
+    /// <summary>
+    /// Executes the T operation.
+    /// </summary>
+    /// <typeparam name="T">The type used by the operation.</typeparam>
+    /// <param name="connection">The connection value.</param>
+    /// <param name="tableName">The tableName value.</param>
+    /// <param name="rows">The rows value.</param>
+    /// <param name="keyColumn">The keyColumn value.</param>
+    /// <param name="ct">The ct value.</param>
+    /// <returns>The result of the T operation.</returns>
+    public static async ValueTask DeleteAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken ct)
+    {
+        var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead && IsScalar(p.PropertyType) && !p.Name.Equals(keyColumn, StringComparison.OrdinalIgnoreCase)).ToList();
+        var set = string.Join(", ", props.Select(p => p.Name + " = @" + p.Name));
+        var sql = $"DELETE {tableName}  WHERE {keyColumn} = @{keyColumn}";
+        await ForgeProviderAdo.ExecuteManyAsync(connection, sql, rows, ct);
     }
     private static bool IsScalar(Type type)
     {

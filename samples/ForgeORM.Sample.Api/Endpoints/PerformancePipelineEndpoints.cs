@@ -101,7 +101,7 @@ public static class PerformancePipelineEndpoints
 
         group.MapPost("/products/bulk-hook", async (List<Product> products, ForgeDb db, CancellationToken ct) =>
         {
-            await db.BulkInsertAsync(products, ct);
+            await db.BulkInsertAsync(products, cancellationToken: ct);
             return Results.Ok(new { inserted = products.Count, mode = "provider bulk extension point" });
         });
 

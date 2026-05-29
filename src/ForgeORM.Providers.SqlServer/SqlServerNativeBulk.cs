@@ -5,7 +5,7 @@ using System.Data.Common;
 using System.Reflection;
 using ForgeORM.Core;
 using Microsoft.Data.SqlClient;
-using Microsoft.SqlServer.Server;
+using Microsoft.Data.SqlClient.Server;
 
 namespace ForgeORM.Providers.SqlServer;
 
@@ -151,6 +151,46 @@ internal static class SqlServerNativeBulk
         delete.CommandText = plan.CreateDeleteSql(tempTable);
         return await delete.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
+    private static async ValueTask InsertWithSqlDataRecordTvpAsync<T>(
+       SqlConnection connection,
+       SqlServerInsertPlan plan,
+       IReadOnlyList<T> rows,
+       CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = plan.InsertSql;
+
+        var parameter = command.Parameters.Add("@Rows", SqlDbType.Structured);
+        parameter.TypeName = plan.TvpTypeName;
+        parameter.Value = new SqlDataRecordRows<T>(rows, plan);
+
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async ValueTask InsertWithDataTableFallbackAsync<T>(
+        SqlConnection connection,
+        SqlServerInsertPlan plan,
+        IReadOnlyList<T> rows,
+        CancellationToken cancellationToken)
+    {
+        var table = plan.CreateTable(rows);
+
+        using var bulk = new SqlBulkCopy(
+            connection,
+            SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.CheckConstraints,
+            externalTransaction: null)
+        {
+            DestinationTableName = plan.QuotedTableName,
+            BatchSize = Math.Min(Math.Max(rows.Count, 1), 5000),
+            BulkCopyTimeout = 0,
+            EnableStreaming = true
+        };
+
+        for (var i = 0; i < plan.ColumnNames.Length; i++)
+            bulk.ColumnMappings.Add(plan.ColumnNames[i], plan.ColumnNames[i]);
+
+        await bulk.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
+    }
 
     private sealed class SqlServerInsertPlan
     {
@@ -224,49 +264,7 @@ internal static class SqlServerNativeBulk
             return table;
         }
     }
-
-
-    private static async ValueTask InsertWithSqlDataRecordTvpAsync<T>(
-        SqlConnection connection,
-        SqlServerInsertPlan plan,
-        IReadOnlyList<T> rows,
-        CancellationToken cancellationToken)
-    {
-        await using var command = connection.CreateCommand();
-        command.CommandText = plan.InsertSql;
-
-        var parameter = command.Parameters.Add("@Rows", SqlDbType.Structured);
-        parameter.TypeName = plan.TvpTypeName;
-        parameter.Value = new SqlDataRecordRows<T>(rows, plan);
-
-        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    private static async ValueTask InsertWithDataTableFallbackAsync<T>(
-        SqlConnection connection,
-        SqlServerInsertPlan plan,
-        IReadOnlyList<T> rows,
-        CancellationToken cancellationToken)
-    {
-        var table = plan.CreateTable(rows);
-
-        using var bulk = new SqlBulkCopy(
-            connection,
-            SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.CheckConstraints,
-            externalTransaction: null)
-        {
-            DestinationTableName = plan.QuotedTableName,
-            BatchSize = Math.Min(Math.Max(rows.Count, 1), 5000),
-            BulkCopyTimeout = 0,
-            EnableStreaming = true
-        };
-
-        for (var i = 0; i < plan.ColumnNames.Length; i++)
-            bulk.ColumnMappings.Add(plan.ColumnNames[i], plan.ColumnNames[i]);
-
-        await bulk.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
-    }
-
+   
     private sealed class SqlDataRecordRows<T> : IEnumerable<SqlDataRecord>
     {
         private readonly IReadOnlyList<T> _rows;

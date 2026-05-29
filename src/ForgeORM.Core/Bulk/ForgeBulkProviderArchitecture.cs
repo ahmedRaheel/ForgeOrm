@@ -15,11 +15,11 @@ public interface IForgeBulkProvider
 
     ValueTask<int> InsertBulkAsync<T>(DbConnection connection, string tableName, IReadOnlyList<T> rows, ForgeProviderBulkOptions options, CancellationToken cancellationToken = default);
 
-    ValueTask<int> UpdateBulkAsync<T>(DbConnection connection, string tableName, IReadOnlyList<T> rows, string keyColumn = "Id", ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default);
+    ValueTask<int> UpdateBulkAsync<T>(DbConnection connection, string tableName, IReadOnlyList<T> rows, string keyColumn = "Id", ForgeProviderBulkOptions? options = null, CancellationToken cancellationToken = default);
 
-    ValueTask<int> DeleteBulkAsync<TKey>(DbConnection connection, string tableName, IReadOnlyList<TKey> keys, string keyColumn = "Id", CancellationToken cancellationToken = default);
+    ValueTask<int> DeleteBulkAsync<TKey>(DbConnection connection, string tableName, IReadOnlyList<TKey> keys, string keyColumn = "Id", ForgeProviderBulkOptions? options = null, CancellationToken cancellationToken = default);
 
-    ValueTask<int> GraphUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyList<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default);
+    ValueTask<int> GraphUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyList<T> rows, string keyColumn = "Id", ForgeProviderBulkOptions? options = null, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

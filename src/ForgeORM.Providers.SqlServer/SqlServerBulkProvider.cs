@@ -34,10 +34,10 @@ public sealed class SqlServerBulkProvider : IForgeBulkProvider
         string tableName,
         IReadOnlyList<T> rows,
         string keyColumn = "Id",
-        ForgeProviderBulkOptions? bulkOptions = null,
+        ForgeProviderBulkOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        await SqlServerNativeBulk.BulkUpdateAsync(connection, tableName, rows, keyColumn, bulkOptions ?? ForgeProviderBulkOptionsDefaults.Current, cancellationToken).ConfigureAwait(false);
+        await SqlServerNativeBulk.BulkUpdateAsync(connection, tableName, rows, keyColumn, options ?? ForgeProviderBulkOptionsDefaults.Current, cancellationToken).ConfigureAwait(false);
         return rows.Count;
     }
 
@@ -46,9 +46,10 @@ public sealed class SqlServerBulkProvider : IForgeBulkProvider
         string tableName,
         IReadOnlyList<TKey> keys,
         string keyColumn = "Id",
+        ForgeProviderBulkOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        return await SqlServerNativeBulk.BulkDeleteAsync(connection, tableName, keys, keyColumn, cancellationToken).ConfigureAwait(false);
+        return await SqlServerNativeBulk.BulkDeleteAsync(connection, tableName, keys, keyColumn, options ?? ForgeProviderBulkOptionsDefaults.Current, cancellationToken).ConfigureAwait(false);
     }
 
     public ValueTask<int> GraphUpdateAsync<T>(
@@ -56,6 +57,7 @@ public sealed class SqlServerBulkProvider : IForgeBulkProvider
         string tableName,
         IReadOnlyList<T> rows,
         string keyColumn = "Id",
+        ForgeProviderBulkOptions? options = null,
         CancellationToken cancellationToken = default)
-        => UpdateBulkAsync(connection, tableName, rows, keyColumn, null, cancellationToken);
+        => UpdateBulkAsync(connection, tableName, rows, keyColumn, options, cancellationToken);
 }

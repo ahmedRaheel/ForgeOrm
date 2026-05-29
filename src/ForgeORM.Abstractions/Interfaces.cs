@@ -1242,14 +1242,14 @@ public interface IForgeBulkOperations
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="ids">The ids value.</param>
     /// <returns>The result of the T operation.</returns>
-    void BulkDelete<T>(IReadOnlyCollection<int> ids);
+    void BulkDelete<T>(IReadOnlyCollection<int> ids, ForgeProviderBulkOptions? bulkOptions = null);
     /// <summary>
     /// Defines the BulkDelete operation.
     /// </summary>
     /// <param name="tableName">The tableName value.</param>
     /// <param name="ids">The ids value.</param>
     /// <param name="keyColumn">The keyColumn value.</param>
-    void BulkDelete(string tableName, IReadOnlyCollection<int> ids, string keyColumn = "Id");
+    void BulkDelete(string tableName, IReadOnlyCollection<int> ids, string keyColumn = "Id", ForgeProviderBulkOptions? bulkOptions = null);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -1257,7 +1257,7 @@ public interface IForgeBulkOperations
     /// <param name="ids">The ids value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    ValueTask BulkDeleteAsync<T>(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default);
+    ValueTask BulkDeleteAsync<T>(IReadOnlyCollection<int> ids, ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the BulkDeleteAsync operation.
     /// </summary>
@@ -1266,7 +1266,7 @@ public interface IForgeBulkOperations
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the BulkDeleteAsync operation.</returns>
-    ValueTask BulkDeleteAsync(string tableName, IReadOnlyCollection<int> ids, string keyColumn = "Id", CancellationToken cancellationToken = default);
+    ValueTask BulkDeleteAsync(string tableName, IReadOnlyCollection<int> ids, string keyColumn = "Id", ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>

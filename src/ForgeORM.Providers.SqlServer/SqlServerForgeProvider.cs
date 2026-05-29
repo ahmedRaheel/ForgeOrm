@@ -132,10 +132,14 @@ public sealed class SqlServerForgeProvider : IForgeDatabaseProvider
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public async ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default)
+    public async ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default)
     {
-        _ = await SqlServerNativeBulk.BulkUpdateAsync(connection, tableName, rows as IReadOnlyList<T> ?? rows.ToArray(), keyColumn, ForgeProviderBulkOptionsDefaults.Current, cancellationToken).ConfigureAwait(false);
+        _ = await SqlServerNativeBulk.BulkUpdateAsync(connection, tableName, rows as IReadOnlyList<T> ?? rows.ToArray(), keyColumn, bulkOptions ?? ForgeProviderBulkOptionsDefaults.Current, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>Executes a provider-native bulk delete operation.</summary>
+    public ValueTask BulkDeleteAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default)
+        => SqlServerNativeBulk.BulkDeleteAsync(connection, tableName, keys, keyColumn, bulkOptions ?? ForgeProviderBulkOptionsDefaults.Current, cancellationToken);
 
     private string BuildInsertSql(ForgeEntityMetadata e)
     {

@@ -1,12 +1,13 @@
 using System.Data.Common;
 using System.Reflection;
-using ForgeORM.Core;
 using ForgeORM.Abstractions;
+using ForgeORM.Core;
 
 namespace ForgeORM.Providers.MySql;
 
 internal static class MySqlNativeBulk
 {
+
     public static async ValueTask BulkInsertAsync<T>(
         DbConnection connection,
         string tableName,
@@ -17,8 +18,22 @@ internal static class MySqlNativeBulk
         if (rows is null || rows.Count == 0)
             return;
 
-        await BulkFallback.InsertAsync(connection, tableName, rows, cancellationToken)
-            .ConfigureAwait(false);
+        options ??= ForgeProviderBulkOptionsDefaults.Current;
+
+        switch (options.MySqlStrategy)
+        {
+            case ForgeBulkOperationStrategy.MySqlMultiRowInsert:
+                await InsertWithNativeStrategyAsync(connection, tableName, rows, cancellationToken).ConfigureAwait(false);
+                return;
+
+            case ForgeBulkOperationStrategy.MySqlTempTable:
+                await InsertWithTempTableFallbackAsync(connection, tableName, rows, cancellationToken).ConfigureAwait(false);
+                return;
+
+            default:
+                await InsertWithNativeStrategyAsync(connection, tableName, rows, cancellationToken).ConfigureAwait(false);
+                return;
+        }
     }
 
     public static async ValueTask BulkUpdateAsync<T>(
@@ -32,8 +47,22 @@ internal static class MySqlNativeBulk
         if (rows is null || rows.Count == 0)
             return;
 
-        await BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken)
-            .ConfigureAwait(false);
+        options ??= ForgeProviderBulkOptionsDefaults.Current;
+
+        switch (options.MySqlStrategy)
+        {
+            case ForgeBulkOperationStrategy.MySqlTempTable:
+                await UpdateWithTempTableStrategyAsync(connection, tableName, rows, keyColumn, cancellationToken).ConfigureAwait(false);
+                return;
+
+            case ForgeBulkOperationStrategy.MySqlMultiRowInsert:
+                await UpdateWithNativeStrategyAsync(connection, tableName, rows, keyColumn, cancellationToken).ConfigureAwait(false);
+                return;
+
+            default:
+                await UpdateWithTempTableStrategyAsync(connection, tableName, rows, keyColumn, cancellationToken).ConfigureAwait(false);
+                return;
+        }
     }
 
     public static async ValueTask BulkDeleteAsync<TKey>(
@@ -41,14 +70,47 @@ internal static class MySqlNativeBulk
         string tableName,
         IReadOnlyCollection<TKey> keys,
         string keyColumn,
+        ForgeProviderBulkOptions options,
         CancellationToken cancellationToken = default)
     {
         if (keys is null || keys.Count == 0)
             return;
 
-        await BulkFallback.DeleteAsync(connection, tableName, keys, keyColumn, cancellationToken)
-            .ConfigureAwait(false);
+        options ??= ForgeProviderBulkOptionsDefaults.Current;
+
+        switch (options.MySqlStrategy)
+        {
+            case ForgeBulkOperationStrategy.MySqlTempTable:
+                await DeleteWithTempTableStrategyAsync(connection, tableName, keys, keyColumn, cancellationToken).ConfigureAwait(false);
+                return;
+
+            case ForgeBulkOperationStrategy.MySqlMultiRowInsert:
+                await DeleteWithNativeStrategyAsync(connection, tableName, keys, keyColumn, cancellationToken).ConfigureAwait(false);
+                return;
+
+            default:
+                await DeleteWithTempTableStrategyAsync(connection, tableName, keys, keyColumn, cancellationToken).ConfigureAwait(false);
+                return;
+        }
     }
+
+    private static ValueTask InsertWithNativeStrategyAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken)
+        => BulkFallback.InsertAsync(connection, tableName, rows, cancellationToken);
+
+    private static ValueTask InsertWithTempTableFallbackAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken)
+        => BulkFallback.InsertAsync(connection, tableName, rows, cancellationToken);
+
+    private static ValueTask UpdateWithNativeStrategyAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken)
+        => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+
+    private static ValueTask UpdateWithTempTableStrategyAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken)
+        => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+
+    private static ValueTask DeleteWithNativeStrategyAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, CancellationToken cancellationToken)
+        => BulkFallback.DeleteAsync(connection, tableName, keys, keyColumn, cancellationToken);
+
+    private static ValueTask DeleteWithTempTableStrategyAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, CancellationToken cancellationToken)
+        => BulkFallback.DeleteAsync(connection, tableName, keys, keyColumn, cancellationToken);
 
     internal static PropertyInfo[] GetBulkProperties<T>()
         => typeof(T)

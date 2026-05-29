@@ -497,12 +497,13 @@ public partial class ForgeDb : IForgeDb
 
     async ValueTask IForgeBulkOperations.BulkDeleteAsync<T>(
     IReadOnlyCollection<int> ids,
-    CancellationToken cancellationToken)
+    ForgeProviderBulkOptions? bulkOptions = null,
+    CancellationToken cancellationToken = default)
     {
         var metadata = _metadata.Resolve<T>();
 
         await ((IForgeBulkOperations)this)
-            .BulkDeleteAsync(metadata.TableName, ids, metadata.KeyColumn, cancellationToken)
+            .BulkDeleteAsync(metadata.TableName, ids, metadata.KeyColumn, bulkOptions, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -510,7 +511,8 @@ public partial class ForgeDb : IForgeDb
     string tableName,
     IReadOnlyCollection<int> ids,
     string keyColumn,
-    CancellationToken cancellationToken)
+    ForgeProviderBulkOptions? bulkOptions = null,
+    CancellationToken cancellationToken= default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
         ArgumentException.ThrowIfNullOrWhiteSpace(keyColumn);

@@ -45,8 +45,7 @@ internal static class SqlServerNativeBulk
                 await InsertWithDataTableFallbackAsync(
                     (SqlConnection)connection,
                     plan,
-                    list, 
-                    options,
+                    list,
                     cancellationToken).ConfigureAwait(false);
 
                 break;
@@ -100,30 +99,20 @@ internal static class SqlServerNativeBulk
         if (plan.UpdateColumnNames.Length == 0)
             return 0;
 
-        var tempTable = "#ForgeBulkUpdate_" + Guid.NewGuid().ToString("N");
-        var table = plan.CreateTable(rows);
+        options ??= ForgeProviderBulkOptionsDefaults.Current;
 
-        await using var create = sqlConnection.CreateCommand();
-        create.CommandText = plan.CreateTempTableSql(tempTable);
-        await create.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-
-        using (var bulk = new SqlBulkCopy(sqlConnection, SqlBulkCopyOptions.TableLock, externalTransaction: null)
+        switch (options.SqlServerStrategy)
         {
-            DestinationTableName = tempTable,
-            BatchSize = options.BatchSize > 0 ? Math.Min(Math.Max(rows.Count, 1), options.BatchSize) : Math.Min(Math.Max(rows.Count, 1), 5000),
-            BulkCopyTimeout = options.CommandTimeoutSeconds,
-            EnableStreaming = true
-        })
-        {
-            for (var i = 0; i < plan.ColumnNames.Length; i++)
-                bulk.ColumnMappings.Add(plan.ColumnNames[i], plan.ColumnNames[i]);
+            case ForgeBulkOperationStrategy.SqlBulkCopy:
+                return await UpdateWithSqlBulkCopyTempTableAsync(sqlConnection, plan, rows, options, cancellationToken).ConfigureAwait(false);
 
-            await bulk.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
+            case ForgeBulkOperationStrategy.TableTypeParameter:
+                return await UpdateWithDataTableTableTypeParameterAsync(sqlConnection, plan, rows, options, cancellationToken).ConfigureAwait(false);
+
+            case ForgeBulkOperationStrategy.SqlDataRecord:
+            default:
+                return await UpdateWithSqlDataRecordTvpAsync(sqlConnection, plan, rows, options, cancellationToken).ConfigureAwait(false);
         }
-
-        await using var merge = sqlConnection.CreateCommand();
-        merge.CommandText = plan.CreateMergeSql(tempTable);
-        return await merge.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public static async ValueTask<int> BulkDeleteAsync<TKey>(
@@ -131,6 +120,7 @@ internal static class SqlServerNativeBulk
         string tableName,
         IReadOnlyList<TKey> keys,
         string keyColumn,
+        ForgeProviderBulkOptions options,
         CancellationToken cancellationToken = default)
     {
         if (keys.Count == 0)
@@ -149,18 +139,109 @@ internal static class SqlServerNativeBulk
             (typeof(TKey), tableName, keyColumn),
             static key => SqlServerDeletePlan.Create(key.KeyType, key.TableName, key.KeyColumn));
 
-        var tempTable = "#ForgeBulkDelete_" + Guid.NewGuid().ToString("N");
-        var table = plan.CreateTable(keys);
+        options ??= ForgeProviderBulkOptionsDefaults.Current;
+
+        switch (options.SqlServerStrategy)
+        {
+            case ForgeBulkOperationStrategy.SqlBulkCopy:
+                return await DeleteWithSqlBulkCopyTempTableAsync(sqlConnection, plan, keys, options, cancellationToken).ConfigureAwait(false);
+
+            case ForgeBulkOperationStrategy.TableTypeParameter:
+                return await DeleteWithDataTableTableTypeParameterAsync(sqlConnection, plan, keys, options, cancellationToken).ConfigureAwait(false);
+
+            case ForgeBulkOperationStrategy.SqlDataRecord:
+            default:
+                return await DeleteWithSqlDataRecordTvpAsync(sqlConnection, plan, keys, options, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static ValueTask<int> UpdateWithSqlDataRecordTvpAsync<T>(
+        SqlConnection connection,
+        SqlServerUpdatePlan plan,
+        IReadOnlyList<T> rows,
+        ForgeProviderBulkOptions options,
+        CancellationToken cancellationToken)
+        => UpdateWithSqlBulkCopyTempTableAsync(connection, plan, rows, options, cancellationToken);
+
+    private static ValueTask<int> UpdateWithDataTableTableTypeParameterAsync<T>(
+        SqlConnection connection,
+        SqlServerUpdatePlan plan,
+        IReadOnlyList<T> rows,
+        ForgeProviderBulkOptions options,
+        CancellationToken cancellationToken)
+        => UpdateWithSqlBulkCopyTempTableAsync(connection, plan, rows, options, cancellationToken);
+
+    private static async ValueTask<int> UpdateWithSqlBulkCopyTempTableAsync<T>(
+        SqlConnection sqlConnection,
+        SqlServerUpdatePlan plan,
+        IReadOnlyList<T> rows,
+        ForgeProviderBulkOptions options,
+        CancellationToken cancellationToken)
+    {
+        var tempTable = "#ForgeBulkUpdate_" + Guid.NewGuid().ToString("N");
+        var table = plan.CreateTable(rows);
 
         await using var create = sqlConnection.CreateCommand();
         create.CommandText = plan.CreateTempTableSql(tempTable);
+        create.CommandTimeout = options.CommandTimeoutSeconds;
         await create.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
         using (var bulk = new SqlBulkCopy(sqlConnection, SqlBulkCopyOptions.TableLock, externalTransaction: null)
         {
             DestinationTableName = tempTable,
-            BatchSize = Math.Min(Math.Max(keys.Count, 1), 5000),
-            BulkCopyTimeout = 0,
+            BatchSize = options.BatchSize > 0 ? options.BatchSize : Math.Min(Math.Max(rows.Count, 1), 5000),
+            BulkCopyTimeout = options.CommandTimeoutSeconds,
+            EnableStreaming = true
+        })
+        {
+            for (var i = 0; i < plan.ColumnNames.Length; i++)
+                bulk.ColumnMappings.Add(plan.ColumnNames[i], plan.ColumnNames[i]);
+
+            await bulk.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
+        }
+
+        await using var merge = sqlConnection.CreateCommand();
+        merge.CommandText = plan.CreateMergeSql(tempTable);
+        merge.CommandTimeout = options.CommandTimeoutSeconds;
+        return await merge.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static ValueTask<int> DeleteWithSqlDataRecordTvpAsync<TKey>(
+        SqlConnection connection,
+        SqlServerDeletePlan plan,
+        IReadOnlyList<TKey> keys,
+        ForgeProviderBulkOptions options,
+        CancellationToken cancellationToken)
+        => DeleteWithSqlBulkCopyTempTableAsync(connection, plan, keys, options, cancellationToken);
+
+    private static ValueTask<int> DeleteWithDataTableTableTypeParameterAsync<TKey>(
+        SqlConnection connection,
+        SqlServerDeletePlan plan,
+        IReadOnlyList<TKey> keys,
+        ForgeProviderBulkOptions options,
+        CancellationToken cancellationToken)
+        => DeleteWithSqlBulkCopyTempTableAsync(connection, plan, keys, options, cancellationToken);
+
+    private static async ValueTask<int> DeleteWithSqlBulkCopyTempTableAsync<TKey>(
+        SqlConnection sqlConnection,
+        SqlServerDeletePlan plan,
+        IReadOnlyList<TKey> keys,
+        ForgeProviderBulkOptions options,
+        CancellationToken cancellationToken)
+    {
+        var tempTable = "#ForgeBulkDelete_" + Guid.NewGuid().ToString("N");
+        var table = plan.CreateTable(keys);
+
+        await using var create = sqlConnection.CreateCommand();
+        create.CommandText = plan.CreateTempTableSql(tempTable);
+        create.CommandTimeout = options.CommandTimeoutSeconds;
+        await create.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+
+        using (var bulk = new SqlBulkCopy(sqlConnection, SqlBulkCopyOptions.TableLock, externalTransaction: null)
+        {
+            DestinationTableName = tempTable,
+            BatchSize = options.BatchSize > 0 ? options.BatchSize : Math.Min(Math.Max(keys.Count, 1), 5000),
+            BulkCopyTimeout = options.CommandTimeoutSeconds,
             EnableStreaming = true
         })
         {
@@ -170,8 +251,10 @@ internal static class SqlServerNativeBulk
 
         await using var delete = sqlConnection.CreateCommand();
         delete.CommandText = plan.CreateDeleteSql(tempTable);
+        delete.CommandTimeout = options.CommandTimeoutSeconds;
         return await delete.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
+
     private static async ValueTask InsertWithSqlDataRecordTvpAsync<T>(
        SqlConnection connection,
        SqlServerInsertPlan plan,
@@ -192,7 +275,6 @@ internal static class SqlServerNativeBulk
         SqlConnection connection,
         SqlServerInsertPlan plan,
         IReadOnlyList<T> rows,
-        ForgeProviderBulkOptions options,
         CancellationToken cancellationToken)
     {
         var table = plan.CreateTable(rows);
@@ -203,8 +285,8 @@ internal static class SqlServerNativeBulk
             externalTransaction: null)
         {
             DestinationTableName = plan.QuotedTableName,
-            BatchSize = options.BatchSize > 0 ? Math.Min(Math.Max(rows.Count, 1), options.BatchSize) : Math.Min(Math.Max(rows.Count, 1), 5000),
-            BulkCopyTimeout = options.CommandTimeoutSeconds,
+            BatchSize = Math.Min(Math.Max(rows.Count, 1), 5000),
+            BulkCopyTimeout = 0,
             EnableStreaming = true
         };
 

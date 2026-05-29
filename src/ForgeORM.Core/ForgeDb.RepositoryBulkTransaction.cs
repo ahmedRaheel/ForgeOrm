@@ -338,14 +338,14 @@ public partial class ForgeDb
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="ids">The ids value.</param>
     /// <returns>The result of the T operation.</returns>
-    public void BulkDelete<T>(IReadOnlyCollection<int> ids) => BulkDelete(_metadata.Resolve<T>().TableName, ids, _metadata.Resolve<T>().KeyColumn);
+    public void BulkDelete<T>(IReadOnlyCollection<int> ids, ForgeProviderBulkOptions? bulkOptions = null) => BulkDelete(_metadata.Resolve<T>().TableName, ids, _metadata.Resolve<T>().KeyColumn, bulkOptions);
     /// <summary>
     /// Executes the BulkDelete operation.
     /// </summary>
     /// <param name="tableName">The tableName value.</param>
     /// <param name="ids">The ids value.</param>
     /// <param name="keyColumn">The keyColumn value.</param>
-    public void BulkDelete(string tableName, IReadOnlyCollection<int> ids, string keyColumn = "Id") => BulkDeleteAsync(tableName, ids, keyColumn).GetAwaiter().GetResult();
+    public void BulkDelete(string tableName, IReadOnlyCollection<int> ids, string keyColumn = "Id", ForgeProviderBulkOptions? bulkOptions = null) => BulkDeleteAsync(tableName, ids, keyColumn, bulkOptions).GetAwaiter().GetResult();
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -353,7 +353,7 @@ public partial class ForgeDb
     /// <param name="ids">The ids value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public ValueTask<int> BulkDeleteAsync<T>(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default) { var m = _metadata.Resolve<T>(); return BulkDeleteAsync(m.TableName, ids, m.KeyColumn, cancellationToken); }
+    public ValueTask<int> BulkDeleteAsync<T>(IReadOnlyCollection<int> ids, ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default) { var m = _metadata.Resolve<T>(); return BulkDeleteAsync(m.TableName, ids, m.KeyColumn, bulkOptions, cancellationToken); }
     /// <summary>
     /// Executes the BulkDeleteAsync operation.
     /// </summary>
@@ -362,10 +362,14 @@ public partial class ForgeDb
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the BulkDeleteAsync operation.</returns>
-    public ValueTask<int> BulkDeleteAsync(string tableName, IReadOnlyCollection<int> ids, string keyColumn = "Id", CancellationToken cancellationToken = default)
-    {        
-        var cmd = Provider.BuildBulkDelete(tableName, keyColumn, ids);
-        return ExecuteAsync(cmd.CommandText, cmd.Parameters, cancellationToken: cancellationToken);
+    public async ValueTask<int> BulkDeleteAsync(string tableName, IReadOnlyCollection<int> ids, string keyColumn = "Id", ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default)
+    {
+        if (ids.Count == 0) return 0;
+        await using var c = CreateConnection();
+        await c.OpenAsync(cancellationToken);
+        var effectiveOptions = bulkOptions ?? ForgeProviderBulkOptionsDefaults.Current;
+        await Provider.BulkDeleteAsync(c, tableName, ids, keyColumn, effectiveOptions, cancellationToken);
+        return ids.Count;
     }
 
     /// <summary>

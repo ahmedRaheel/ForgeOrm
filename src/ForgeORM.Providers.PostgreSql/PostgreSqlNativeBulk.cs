@@ -1,6 +1,7 @@
 using System.Data.Common;
 using System.Reflection;
 using ForgeORM.Core;
+using ForgeORM.Abstractions;
 using Npgsql;
 
 namespace ForgeORM.Providers.PostgreSql;
@@ -11,6 +12,7 @@ internal static class PostgreSqlNativeBulk
         DbConnection connection,
         string tableName,
         IReadOnlyCollection<T> rows,
+        ForgeProviderBulkOptions options,
         CancellationToken cancellationToken = default)
     {
         if (rows is null || rows.Count == 0)
@@ -25,6 +27,7 @@ internal static class PostgreSqlNativeBulk
         string tableName,
         IReadOnlyCollection<T> rows,
         string keyColumn,
+        ForgeProviderBulkOptions options,
         CancellationToken cancellationToken = default)
     {
         if (rows is null || rows.Count == 0)

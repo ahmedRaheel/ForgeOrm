@@ -1,5 +1,6 @@
-using System.Data.Common;
+using ForgeORM.Abstractions;
 using System.Collections.Concurrent;
+using System.Data.Common;
 using System.Reflection;
 
 namespace ForgeORM.Core;
@@ -12,9 +13,9 @@ public interface IForgeBulkProvider
 {
     string ProviderName { get; }
 
-    ValueTask<int> InsertBulkAsync<T>(DbConnection connection, string tableName, IReadOnlyList<T> rows, CancellationToken cancellationToken = default);
+    ValueTask<int> InsertBulkAsync<T>(DbConnection connection, string tableName, IReadOnlyList<T> rows, ForgeProviderBulkOptions options, CancellationToken cancellationToken = default);
 
-    ValueTask<int> UpdateBulkAsync<T>(DbConnection connection, string tableName, IReadOnlyList<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default);
+    ValueTask<int> UpdateBulkAsync<T>(DbConnection connection, string tableName, IReadOnlyList<T> rows, string keyColumn = "Id", ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default);
 
     ValueTask<int> DeleteBulkAsync<TKey>(DbConnection connection, string tableName, IReadOnlyList<TKey> keys, string keyColumn = "Id", CancellationToken cancellationToken = default);
 

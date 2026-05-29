@@ -1174,7 +1174,7 @@ public interface IForgeBulkOperations
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="rows">The rows value.</param>
     /// <returns>The result of the T operation.</returns>
-    void BulkInsert<T>(IReadOnlyCollection<T> rows);
+    void BulkInsert<T>(IReadOnlyCollection<T> rows, ForgeProviderBulkOptions? bulkOptions = null);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -1182,7 +1182,7 @@ public interface IForgeBulkOperations
     /// <param name="tableName">The tableName value.</param>
     /// <param name="rows">The rows value.</param>
     /// <returns>The result of the T operation.</returns>
-    void BulkInsert<T>(string tableName, IReadOnlyCollection<T> rows);
+    void BulkInsert<T>(string tableName, IReadOnlyCollection<T> rows, ForgeProviderBulkOptions? bulkOptions = null);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -1190,7 +1190,7 @@ public interface IForgeBulkOperations
     /// <param name="rows">The rows value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    ValueTask BulkInsertAsync<T>(IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default);
+    ValueTask BulkInsertAsync<T>(IReadOnlyCollection<T> rows, ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -1199,7 +1199,7 @@ public interface IForgeBulkOperations
     /// <param name="rows">The rows value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    ValueTask BulkInsertAsync<T>(string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default);
+    ValueTask BulkInsertAsync<T>(string tableName, IReadOnlyCollection<T> rows, ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -1207,7 +1207,7 @@ public interface IForgeBulkOperations
     /// <param name="rows">The rows value.</param>
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <returns>The result of the T operation.</returns>
-    void BulkUpdate<T>(IReadOnlyCollection<T> rows, string keyColumn = "Id");
+    void BulkUpdate<T>(IReadOnlyCollection<T> rows, string keyColumn = "Id", ForgeProviderBulkOptions? bulkOptions = null);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -1216,7 +1216,7 @@ public interface IForgeBulkOperations
     /// <param name="rows">The rows value.</param>
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <returns>The result of the T operation.</returns>
-    void BulkUpdate<T>(string tableName, IReadOnlyCollection<T> rows, string keyColumn = "Id");
+    void BulkUpdate<T>(string tableName, IReadOnlyCollection<T> rows, string keyColumn = "Id", ForgeProviderBulkOptions? bulkOptions = null);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -1225,7 +1225,7 @@ public interface IForgeBulkOperations
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    ValueTask BulkUpdateAsync<T>(IReadOnlyCollection<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default);
+    ValueTask BulkUpdateAsync<T>(IReadOnlyCollection<T> rows, string keyColumn = "Id", ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -1235,7 +1235,7 @@ public interface IForgeBulkOperations
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    ValueTask BulkUpdateAsync<T>(string tableName, IReadOnlyCollection<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default);
+    ValueTask BulkUpdateAsync<T>(string tableName, IReadOnlyCollection<T> rows, string keyColumn = "Id", ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
@@ -1596,7 +1596,7 @@ public interface IForgeDatabaseProvider
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    ValueTask BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default);
+    ValueTask BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>

@@ -127,19 +127,19 @@ public sealed class MySqlForgeProvider : IForgeDatabaseProvider
     public ForgeCommand BuildFunctionScalar(string functionName, object? parameters = null)
         => ForgeCommand.Text($"SELECT {functionName}()", parameters);
 
-    public ValueTask BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default)
-        => MySqlNativeBulk.BulkInsertAsync(connection, tableName, rows, cancellationToken);
+    public ValueTask BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default)
+        => MySqlNativeBulk.BulkInsertAsync(connection, tableName, rows, bulkOptions ?? ForgeProviderBulkOptionsDefaults.Current, cancellationToken);
 
-    public ValueTask BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default)
+    public ValueTask BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default)
     {
         if (rows is null || rows.Count == 0) return ValueTask.CompletedTask;
-        return BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+        return MySqlNativeBulk.BulkUpdateAsync(connection, tableName, rows, keyColumn, bulkOptions ?? ForgeProviderBulkOptionsDefaults.Current, cancellationToken);
     }
 
     public ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default)
     {
         if (rows is null || rows.Count == 0) return ValueTask.CompletedTask;
-        return BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
+        return MySqlNativeBulk.BulkUpdateAsync(connection, tableName, rows, keyColumn, ForgeProviderBulkOptionsDefaults.Current, cancellationToken);
     }
 }
 

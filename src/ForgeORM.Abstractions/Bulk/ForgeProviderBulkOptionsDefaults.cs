@@ -23,7 +23,8 @@ public static class ForgeProviderBulkOptionsDefaults
             AutoCreateProviderStructures = _current.AutoCreateProviderStructures,
             AutoRecreateMismatchedStructures = _current.AutoRecreateMismatchedStructures,
             BatchSize = _current.BatchSize,
-            CommandTimeoutSeconds = _current.CommandTimeoutSeconds
+            CommandTimeoutSeconds = _current.CommandTimeoutSeconds,
+            AutoCreateTableTypes = _current.AutoCreateTableTypes,
         };
 
         configure(next);

@@ -295,7 +295,7 @@ public partial class ForgeDb
     /// <param name="rows">The rows value.</param>
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <returns>The result of the T operation.</returns>
-    public void BulkUpdate<T>(IReadOnlyCollection<T> rows, string keyColumn = "Id") => BulkUpdate(_metadata.Resolve<T>().TableName, rows, keyColumn);
+    public void BulkUpdate<T>(IReadOnlyCollection<T> rows, string keyColumn = "Id", ForgeProviderBulkOptions? bulkOptions = null) => BulkUpdate(_metadata.Resolve<T>().TableName, rows, keyColumn, bulkOptions);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -304,7 +304,7 @@ public partial class ForgeDb
     /// <param name="rows">The rows value.</param>
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <returns>The result of the T operation.</returns>
-    public void BulkUpdate<T>(string tableName, IReadOnlyCollection<T> rows, string keyColumn = "Id") => BulkUpdateAsync(tableName, rows, keyColumn).GetAwaiter().GetResult();
+    public void BulkUpdate<T>(string tableName, IReadOnlyCollection<T> rows, string keyColumn = "Id", ForgeProviderBulkOptions? bulkOptions = null) => BulkUpdateAsync(tableName, rows, keyColumn, bulkOptions).GetAwaiter().GetResult();
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -313,7 +313,7 @@ public partial class ForgeDb
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public ValueTask BulkUpdateAsync<T>(IReadOnlyCollection<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default) => BulkUpdateAsync(_metadata.Resolve<T>().TableName, rows, keyColumn, cancellationToken);
+    public ValueTask BulkUpdateAsync<T>(IReadOnlyCollection<T> rows, string keyColumn = "Id", ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default) => BulkUpdateAsync(_metadata.Resolve<T>().TableName, rows, keyColumn, bulkOptions, cancellationToken);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -323,12 +323,13 @@ public partial class ForgeDb
     /// <param name="keyColumn">The keyColumn value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public async ValueTask BulkUpdateAsync<T>(string tableName, IReadOnlyCollection<T> rows, string keyColumn = "Id", CancellationToken cancellationToken = default)
+    public async ValueTask BulkUpdateAsync<T>(string tableName, IReadOnlyCollection<T> rows, string keyColumn = "Id", ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default)
     {
         if (rows.Count == 0) return;
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
-        await Provider.BulkUpdateAsync(c, tableName, rows, keyColumn, cancellationToken);
+        var effectiveOptions = bulkOptions ?? ForgeProviderBulkOptionsDefaults.Current;
+        await Provider.BulkUpdateAsync(c, tableName, rows, keyColumn, effectiveOptions, cancellationToken);
     }
 
     /// <summary>

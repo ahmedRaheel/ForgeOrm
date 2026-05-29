@@ -41,5 +41,6 @@ public sealed class ForgeProviderBulkOptions
     public bool AutoRecreateMismatchedStructures { get; set; } = true;
     public int BatchSize { get; set; } = 5000;
     public int CommandTimeoutSeconds { get; set; } = 0;
+    public bool AutoCreateTableTypes { get; set; } = true;
 }
 

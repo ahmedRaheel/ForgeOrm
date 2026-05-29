@@ -1,5 +1,6 @@
-using System.Data.Common;
+using ForgeORM.Abstractions;
 using ForgeORM.Core;
+using System.Data.Common;
 
 namespace ForgeORM.Providers.SqlServer;
 
@@ -21,9 +22,10 @@ public sealed class SqlServerBulkProvider : IForgeBulkProvider
         DbConnection connection,
         string tableName,
         IReadOnlyList<T> rows,
+        ForgeProviderBulkOptions optons,
         CancellationToken cancellationToken = default)
     {
-        await SqlServerNativeBulk.BulkInsertAsync(connection, tableName, rows, cancellationToken).ConfigureAwait(false);
+        await SqlServerNativeBulk.BulkInsertAsync(connection, tableName, rows, optons, cancellationToken).ConfigureAwait(false);
         return rows.Count;
     }
 
@@ -32,9 +34,10 @@ public sealed class SqlServerBulkProvider : IForgeBulkProvider
         string tableName,
         IReadOnlyList<T> rows,
         string keyColumn = "Id",
+        ForgeProviderBulkOptions? bulkOptions = null,
         CancellationToken cancellationToken = default)
     {
-        await SqlServerNativeBulk.BulkUpdateAsync(connection, tableName, rows, keyColumn, cancellationToken).ConfigureAwait(false);
+        await SqlServerNativeBulk.BulkUpdateAsync(connection, tableName, rows, keyColumn, bulkOptions ?? ForgeProviderBulkOptionsDefaults.Current, cancellationToken).ConfigureAwait(false);
         return rows.Count;
     }
 
@@ -54,5 +57,5 @@ public sealed class SqlServerBulkProvider : IForgeBulkProvider
         IReadOnlyList<T> rows,
         string keyColumn = "Id",
         CancellationToken cancellationToken = default)
-        => UpdateBulkAsync(connection, tableName, rows, keyColumn, cancellationToken);
+        => UpdateBulkAsync(connection, tableName, rows, keyColumn, null, cancellationToken);
 }

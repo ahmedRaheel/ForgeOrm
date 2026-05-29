@@ -1,6 +1,7 @@
 using System.Data.Common;
 using System.Reflection;
 using ForgeORM.Core;
+using ForgeORM.Abstractions;
 using Oracle.ManagedDataAccess.Client;
 
 namespace ForgeORM.Providers.Oracle;
@@ -11,6 +12,7 @@ internal static class OracleNativeBulk
         DbConnection connection,
         string tableName,
         IReadOnlyCollection<T> rows,
+        ForgeProviderBulkOptions options,
         CancellationToken cancellationToken = default)
     {
         if (rows is null || rows.Count == 0)
@@ -25,6 +27,7 @@ internal static class OracleNativeBulk
         string tableName,
         IReadOnlyCollection<T> rows,
         string keyColumn,
+        ForgeProviderBulkOptions options,
         CancellationToken cancellationToken = default)
     {
         if (rows is null || rows.Count == 0)

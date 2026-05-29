@@ -17,11 +17,11 @@ internal static class SqlServerNativeBulk
     private static readonly ConcurrentDictionary<(Type KeyType, string TableName, string KeyColumn), SqlServerDeletePlan> DeletePlanCache = new();
 
     public static async ValueTask BulkInsertAsync<T>(
-        DbConnection connection,
-        string tableName,
-        IReadOnlyCollection<T> rows, 
-        ForgeProviderBulkOptions options,
-        CancellationToken cancellationToken = default)
+     DbConnection connection,
+     string tableName,
+     IReadOnlyCollection<T> rows,
+     ForgeProviderBulkOptions options,
+     CancellationToken cancellationToken = default)
     {
         if (rows is null || rows.Count == 0)
             return;
@@ -38,23 +38,39 @@ internal static class SqlServerNativeBulk
         if (plan.Properties.Length == 0)
             return;
 
-        if (options.SqlServerStrategy == ForgeBulkOperationStrategy.SqlBulkCopy)
+        switch (options.SqlServerStrategy)
         {
-            await BulkFallback.InsertAsync(connection, tableName, rows, cancellationToken).ConfigureAwait(false);
-            return;
+            case ForgeBulkOperationStrategy.TableTypeParameter:
+
+                await InsertWithDataTableFallbackAsync(
+                    (SqlConnection)connection,
+                    plan,
+                    list, 
+                    options,
+                    cancellationToken).ConfigureAwait(false);
+
+                break;
+
+            case ForgeBulkOperationStrategy.SqlBulkCopy:
+
+                await BulkFallback.InsertAsync(
+                    connection,
+                    tableName,
+                    rows,
+                    cancellationToken).ConfigureAwait(false);
+
+                break;
+
+            default:
+
+                await InsertWithSqlDataRecordTvpAsync(
+                    (SqlConnection)connection,
+                    plan,
+                    list,
+                    cancellationToken).ConfigureAwait(false);
+
+                break;
         }
-        if (options.SqlServerStrategy == ForgeBulkOperationStrategy.SqlDataRecord) 
-        {
-            try
-            {
-                await InsertWithSqlDataRecordTvpAsync((SqlConnection)connection, plan, list, cancellationToken).ConfigureAwait(false);
-                return;
-            }
-            catch (Exception ex) when (SqlServerBulkFallbackPolicy.CanFallback(ex))
-            {
-                await InsertWithDataTableFallbackAsync((SqlConnection)connection, plan, list, cancellationToken).ConfigureAwait(false);
-            }
-        }   
     }
 
     public static async ValueTask<int> BulkUpdateAsync<T>(
@@ -62,6 +78,7 @@ internal static class SqlServerNativeBulk
         string tableName,
         IReadOnlyList<T> rows,
         string keyColumn,
+        ForgeProviderBulkOptions options,
         CancellationToken cancellationToken = default)
     {
         if (rows.Count == 0)
@@ -93,8 +110,8 @@ internal static class SqlServerNativeBulk
         using (var bulk = new SqlBulkCopy(sqlConnection, SqlBulkCopyOptions.TableLock, externalTransaction: null)
         {
             DestinationTableName = tempTable,
-            BatchSize = Math.Min(Math.Max(rows.Count, 1), 5000),
-            BulkCopyTimeout = 0,
+            BatchSize = options.BatchSize > 0 ? Math.Min(Math.Max(rows.Count, 1), options.BatchSize) : Math.Min(Math.Max(rows.Count, 1), 5000),
+            BulkCopyTimeout = options.CommandTimeoutSeconds,
             EnableStreaming = true
         })
         {
@@ -175,6 +192,7 @@ internal static class SqlServerNativeBulk
         SqlConnection connection,
         SqlServerInsertPlan plan,
         IReadOnlyList<T> rows,
+        ForgeProviderBulkOptions options,
         CancellationToken cancellationToken)
     {
         var table = plan.CreateTable(rows);
@@ -185,8 +203,8 @@ internal static class SqlServerNativeBulk
             externalTransaction: null)
         {
             DestinationTableName = plan.QuotedTableName,
-            BatchSize = Math.Min(Math.Max(rows.Count, 1), 5000),
-            BulkCopyTimeout = 0,
+            BatchSize = options.BatchSize > 0 ? Math.Min(Math.Max(rows.Count, 1), options.BatchSize) : Math.Min(Math.Max(rows.Count, 1), 5000),
+            BulkCopyTimeout = options.CommandTimeoutSeconds,
             EnableStreaming = true
         };
 

@@ -52,10 +52,11 @@ internal static class SqlServerNativeBulk
 
             case ForgeBulkOperationStrategy.SqlBulkCopy:
 
-                await BulkFallback.InsertAsync(
-                    connection,
-                    tableName,
-                    rows,
+                await InsertWithSqlBulkCopyDataReaderAsync(
+                    (SqlConnection)connection,
+                    plan,
+                    list,
+                    options,
                     cancellationToken).ConfigureAwait(false);
 
                 break;
@@ -219,7 +220,6 @@ internal static class SqlServerNativeBulk
         CancellationToken cancellationToken)
     {
         var tempTable = "#ForgeBulkUpdate_" + Guid.NewGuid().ToString("N");
-        var table = plan.CreateTable(rows);
 
         await using var create = sqlConnection.CreateCommand();
         create.CommandText = plan.CreateTempTableSql(tempTable);
@@ -237,7 +237,8 @@ internal static class SqlServerNativeBulk
             for (var i = 0; i < plan.ColumnNames.Length; i++)
                 bulk.ColumnMappings.Add(plan.ColumnNames[i], plan.ColumnNames[i]);
 
-            await bulk.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
+            using var reader = new ForgeObjectDataReader<T>(rows, plan);
+            await bulk.WriteToServerAsync(reader, cancellationToken).ConfigureAwait(false);
         }
 
         try
@@ -317,7 +318,6 @@ internal static class SqlServerNativeBulk
         CancellationToken cancellationToken)
     {
         var tempTable = "#ForgeBulkDelete_" + Guid.NewGuid().ToString("N");
-        var table = plan.CreateTable(keys);
 
         await using var create = sqlConnection.CreateCommand();
         create.CommandText = plan.CreateTempTableSql(tempTable);
@@ -333,7 +333,8 @@ internal static class SqlServerNativeBulk
         })
         {
             bulk.ColumnMappings.Add(plan.KeyColumn, plan.KeyColumn);
-            await bulk.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
+            using var reader = new ForgeKeyDataReader<TKey>(keys, plan.KeyColumn, plan.KeyDeclaredType);
+            await bulk.WriteToServerAsync(reader, cancellationToken).ConfigureAwait(false);
         }
 
         try
@@ -347,6 +348,28 @@ internal static class SqlServerNativeBulk
         {
             await DropTempTableAsync(sqlConnection, tempTable, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    private static async ValueTask InsertWithSqlBulkCopyDataReaderAsync<T>(
+        SqlConnection connection,
+        SqlServerInsertPlan plan,
+        IReadOnlyList<T> rows,
+        ForgeProviderBulkOptions options,
+        CancellationToken cancellationToken)
+    {
+        using var bulk = new SqlBulkCopy(connection, SqlBulkCopyOptions.TableLock, externalTransaction: null)
+        {
+            DestinationTableName = plan.QuotedTableName,
+            BatchSize = options.BatchSize > 0 ? options.BatchSize : Math.Min(Math.Max(rows.Count, 1), 5000),
+            BulkCopyTimeout = options.CommandTimeoutSeconds,
+            EnableStreaming = true
+        };
+
+        for (var i = 0; i < plan.ColumnNames.Length; i++)
+            bulk.ColumnMappings.Add(plan.ColumnNames[i], plan.ColumnNames[i]);
+
+        using var reader = new ForgeObjectDataReader<T>(rows, plan);
+        await bulk.WriteToServerAsync(reader, cancellationToken).ConfigureAwait(false);
     }
 
     private static async ValueTask InsertWithSqlDataRecordTvpAsync<T>(
@@ -401,7 +424,167 @@ internal static class SqlServerNativeBulk
         }
     }
 
-    private sealed class SqlServerInsertPlan
+    private sealed class ForgeObjectDataReader<T> : DbDataReader
+    {
+        private readonly IReadOnlyList<T> _rows;
+        private readonly IForgeBulkRecordPlan _plan;
+        private int _index = -1;
+        private bool _closed;
+
+        public ForgeObjectDataReader(IReadOnlyList<T> rows, IForgeBulkRecordPlan plan)
+        {
+            _rows = rows;
+            _plan = plan;
+        }
+
+        public override int FieldCount => _plan.ColumnNames.Length;
+        public override bool HasRows => _rows.Count > 0;
+        public override bool IsClosed => _closed;
+        public override int RecordsAffected => -1;
+        public override int Depth => 0;
+        public override object this[int ordinal] => GetValue(ordinal);
+        public override object this[string name] => GetValue(GetOrdinal(name));
+
+        public override bool Read()
+        {
+            var next = _index + 1;
+            if (next >= _rows.Count)
+                return false;
+
+            _index = next;
+            return true;
+        }
+
+        public override bool NextResult() => false;
+        public override string GetName(int ordinal) => _plan.ColumnNames[ordinal];
+        public override int GetOrdinal(string name)
+        {
+            for (var i = 0; i < _plan.ColumnNames.Length; i++)
+            {
+                if (string.Equals(_plan.ColumnNames[i], name, StringComparison.OrdinalIgnoreCase))
+                    return i;
+            }
+            return -1;
+        }
+
+        public override Type GetFieldType(int ordinal)
+        {
+            var type = Nullable.GetUnderlyingType(_plan.GetDeclaredType(ordinal)) ?? _plan.GetDeclaredType(ordinal);
+            if (type.IsEnum || type == typeof(DateOnly) || type == typeof(TimeOnly))
+                return typeof(string);
+            return type;
+        }
+
+        public override string GetDataTypeName(int ordinal) => GetFieldType(ordinal).Name;
+        public override object GetValue(int ordinal)
+        {
+            if (_index < 0 || _index >= _rows.Count)
+                throw new InvalidOperationException("The data reader is not positioned on a row.");
+
+            var value = NormalizeValue(_plan.GetValue(_rows[_index]!, ordinal), _plan.GetDeclaredType(ordinal));
+            return value ?? DBNull.Value;
+        }
+
+        public override int GetValues(object[] values)
+        {
+            var count = Math.Min(values.Length, FieldCount);
+            for (var i = 0; i < count; i++)
+                values[i] = GetValue(i);
+            return count;
+        }
+
+        public override bool IsDBNull(int ordinal) => GetValue(ordinal) is DBNull;
+        public override bool GetBoolean(int ordinal) => Convert.ToBoolean(GetValue(ordinal));
+        public override byte GetByte(int ordinal) => Convert.ToByte(GetValue(ordinal));
+        public override long GetBytes(int ordinal, long dataOffset, byte[]? buffer, int bufferOffset, int length)
+        {
+            var bytes = (byte[])GetValue(ordinal);
+            var available = Math.Max(0, bytes.Length - (int)dataOffset);
+            var count = Math.Min(length, available);
+            if (buffer is not null && count > 0)
+                Array.Copy(bytes, (int)dataOffset, buffer, bufferOffset, count);
+            return count;
+        }
+        public override char GetChar(int ordinal) => Convert.ToChar(GetValue(ordinal));
+        public override long GetChars(int ordinal, long dataOffset, char[]? buffer, int bufferOffset, int length)
+        {
+            var chars = Convert.ToString(GetValue(ordinal), System.Globalization.CultureInfo.InvariantCulture)?.ToCharArray() ?? Array.Empty<char>();
+            var available = Math.Max(0, chars.Length - (int)dataOffset);
+            var count = Math.Min(length, available);
+            if (buffer is not null && count > 0)
+                Array.Copy(chars, (int)dataOffset, buffer, bufferOffset, count);
+            return count;
+        }
+        public override Guid GetGuid(int ordinal) => GetValue(ordinal) is Guid g ? g : Guid.Parse(Convert.ToString(GetValue(ordinal), System.Globalization.CultureInfo.InvariantCulture)!);
+        public override short GetInt16(int ordinal) => Convert.ToInt16(GetValue(ordinal));
+        public override int GetInt32(int ordinal) => Convert.ToInt32(GetValue(ordinal));
+        public override long GetInt64(int ordinal) => Convert.ToInt64(GetValue(ordinal));
+        public override float GetFloat(int ordinal) => Convert.ToSingle(GetValue(ordinal));
+        public override double GetDouble(int ordinal) => Convert.ToDouble(GetValue(ordinal));
+        public override string GetString(int ordinal) => Convert.ToString(GetValue(ordinal), System.Globalization.CultureInfo.InvariantCulture)!;
+        public override decimal GetDecimal(int ordinal) => Convert.ToDecimal(GetValue(ordinal));
+        public override DateTime GetDateTime(int ordinal) => Convert.ToDateTime(GetValue(ordinal));
+        public override IEnumerator GetEnumerator() { while (Read()) yield return this; }
+        public override void Close() => _closed = true;
+    }
+
+    private sealed class ForgeKeyDataReader<TKey> : DbDataReader
+    {
+        private readonly IReadOnlyList<TKey> _keys;
+        private readonly string _keyColumn;
+        private readonly Type _keyType;
+        private int _index = -1;
+        private bool _closed;
+
+        public ForgeKeyDataReader(IReadOnlyList<TKey> keys, string keyColumn, Type keyType)
+        {
+            _keys = keys;
+            _keyColumn = keyColumn;
+            _keyType = keyType;
+        }
+
+        public override int FieldCount => 1;
+        public override bool HasRows => _keys.Count > 0;
+        public override bool IsClosed => _closed;
+        public override int RecordsAffected => -1;
+        public override int Depth => 0;
+        public override object this[int ordinal] => GetValue(ordinal);
+        public override object this[string name] => GetValue(GetOrdinal(name));
+        public override bool Read() { var next = _index + 1; if (next >= _keys.Count) return false; _index = next; return true; }
+        public override bool NextResult() => false;
+        public override string GetName(int ordinal) => _keyColumn;
+        public override int GetOrdinal(string name) => string.Equals(name, _keyColumn, StringComparison.OrdinalIgnoreCase) ? 0 : -1;
+        public override Type GetFieldType(int ordinal) => Nullable.GetUnderlyingType(_keyType) ?? _keyType;
+        public override string GetDataTypeName(int ordinal) => GetFieldType(ordinal).Name;
+        public override object GetValue(int ordinal) => NormalizeValue(_keys[_index], _keyType) ?? DBNull.Value;
+        public override int GetValues(object[] values) { if (values.Length > 0) values[0] = GetValue(0); return Math.Min(values.Length, 1); }
+        public override bool IsDBNull(int ordinal) => GetValue(ordinal) is DBNull;
+        public override bool GetBoolean(int ordinal) => Convert.ToBoolean(GetValue(ordinal));
+        public override byte GetByte(int ordinal) => Convert.ToByte(GetValue(ordinal));
+        public override long GetBytes(int ordinal, long dataOffset, byte[]? buffer, int bufferOffset, int length) => 0;
+        public override char GetChar(int ordinal) => Convert.ToChar(GetValue(ordinal));
+        public override long GetChars(int ordinal, long dataOffset, char[]? buffer, int bufferOffset, int length) => 0;
+        public override Guid GetGuid(int ordinal) => GetValue(ordinal) is Guid g ? g : Guid.Parse(GetString(ordinal));
+        public override short GetInt16(int ordinal) => Convert.ToInt16(GetValue(ordinal));
+        public override int GetInt32(int ordinal) => Convert.ToInt32(GetValue(ordinal));
+        public override long GetInt64(int ordinal) => Convert.ToInt64(GetValue(ordinal));
+        public override float GetFloat(int ordinal) => Convert.ToSingle(GetValue(ordinal));
+        public override double GetDouble(int ordinal) => Convert.ToDouble(GetValue(ordinal));
+        public override string GetString(int ordinal) => Convert.ToString(GetValue(ordinal), System.Globalization.CultureInfo.InvariantCulture)!;
+        public override decimal GetDecimal(int ordinal) => Convert.ToDecimal(GetValue(ordinal));
+        public override DateTime GetDateTime(int ordinal) => Convert.ToDateTime(GetValue(ordinal));
+        public override IEnumerator GetEnumerator() { while (Read()) yield return this; }
+        public override void Close() => _closed = true;
+    }
+
+    private interface IForgeBulkRecordPlan
+    {
+        string[] ColumnNames { get; }
+        object? GetValue(object entity, int ordinal);
+        Type GetDeclaredType(int ordinal);
+    }
+
+    private sealed class SqlServerInsertPlan : IForgeBulkRecordPlan
     {
         private readonly Func<object, object?>[] _getters;
         private readonly Type[] _declaredTypes;
@@ -567,7 +750,7 @@ internal static class SqlServerNativeBulk
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
-    private sealed class SqlServerUpdatePlan
+    private sealed class SqlServerUpdatePlan : IForgeBulkRecordPlan
     {
         private readonly Func<object, object?>[] _getters;
         private readonly Type[] _declaredTypes;

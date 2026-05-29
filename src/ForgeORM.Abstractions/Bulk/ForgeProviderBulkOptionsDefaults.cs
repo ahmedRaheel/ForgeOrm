@@ -22,6 +22,7 @@ public static class ForgeProviderBulkOptionsDefaults
             SqlBulkCopyThreshold = _current.SqlBulkCopyThreshold,
             AutoCreateProviderStructures = _current.AutoCreateProviderStructures,
             AutoRecreateMismatchedStructures = _current.AutoRecreateMismatchedStructures,
+            AutoDropProviderStructures = _current.AutoDropProviderStructures,
             BatchSize = _current.BatchSize,
             CommandTimeoutSeconds = _current.CommandTimeoutSeconds,
             AutoCreateTableTypes = _current.AutoCreateTableTypes,

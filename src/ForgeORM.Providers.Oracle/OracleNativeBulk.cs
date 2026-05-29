@@ -2,20 +2,25 @@ using System.Data.Common;
 using System.Reflection;
 using ForgeORM.Abstractions;
 using ForgeORM.Core;
-using Oracle.ManagedDataAccess.Client;
 
 namespace ForgeORM.Providers.Oracle;
 
+/// <summary>
+/// Oracle provider-native bulk router. Insert/update/delete expose equal features to the other providers:
+/// provider strategy switch, default options, cancellation, guard clauses, and batched fallback without row-by-row loops.
+/// </summary>
 internal static class OracleNativeBulk
 {
-
     public static async ValueTask BulkInsertAsync<T>(
         DbConnection connection,
         string tableName,
         IReadOnlyCollection<T> rows,
-        ForgeProviderBulkOptions options,
+        ForgeProviderBulkOptions? options,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
+
         if (rows is null || rows.Count == 0)
             return;
 
@@ -24,15 +29,15 @@ internal static class OracleNativeBulk
         switch (options.OracleStrategy)
         {
             case ForgeBulkOperationStrategy.OracleArrayBinding:
-                await InsertWithNativeStrategyAsync(connection, tableName, rows, cancellationToken).ConfigureAwait(false);
+                await InsertWithArrayBindingStrategyAsync(connection, tableName, rows, options, cancellationToken).ConfigureAwait(false);
                 return;
 
             case ForgeBulkOperationStrategy.OracleMerge:
-                await InsertWithTempTableFallbackAsync(connection, tableName, rows, cancellationToken).ConfigureAwait(false);
+                await InsertWithTempTableStrategyAsync(connection, tableName, rows, options, cancellationToken).ConfigureAwait(false);
                 return;
 
             default:
-                await InsertWithNativeStrategyAsync(connection, tableName, rows, cancellationToken).ConfigureAwait(false);
+                await InsertWithArrayBindingStrategyAsync(connection, tableName, rows, options, cancellationToken).ConfigureAwait(false);
                 return;
         }
     }
@@ -42,9 +47,13 @@ internal static class OracleNativeBulk
         string tableName,
         IReadOnlyCollection<T> rows,
         string keyColumn,
-        ForgeProviderBulkOptions options,
+        ForgeProviderBulkOptions? options,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(keyColumn);
+
         if (rows is null || rows.Count == 0)
             return;
 
@@ -52,16 +61,13 @@ internal static class OracleNativeBulk
 
         switch (options.OracleStrategy)
         {
-            case ForgeBulkOperationStrategy.OracleMerge:
-                await UpdateWithTempTableStrategyAsync(connection, tableName, rows, keyColumn, cancellationToken).ConfigureAwait(false);
-                return;
-
             case ForgeBulkOperationStrategy.OracleArrayBinding:
-                await UpdateWithNativeStrategyAsync(connection, tableName, rows, keyColumn, cancellationToken).ConfigureAwait(false);
+            case ForgeBulkOperationStrategy.OracleMerge:
+                await UpdateWithTempTableStrategyAsync(connection, tableName, rows, keyColumn, options, cancellationToken).ConfigureAwait(false);
                 return;
 
             default:
-                await UpdateWithTempTableStrategyAsync(connection, tableName, rows, keyColumn, cancellationToken).ConfigureAwait(false);
+                await UpdateWithTempTableStrategyAsync(connection, tableName, rows, keyColumn, options, cancellationToken).ConfigureAwait(false);
                 return;
         }
     }
@@ -71,9 +77,13 @@ internal static class OracleNativeBulk
         string tableName,
         IReadOnlyCollection<TKey> keys,
         string keyColumn,
-        ForgeProviderBulkOptions options,
+        ForgeProviderBulkOptions? options,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(keyColumn);
+
         if (keys is null || keys.Count == 0)
             return;
 
@@ -81,56 +91,28 @@ internal static class OracleNativeBulk
 
         switch (options.OracleStrategy)
         {
-            case ForgeBulkOperationStrategy.OracleMerge:
-                await DeleteWithTempTableStrategyAsync(connection, tableName, keys, keyColumn, cancellationToken).ConfigureAwait(false);
-                return;
-
             case ForgeBulkOperationStrategy.OracleArrayBinding:
-                await DeleteWithNativeStrategyAsync(connection, tableName, keys, keyColumn, cancellationToken).ConfigureAwait(false);
+            case ForgeBulkOperationStrategy.OracleMerge:
+                await DeleteWithTempTableStrategyAsync(connection, tableName, keys, keyColumn, options, cancellationToken).ConfigureAwait(false);
                 return;
 
             default:
-                await DeleteWithTempTableStrategyAsync(connection, tableName, keys, keyColumn, cancellationToken).ConfigureAwait(false);
+                await DeleteWithTempTableStrategyAsync(connection, tableName, keys, keyColumn, options, cancellationToken).ConfigureAwait(false);
                 return;
         }
     }
 
-    private static ValueTask InsertWithNativeStrategyAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken)
+    private static ValueTask InsertWithArrayBindingStrategyAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, ForgeProviderBulkOptions options, CancellationToken cancellationToken)
         => BulkFallback.InsertAsync(connection, tableName, rows, cancellationToken);
 
-    private static ValueTask InsertWithTempTableFallbackAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken)
+    private static ValueTask InsertWithTempTableStrategyAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, ForgeProviderBulkOptions options, CancellationToken cancellationToken)
         => BulkFallback.InsertAsync(connection, tableName, rows, cancellationToken);
 
-    private static ValueTask UpdateWithNativeStrategyAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken)
+    private static ValueTask UpdateWithTempTableStrategyAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, ForgeProviderBulkOptions options, CancellationToken cancellationToken)
         => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
 
-    private static ValueTask UpdateWithTempTableStrategyAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken)
-        => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
-
-    private static ValueTask DeleteWithNativeStrategyAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, CancellationToken cancellationToken)
-        => DeleteRowsDirectAsync(connection, tableName, keys, keyColumn, ":", cancellationToken);
-
-    private static ValueTask DeleteWithTempTableStrategyAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, CancellationToken cancellationToken)
-        => DeleteRowsDirectAsync(connection, tableName, keys, keyColumn, ":", cancellationToken);
-
-    private static async ValueTask DeleteRowsDirectAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, string parameterPrefix, CancellationToken cancellationToken)
-    {
-        if (connection.State != System.Data.ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-
-        await using var command = connection.CreateCommand();
-        var parameterName = parameterPrefix + "p0";
-        command.CommandText = $"DELETE FROM {tableName} WHERE {keyColumn} = {parameterName}";
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = parameterName;
-        command.Parameters.Add(parameter);
-
-        foreach (var key in keys)
-        {
-            parameter.Value = key is null ? DBNull.Value : key;
-            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
-    }
+    private static async ValueTask DeleteWithTempTableStrategyAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, ForgeProviderBulkOptions options, CancellationToken cancellationToken)
+    { _ = BulkFallback.DeleteAsync(connection, tableName, keys, keyColumn, cancellationToken); }
 
     internal static PropertyInfo[] GetBulkProperties<T>()
         => typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance)

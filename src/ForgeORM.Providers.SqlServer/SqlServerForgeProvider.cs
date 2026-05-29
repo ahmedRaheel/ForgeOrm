@@ -17,7 +17,11 @@ public sealed class SqlServerForgeProvider : IForgeDatabaseProvider
         SupportsBulkMerge = true,
         SupportsStoredProcedures = true,
         SupportsFunctions = true,
-        SupportsTableValuedParameters = true
+        SupportsTableValuedParameters = true,
+        SupportsJsonColumns = true,
+        SupportsJsonBulkOperations = true,
+        SupportsTemporalTables = true,
+        SupportsVectorSearch = false
     };
 
     /// <summary>
@@ -140,7 +144,7 @@ public sealed class SqlServerForgeProvider : IForgeDatabaseProvider
     /// <summary>Executes a provider-native bulk delete operation.</summary>
     public async ValueTask BulkDeleteAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default)
     {
-        _ = SqlServerNativeBulk.BulkDeleteAsync(connection, tableName, keys as IReadOnlyList<TKey> ?? keys.ToArray(), keyColumn, bulkOptions ?? ForgeProviderBulkOptionsDefaults.Current, cancellationToken).ConfigureAwait(false);
+        _ = await SqlServerNativeBulk.BulkDeleteAsync(connection, tableName, keys as IReadOnlyList<TKey> ?? keys.ToArray(), keyColumn, bulkOptions ?? ForgeProviderBulkOptionsDefaults.Current, cancellationToken).ConfigureAwait(false);
     }
 
     private string BuildInsertSql(ForgeEntityMetadata e)

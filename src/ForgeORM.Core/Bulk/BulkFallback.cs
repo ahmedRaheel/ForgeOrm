@@ -11,7 +11,7 @@ internal static class BulkFallback
         CancellationToken cancellationToken)
     {
         if (rows is null || rows.Count == 0)
-            return default;
+            return ValueTask.CompletedTask;
 
         var list = rows as IReadOnlyList<T> ?? rows.ToArray();
         var task = ForgeProviderBulkFallback.InsertRowsAsync(connection, tableName, list, cancellationToken);
@@ -26,7 +26,7 @@ internal static class BulkFallback
         CancellationToken cancellationToken)
     {
         if (rows is null || rows.Count == 0)
-            return default;
+            return ValueTask.CompletedTask;
 
         var list = rows as IReadOnlyList<T> ?? rows.ToArray();
         var task = ForgeProviderBulkFallback.UpdateRowsAsync(connection, tableName, list, keyColumn, cancellationToken);
@@ -41,7 +41,7 @@ internal static class BulkFallback
         CancellationToken cancellationToken)
     {
         if (keys is null || keys.Count == 0)
-            return default;
+            return ValueTask.CompletedTask;
 
         var list = keys as IReadOnlyList<TKey> ?? keys.ToArray();
         var task = ForgeProviderBulkFallback.DeleteRowsAsync(connection, tableName, list, keyColumn, cancellationToken);

@@ -15,8 +15,12 @@ public sealed class SqliteForgeProvider : IForgeDatabaseProvider
         SupportsBulkUpdate = true,
         SupportsBulkDelete = true,
         SupportsBulkMerge = true,
-        SupportsStoredProcedures = true,
-        SupportsFunctions = true
+        SupportsStoredProcedures = false,
+        SupportsFunctions = true,
+        SupportsJsonColumns = true,
+        SupportsJsonBulkOperations = false,
+        SupportsTemporalTables = false,
+        SupportsVectorSearch = false
     };
 
     /// <summary>

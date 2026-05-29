@@ -1464,160 +1464,63 @@ public interface IForgeEntityMetadataResolver
     ForgeEntityMetadata Resolve(Type type);
 }
 
-public interface IForgeDatabaseProvider
 /// <summary>
-/// Defines the CreateConnection operation.
+/// Defines provider-specific SQL generation, ADO.NET connection creation, and native bulk operations.
 /// </summary>
-/// <param name="connectionString">The connectionString value.</param>
-/// <returns>The result of the CreateConnection operation.</returns>
+public interface IForgeDatabaseProvider
 {
-    /// <summary>
-    /// Defines the CreateConnection operation.
-    /// </summary>
-    /// <param name="connectionString">The connectionString value.</param>
-    /// <returns>The result of the CreateConnection operation.</returns>
+    /// <summary>Gets the provider name used by ForgeORM diagnostics and routing.</summary>
     string ProviderName { get; }
-    /// <summary>
-    /// Defines the CreateConnection operation.
-    /// </summary>
-    /// <param name="connectionString">The connectionString value.</param>
-    /// <returns>The result of the CreateConnection operation.</returns>
+
+    /// <summary>Gets the SQL dialect rules for this provider.</summary>
     ForgeSqlDialect Dialect { get; }
-    /// <summary>
-    /// Defines the CreateConnection operation.
-    /// </summary>
-    /// <param name="connectionString">The connectionString value.</param>
-    /// <returns>The result of the CreateConnection operation.</returns>
+
+    /// <summary>Gets the feature capabilities supported by this provider.</summary>
     ForgeProviderCapabilities Capabilities { get; }
 
-/// <summary>
-
-/// Defines the CreateConnection operation.
-
-/// </summary>
-
-/// <param name="connectionString">The connectionString value.</param>
-
-/// <returns>The result of the CreateConnection operation.</returns>
-
-    /// <summary>
-    /// Defines the CreateConnection operation.
-    /// </summary>
-    /// <param name="connectionString">The connectionString value.</param>
-    /// <returns>The result of the CreateConnection operation.</returns>
+    /// <summary>Creates a provider-specific database connection.</summary>
     DbConnection CreateConnection(string connectionString);
-    /// <summary>
-    /// Defines the BuildGetById operation.
-    /// </summary>
-    /// <param name="entity">The entity value.</param>
-    /// <param name="id">The id value.</param>
-    /// <returns>The result of the BuildGetById operation.</returns>
+
+    /// <summary>Builds a get-by-id command.</summary>
     ForgeCommand BuildGetById(ForgeEntityMetadata entity, object id);
-    /// <summary>
-    /// Defines the BuildGetByCode operation.
-    /// </summary>
-    /// <param name="entity">The entity value.</param>
-    /// <param name="code">The code value.</param>
-    /// <returns>The result of the BuildGetByCode operation.</returns>
+
+    /// <summary>Builds a get-by-code command.</summary>
     ForgeCommand BuildGetByCode(ForgeEntityMetadata entity, string code);
-    /// <summary>
-    /// Defines the BuildGetByIds operation.
-    /// </summary>
-    /// <param name="entity">The entity value.</param>
-    /// <param name="ids">The ids value.</param>
-    /// <returns>The result of the BuildGetByIds operation.</returns>
+
+    /// <summary>Builds a get-by-ids command.</summary>
     ForgeCommand BuildGetByIds(ForgeEntityMetadata entity, IReadOnlyCollection<int> ids);
-    /// <summary>
-    /// Defines the BuildInsert operation.
-    /// </summary>
-    /// <param name="entity">The entity value.</param>
-    /// <param name="entityInstance">The entityInstance value.</param>
-    /// <returns>The result of the BuildInsert operation.</returns>
+
+    /// <summary>Builds an insert command.</summary>
     ForgeCommand BuildInsert(ForgeEntityMetadata entity, object entityInstance);
-    /// <summary>
-    /// Defines the BuildUpdate operation.
-    /// </summary>
-    /// <param name="entity">The entity value.</param>
-    /// <param name="entityInstance">The entityInstance value.</param>
-    /// <returns>The result of the BuildUpdate operation.</returns>
+
+    /// <summary>Builds an update command.</summary>
     ForgeCommand BuildUpdate(ForgeEntityMetadata entity, object entityInstance);
-    /// <summary>
-    /// Defines the BuildDelete operation.
-    /// </summary>
-    /// <param name="entity">The entity value.</param>
-    /// <param name="id">The id value.</param>
-    /// <returns>The result of the BuildDelete operation.</returns>
+
+    /// <summary>Builds a delete command.</summary>
     ForgeCommand BuildDelete(ForgeEntityMetadata entity, object id);
-    /// <summary>
-    /// Defines the BuildPage operation.
-    /// </summary>
-    /// <param name="request">The request value.</param>
-    /// <returns>The result of the BuildPage operation.</returns>
+
+    /// <summary>Builds a paged query command.</summary>
     ForgeCommand BuildPage(ForgePageRequest request);
-    /// <summary>
-    /// Defines the BuildCount operation.
-    /// </summary>
-    /// <param name="baseSql">The baseSql value.</param>
-    /// <param name="parameters">The parameters value.</param>
-    /// <returns>The result of the BuildCount operation.</returns>
+
+    /// <summary>Builds a count query command.</summary>
     ForgeCommand BuildCount(string baseSql, object? parameters = null);
-    /// <summary>
-    /// Defines the BuildBulkDelete operation.
-    /// </summary>
-    /// <param name="tableName">The tableName value.</param>
-    /// <param name="keyColumn">The keyColumn value.</param>
-    /// <param name="ids">The ids value.</param>
-    /// <returns>The result of the BuildBulkDelete operation.</returns>
+
+    /// <summary>Builds a bulk delete command for integer keys.</summary>
     ForgeCommand BuildBulkDelete(string tableName, string keyColumn, IReadOnlyCollection<int> ids);
-    /// <summary>
-    /// Defines the BuildFunctionScalar operation.
-    /// </summary>
-    /// <param name="functionName">The functionName value.</param>
-    /// <param name="parameters">The parameters value.</param>
-    /// <returns>The result of the BuildFunctionScalar operation.</returns>
+
+    /// <summary>Builds a scalar function command.</summary>
     ForgeCommand BuildFunctionScalar(string functionName, object? parameters = null);
-    /// <summary>
-    /// Defines the T operation.
-    /// </summary>
-    /// <typeparam name="T">The type used by the operation.</typeparam>
-    /// <param name="connection">The connection value.</param>
-    /// <param name="tableName">The tableName value.</param>
-    /// <param name="rows">The rows value.</param>
-    /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The result of the T operation.</returns>
-    ValueTask BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, ForgeProviderBulkOptions? bulkOptions = null,  CancellationToken cancellationToken = default);
-    /// <summary>
-    /// Defines the T operation.
-    /// </summary>
-    /// <typeparam name="T">The type used by the operation.</typeparam>
-    /// <param name="connection">The connection value.</param>
-    /// <param name="tableName">The tableName value.</param>
-    /// <param name="rows">The rows value.</param>
-    /// <param name="keyColumn">The keyColumn value.</param>
-    /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The result of the T operation.</returns>
+
+    /// <summary>Executes provider-native bulk insert.</summary>
+    ValueTask BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Executes provider-native bulk update.</summary>
     ValueTask BulkUpdateAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default);
-    /// <summary>
-    /// Defines the T operation.
-    /// </summary>
-    /// <typeparam name="T">The type used by the operation.</typeparam>
-    /// <param name="connection">The connection value.</param>
-    /// <param name="tableName">The tableName value.</param>
-    /// <param name="rows">The rows value.</param>
-    /// <param name="keyColumn">The keyColumn value.</param>
-    /// <param name="cancellationToken">The cancellationToken value.</param>
-    /// <returns>The result of the T operation.</returns>
+
+    /// <summary>Executes provider-native bulk merge/upsert where supported, otherwise uses the provider update-compatible path.</summary>
     ValueTask BulkMergeAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, string keyColumn, CancellationToken cancellationToken = default);
-    /// <summary>
-    /// Delete the TKey operation
-    /// </summary>
-    /// <typeparam name="TKey"></typeparam>
-    /// <param name="connection"></param>
-    /// <param name="tableName"></param>
-    /// <param name="keys"></param>
-    /// <param name="keyColumn"></param>
-    /// <param name="options"></param>
-    /// <param name="cancellationToken"></param>
-    /// <returns></returns>
-    ValueTask BulkDeleteAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, ForgeProviderBulkOptions options = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Executes provider-native bulk delete.</summary>
+    ValueTask BulkDeleteAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default);
 }
+

@@ -21,7 +21,10 @@ public sealed class PostgreSqlForgeProvider : IForgeDatabaseProvider
         SupportsArrayParameters = true,
         SupportsCopy = true,
         SupportsReturningClause = true,
-        SupportsJsonColumns = true
+        SupportsJsonColumns = true,
+        SupportsJsonBulkOperations = true,
+        SupportsTemporalTables = false,
+        SupportsVectorSearch = true
     };
 
     /// <summary>

@@ -34,7 +34,11 @@ public sealed class MySqlForgeProvider : IForgeDatabaseProvider
         SupportsBulkDelete = true,
         SupportsBulkMerge = true,
         SupportsStoredProcedures = true,
-        SupportsFunctions = true
+        SupportsFunctions = true,
+        SupportsJsonColumns = true,
+        SupportsJsonBulkOperations = true,
+        SupportsTemporalTables = false,
+        SupportsVectorSearch = false
     };
 
     // Thread-safe caches to ensure string generation happens exactly ONCE per entity shape

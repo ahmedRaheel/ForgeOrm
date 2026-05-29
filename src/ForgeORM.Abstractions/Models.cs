@@ -92,6 +92,10 @@ public sealed class ForgeSqlDialect
     public string Parameter(string name) => $"{ParameterPrefix}{name}";
 }
 
+/// <summary>
+/// Describes provider-level feature support. ForgeORM keeps the public API consistent across providers,
+/// while this object exposes whether a feature is native, emulated through a fallback path, or unavailable.
+/// </summary>
 public sealed class ForgeProviderCapabilities
 {
     public bool SupportsBulkInsert { get; init; }
@@ -106,6 +110,15 @@ public sealed class ForgeProviderCapabilities
     public bool SupportsReturningClause { get; init; }
     public bool SupportsJsonColumns { get; init; }
     public bool SupportsRefCursor { get; init; }
+    public bool SupportsPaging { get; init; } = true;
+    public bool SupportsCte { get; init; } = true;
+    public bool SupportsTempTables { get; init; } = true;
+    public bool SupportsWindowFunctions { get; init; } = true;
+    public bool SupportsGraphOperations { get; init; } = true;
+    public bool SupportsTemporalTables { get; init; }
+    public bool SupportsVectorSearch { get; init; }
+    public bool SupportsJsonBulkOperations { get; init; }
+    public bool SupportsUpsert { get; init; } = true;
 }
 
 public sealed class ForgeEntityMetadata

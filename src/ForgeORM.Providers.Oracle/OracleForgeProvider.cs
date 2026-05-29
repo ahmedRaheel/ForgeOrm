@@ -22,7 +22,11 @@ public sealed class OracleForgeProvider : IForgeDatabaseProvider
         SupportsStoredProcedures = true,
         SupportsFunctions = true,
         SupportsArrayParameters = true,
-        SupportsRefCursor = true
+        SupportsRefCursor = true,
+        SupportsJsonColumns = true,
+        SupportsJsonBulkOperations = true,
+        SupportsTemporalTables = false,
+        SupportsVectorSearch = false
     };
 
     /// <summary>

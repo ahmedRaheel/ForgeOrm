@@ -122,7 +122,8 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("        binder = GetBinder(type);");
         sb.AppendLine("        return true;");
         sb.AppendLine("    }");
-        sb.AppendLine();        sb.AppendLine("    public bool TryGetTypedBinder<T>(out IForgeParameterBinder<T>? binder)");
+        sb.AppendLine();
+        sb.AppendLine("    public bool TryGetTypedBinder<T>(out IForgeParameterBinder<T>? binder)");
         sb.AppendLine("    {");
         foreach (var type in entityTypes)
         {
@@ -145,7 +146,7 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("        }");
         foreach (var type in entityTypes)
         {
-            sb.AppendLine("        if (typeof(T).FullName == " + Escape(type.ToDisplayString()) + ")");
+            sb.AppendLine("        if (typeof(T).FullName == \"" + Escape(type.ToDisplayString()) + "\")");
             sb.AppendLine("        {");
             sb.AppendLine("            result = (ValueTask<T?>)(object)ExecuteProviderFirst_" + Safe(type) + "(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken);");
             sb.AppendLine("            return true;");
@@ -164,7 +165,7 @@ public sealed class ForgeOrmGenerator : IIncrementalGenerator
         sb.AppendLine("        }");
         foreach (var type in entityTypes)
         {
-            sb.AppendLine("        if (typeof(T).FullName == " + Escape(type.ToDisplayString()) + ")");
+            sb.AppendLine("        if (typeof(T).FullName == \"" + Escape(type.ToDisplayString()) + "\")");
             sb.AppendLine("        {");
             sb.AppendLine("            result = (ValueTask<IReadOnlyList<T>>)(object)ExecuteProviderQuery_" + Safe(type) + "(connection, sql, parameters, transaction, commandType, timeoutSeconds, cancellationToken);");
             sb.AppendLine("            return true;");

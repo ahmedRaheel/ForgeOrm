@@ -2,13 +2,13 @@ namespace ForgeORM.Abstractions;
 
 /// <summary>
 /// Provider-native bulk execution strategy.
-/// Default for SQL Server is SqlDataRecord.
+/// Default for SQL Server insert is SqlBulkCopy; TVP strategies remain available for update/delete and graph paths.
 /// Other providers map to their native equivalent.
 /// </summary>
 public enum ForgeBulkOperationStrategy
 {
     /// <summary>
-    /// SQL Server primary path: SqlDataRecord + TVP.
+    /// SQL Server TVP path: SqlDataRecord + TVP.
     /// Insert: INSERT SELECT FROM @Rows.
     /// Update: MERGE FROM @Rows.
     /// Delete: DELETE JOIN FROM key TVP.
@@ -21,8 +21,7 @@ public enum ForgeBulkOperationStrategy
     TableTypeParameter = 1,
 
     /// <summary>
-    /// SQL Server optional path for very large append-only insert.
-    /// Not used for update/delete.
+    /// SQL Server fastest path for append-only insert. Update/delete use staging table semantics when this option is selected.
     /// </summary>
     SqlBulkCopy = 2,
 

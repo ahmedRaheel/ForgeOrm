@@ -1,69 +1,67 @@
 namespace ForgeORM.Abstractions;
 
 /// <summary>
-/// Provider-native bulk operation options used by ForgeORM bulk routers.
+/// Configures provider-native bulk execution behavior.
 /// </summary>
 public sealed class ForgeProviderBulkOptions
 {
     /// <summary>
-    /// SQL Server insert default uses SqlBulkCopy for the fastest append-only path.
-    /// Update and delete route to the matching provider strategy switch and may use temp tables or TVPs.
+    /// SQL Server insert/update/delete strategy. Default is <see cref="ForgeBulkOperationStrategy.SqlBulkCopy" /> for fast append-only inserts.
+    /// Update/delete internally use temp-table or TVP paths where SqlBulkCopy cannot update/delete the target directly.
     /// </summary>
-    public ForgeBulkOperationStrategy SqlServerStrategy { get; set; } =
-        ForgeBulkOperationStrategy.SqlBulkCopy;
+    public ForgeBulkOperationStrategy SqlServerStrategy { get; set; } = ForgeBulkOperationStrategy.SqlBulkCopy;
 
     /// <summary>
-    /// PostgreSQL default insert strategy is COPY; update/delete use COPY into a temporary table when available.
+    /// PostgreSQL bulk strategy. COPY is preferred for inserts; temp-table strategy is used for update/delete semantics.
     /// </summary>
-    public ForgeBulkOperationStrategy PostgreSqlStrategy { get; set; } =
-        ForgeBulkOperationStrategy.PostgreSqlCopy;
+    public ForgeBulkOperationStrategy PostgreSqlStrategy { get; set; } = ForgeBulkOperationStrategy.PostgreSqlCopy;
 
     /// <summary>
-    /// MySQL default insert strategy is multi-row insert; update/delete use temporary table joins when available.
+    /// MySQL bulk strategy. Multi-row insert is preferred for inserts; temp-table strategy is used for update/delete semantics.
     /// </summary>
-    public ForgeBulkOperationStrategy MySqlStrategy { get; set; } =
-        ForgeBulkOperationStrategy.MySqlMultiRowInsert;
+    public ForgeBulkOperationStrategy MySqlStrategy { get; set; } = ForgeBulkOperationStrategy.MySqlMultiRowInsert;
 
     /// <summary>
-    /// Oracle default insert strategy is array binding; update/delete use MERGE/staging paths when available.
+    /// Oracle bulk strategy. Array binding is preferred for inserts; MERGE is used for update/upsert semantics.
     /// </summary>
-    public ForgeBulkOperationStrategy OracleStrategy { get; set; } =
-        ForgeBulkOperationStrategy.OracleArrayBinding;
+    public ForgeBulkOperationStrategy OracleStrategy { get; set; } = ForgeBulkOperationStrategy.OracleArrayBinding;
 
     /// <summary>
-    /// Minimum row count at which SQL Server may auto-select SqlBulkCopy for append-only insert.
-    /// Set to <see cref="int.MaxValue"/> to disable automatic selection.
+    /// Row count at which SQL Server may switch to SqlBulkCopy for append-only inserts.
     /// </summary>
-    public int SqlBulkCopyThreshold { get; set; } = 100_000;
+    public int SqlBulkCopyThreshold { get; set; } = 1;
 
     /// <summary>
-    /// Allows providers to create required temporary/staging structures during bulk operations.
+    /// Creates provider-specific helper structures when required, such as SQL Server TVP types or provider temp tables.
     /// </summary>
     public bool AutoCreateProviderStructures { get; set; } = true;
 
     /// <summary>
-    /// Allows providers to recreate incompatible provider structures when shape mismatch is detected.
+    /// Recreates provider helper structures when their shape no longer matches the current entity shape.
     /// </summary>
     public bool AutoRecreateMismatchedStructures { get; set; } = true;
 
     /// <summary>
-    /// Drops transient provider structures after each operation. Keep false for stable provider-managed structures.
-    /// Temporary tables are always cleaned up by the operation.
+    /// Drops provider helper structures after each operation. Keep false for performance; set true only for throwaway/test databases.
     /// </summary>
     public bool AutoDropProviderStructures { get; set; }
 
     /// <summary>
-    /// Backward-compatible alias for SQL Server TVP structure creation.
+    /// Backward-compatible alias for SQL Server TVP creation.
     /// </summary>
-    public bool AutoCreateTableTypes { get; set; } = true;
+    public bool AutoCreateTableTypes
+    {
+        get => AutoCreateProviderStructures;
+        set => AutoCreateProviderStructures = value;
+    }
 
     /// <summary>
-    /// Provider batch size. Providers may cap this based on parameter limits.
+    /// Maximum rows per batch for provider fallback paths.
     /// </summary>
-    public int BatchSize { get; set; } = 5000;
+    public int BatchSize { get; set; } = 5_000;
 
     /// <summary>
-    /// Command timeout in seconds. A value of 0 uses provider default/no timeout override.
+    /// Command timeout in seconds. Zero means provider default.
     /// </summary>
     public int CommandTimeoutSeconds { get; set; }
 }

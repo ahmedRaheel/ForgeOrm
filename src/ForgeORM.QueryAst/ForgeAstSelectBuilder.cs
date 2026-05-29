@@ -1010,10 +1010,10 @@ internal sealed partial class ForgeAstSelectBuilder<T> : IForgeAstSelectBuilder<
         public ForgeCommand BuildCount(string baseSql, object? parameters = null) => throw new NotSupportedException();
         public ForgeCommand BuildBulkDelete(string tableName, string keyColumn, IReadOnlyCollection<int> ids) => throw new NotSupportedException();
         public ForgeCommand BuildFunctionScalar(string functionName, object? parameters = null) => throw new NotSupportedException();
-        public ValueTask BulkInsertAsync<TBulk>(System.Data.Common.DbConnection connection, string tableName, IReadOnlyCollection<TBulk> rows, ForgeProviderBulkOptions options = null, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-        public ValueTask BulkUpdateAsync<TBulk>(System.Data.Common.DbConnection connection, string tableName, IReadOnlyCollection<TBulk> rows, string keyColumn, ForgeProviderBulkOptions options = null, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask BulkInsertAsync<TBulk>(System.Data.Common.DbConnection connection, string tableName, IReadOnlyCollection<TBulk> rows, ForgeProviderBulkOptions? options = null, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask BulkUpdateAsync<TBulk>(System.Data.Common.DbConnection connection, string tableName, IReadOnlyCollection<TBulk> rows, string keyColumn, ForgeProviderBulkOptions? options = null, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask BulkMergeAsync<TBulk>(System.Data.Common.DbConnection connection, string tableName, IReadOnlyCollection<TBulk> rows, string keyColumn,  CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-        public ValueTask BulkDeleteAsync<TBulk>(System.Data.Common.DbConnection connection, string tableName, IReadOnlyCollection<TBulk> rows, string keyColumn, ForgeProviderBulkOptions options = null, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask BulkDeleteAsync<TBulk>(System.Data.Common.DbConnection connection, string tableName, IReadOnlyCollection<TBulk> rows, string keyColumn, ForgeProviderBulkOptions? options = null, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     }
 
     internal static class ParameterObjectReader

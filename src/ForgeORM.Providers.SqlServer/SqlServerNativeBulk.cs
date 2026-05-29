@@ -52,10 +52,11 @@ internal static class SqlServerNativeBulk
 
             case ForgeBulkOperationStrategy.SqlBulkCopy:
 
-                await BulkFallback.InsertAsync(
-                    connection,
-                    tableName,
-                    rows,
+                await InsertWithSqlBulkCopyAsync(
+                    (SqlConnection)connection,
+                    plan,
+                    list,
+                    options,
                     cancellationToken).ConfigureAwait(false);
 
                 break;
@@ -219,7 +220,6 @@ internal static class SqlServerNativeBulk
         CancellationToken cancellationToken)
     {
         var tempTable = "#ForgeBulkUpdate_" + Guid.NewGuid().ToString("N");
-        var table = plan.CreateTable(rows);
 
         await using var create = sqlConnection.CreateCommand();
         create.CommandText = plan.CreateTempTableSql(tempTable);
@@ -234,10 +234,10 @@ internal static class SqlServerNativeBulk
             EnableStreaming = true
         })
         {
-            for (var i = 0; i < plan.ColumnNames.Length; i++)
-                bulk.ColumnMappings.Add(plan.ColumnNames[i], plan.ColumnNames[i]);
+            AddColumnMappings(bulk, plan.ColumnNames);
 
-            await bulk.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
+            using var reader = new SqlServerUpdatePlanDataReader<T>(rows, plan);
+            await bulk.WriteToServerAsync(reader, cancellationToken).ConfigureAwait(false);
         }
 
         try
@@ -317,7 +317,6 @@ internal static class SqlServerNativeBulk
         CancellationToken cancellationToken)
     {
         var tempTable = "#ForgeBulkDelete_" + Guid.NewGuid().ToString("N");
-        var table = plan.CreateTable(keys);
 
         await using var create = sqlConnection.CreateCommand();
         create.CommandText = plan.CreateTempTableSql(tempTable);
@@ -333,7 +332,9 @@ internal static class SqlServerNativeBulk
         })
         {
             bulk.ColumnMappings.Add(plan.KeyColumn, plan.KeyColumn);
-            await bulk.WriteToServerAsync(table, cancellationToken).ConfigureAwait(false);
+
+            using var reader = new SqlServerKeyDataReader<TKey>(keys, plan.KeyColumn, plan.KeyDeclaredType);
+            await bulk.WriteToServerAsync(reader, cancellationToken).ConfigureAwait(false);
         }
 
         try
@@ -347,6 +348,27 @@ internal static class SqlServerNativeBulk
         {
             await DropTempTableAsync(sqlConnection, tempTable, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    private static async ValueTask InsertWithSqlBulkCopyAsync<T>(
+        SqlConnection connection,
+        SqlServerInsertPlan plan,
+        IReadOnlyList<T> rows,
+        ForgeProviderBulkOptions options,
+        CancellationToken cancellationToken)
+    {
+        using var bulk = new SqlBulkCopy(connection, SqlBulkCopyOptions.TableLock, externalTransaction: null)
+        {
+            DestinationTableName = plan.QuotedTableName,
+            BatchSize = options.BatchSize > 0 ? options.BatchSize : Math.Min(Math.Max(rows.Count, 1), 5000),
+            BulkCopyTimeout = options.CommandTimeoutSeconds,
+            EnableStreaming = true
+        };
+
+        AddColumnMappings(bulk, plan.ColumnNames);
+
+        using var reader = new SqlServerInsertPlanDataReader<T>(rows, plan);
+        await bulk.WriteToServerAsync(reader, cancellationToken).ConfigureAwait(false);
     }
 
     private static async ValueTask InsertWithSqlDataRecordTvpAsync<T>(
@@ -565,6 +587,175 @@ internal static class SqlServerNativeBulk
         }
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private abstract class SqlServerBulkDataReaderBase : DbDataReader
+    {
+        private bool _disposed;
+
+        public override int Depth => 0;
+        public override bool HasRows => true;
+        public override bool IsClosed => _disposed;
+        public override int RecordsAffected => -1;
+        public override object this[int ordinal] => GetValue(ordinal);
+        public override object this[string name] => GetValue(GetOrdinal(name));
+
+        public override bool NextResult() => false;
+        public override Task<bool> NextResultAsync(CancellationToken cancellationToken) => Task.FromResult(false);
+        public override IEnumerator GetEnumerator()
+        {
+            while (Read())
+                yield return this;
+        }
+        public override int GetValues(object[] values)
+        {
+            ArgumentNullException.ThrowIfNull(values);
+            var count = Math.Min(values.Length, FieldCount);
+            for (var i = 0; i < count; i++)
+                values[i] = GetValue(i);
+            return count;
+        }
+
+        public override bool IsDBNull(int ordinal) => GetValue(ordinal) is null or DBNull;
+        public override bool GetBoolean(int ordinal) => Convert.ToBoolean(GetValue(ordinal), System.Globalization.CultureInfo.InvariantCulture);
+        public override byte GetByte(int ordinal) => Convert.ToByte(GetValue(ordinal), System.Globalization.CultureInfo.InvariantCulture);
+        public override long GetBytes(int ordinal, long dataOffset, byte[]? buffer, int bufferOffset, int length)
+        {
+            var bytes = (byte[])GetValue(ordinal);
+            var available = Math.Max(0, bytes.Length - (int)dataOffset);
+            var count = Math.Min(length, available);
+            if (buffer is not null && count > 0)
+                Buffer.BlockCopy(bytes, (int)dataOffset, buffer, bufferOffset, count);
+            return count;
+        }
+
+        public override char GetChar(int ordinal) => Convert.ToChar(GetValue(ordinal), System.Globalization.CultureInfo.InvariantCulture);
+        public override long GetChars(int ordinal, long dataOffset, char[]? buffer, int bufferOffset, int length)
+        {
+            var chars = GetString(ordinal).ToCharArray();
+            var available = Math.Max(0, chars.Length - (int)dataOffset);
+            var count = Math.Min(length, available);
+            if (buffer is not null && count > 0)
+                Array.Copy(chars, (int)dataOffset, buffer, bufferOffset, count);
+            return count;
+        }
+
+        public override string GetDataTypeName(int ordinal) => GetFieldType(ordinal).Name;
+        public override DateTime GetDateTime(int ordinal) => Convert.ToDateTime(GetValue(ordinal), System.Globalization.CultureInfo.InvariantCulture);
+        public override decimal GetDecimal(int ordinal) => Convert.ToDecimal(GetValue(ordinal), System.Globalization.CultureInfo.InvariantCulture);
+        public override double GetDouble(int ordinal) => Convert.ToDouble(GetValue(ordinal), System.Globalization.CultureInfo.InvariantCulture);
+        public override float GetFloat(int ordinal) => Convert.ToSingle(GetValue(ordinal), System.Globalization.CultureInfo.InvariantCulture);
+        public override Guid GetGuid(int ordinal) => GetValue(ordinal) is Guid guid ? guid : Guid.Parse(GetString(ordinal));
+        public override short GetInt16(int ordinal) => Convert.ToInt16(GetValue(ordinal), System.Globalization.CultureInfo.InvariantCulture);
+        public override int GetInt32(int ordinal) => Convert.ToInt32(GetValue(ordinal), System.Globalization.CultureInfo.InvariantCulture);
+        public override long GetInt64(int ordinal) => Convert.ToInt64(GetValue(ordinal), System.Globalization.CultureInfo.InvariantCulture);
+        public override string GetString(int ordinal) => Convert.ToString(GetValue(ordinal), System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+        public override Type GetProviderSpecificFieldType(int ordinal) => GetFieldType(ordinal);
+        public override object GetProviderSpecificValue(int ordinal) => GetValue(ordinal);
+        public override int GetProviderSpecificValues(object[] values) => GetValues(values);
+
+        public override DataTable GetSchemaTable()
+        {
+            var schema = new DataTable();
+            schema.Columns.Add("ColumnName", typeof(string));
+            schema.Columns.Add("ColumnOrdinal", typeof(int));
+            schema.Columns.Add("DataType", typeof(Type));
+            schema.Columns.Add("AllowDBNull", typeof(bool));
+
+            for (var i = 0; i < FieldCount; i++)
+                schema.Rows.Add(GetName(i), i, GetFieldType(i), true);
+
+            return schema;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            _disposed = true;
+            base.Dispose(disposing);
+        }
+    }
+
+    private sealed class SqlServerInsertPlanDataReader<T> : SqlServerBulkDataReaderBase
+    {
+        private readonly IReadOnlyList<T> _rows;
+        private readonly SqlServerInsertPlan _plan;
+        private int _index = -1;
+
+        public SqlServerInsertPlanDataReader(IReadOnlyList<T> rows, SqlServerInsertPlan plan)
+        {
+            _rows = rows;
+            _plan = plan;
+        }
+
+        public override int FieldCount => _plan.ColumnNames.Length;
+        public override bool HasRows => _rows.Count > 0;
+        public override bool Read() => ++_index < _rows.Count;
+        public override Task<bool> ReadAsync(CancellationToken cancellationToken) => Task.FromResult(Read());
+        public override string GetName(int ordinal) => _plan.ColumnNames[ordinal];
+        public override Type GetFieldType(int ordinal) => GetStorageType(_plan.GetDeclaredType(ordinal));
+        public override int GetOrdinal(string name) => FindOrdinal(_plan.ColumnNames, name);
+        public override object GetValue(int ordinal)
+        {
+            var value = NormalizeValue(_plan.GetValue(_rows[_index]!, ordinal), _plan.GetDeclaredType(ordinal));
+            return value ?? DBNull.Value;
+        }
+    }
+
+    private sealed class SqlServerUpdatePlanDataReader<T> : SqlServerBulkDataReaderBase
+    {
+        private readonly IReadOnlyList<T> _rows;
+        private readonly SqlServerUpdatePlan _plan;
+        private int _index = -1;
+
+        public SqlServerUpdatePlanDataReader(IReadOnlyList<T> rows, SqlServerUpdatePlan plan)
+        {
+            _rows = rows;
+            _plan = plan;
+        }
+
+        public override int FieldCount => _plan.ColumnNames.Length;
+        public override bool HasRows => _rows.Count > 0;
+        public override bool Read() => ++_index < _rows.Count;
+        public override Task<bool> ReadAsync(CancellationToken cancellationToken) => Task.FromResult(Read());
+        public override string GetName(int ordinal) => _plan.ColumnNames[ordinal];
+        public override Type GetFieldType(int ordinal) => GetStorageType(_plan.GetDeclaredType(ordinal));
+        public override int GetOrdinal(string name) => FindOrdinal(_plan.ColumnNames, name);
+        public override object GetValue(int ordinal)
+        {
+            var value = NormalizeValue(_plan.GetValue(_rows[_index]!, ordinal), _plan.GetDeclaredType(ordinal));
+            return value ?? DBNull.Value;
+        }
+    }
+
+    private sealed class SqlServerKeyDataReader<TKey> : SqlServerBulkDataReaderBase
+    {
+        private readonly IReadOnlyList<TKey> _keys;
+        private readonly string _keyColumn;
+        private readonly Type _keyType;
+        private int _index = -1;
+
+        public SqlServerKeyDataReader(IReadOnlyList<TKey> keys, string keyColumn, Type keyType)
+        {
+            _keys = keys;
+            _keyColumn = keyColumn;
+            _keyType = keyType;
+        }
+
+        public override int FieldCount => 1;
+        public override bool HasRows => _keys.Count > 0;
+        public override bool Read() => ++_index < _keys.Count;
+        public override Task<bool> ReadAsync(CancellationToken cancellationToken) => Task.FromResult(Read());
+        public override string GetName(int ordinal) => ordinal == 0 ? _keyColumn : throw new IndexOutOfRangeException(nameof(ordinal));
+        public override Type GetFieldType(int ordinal) => ordinal == 0 ? GetStorageType(_keyType) : throw new IndexOutOfRangeException(nameof(ordinal));
+        public override int GetOrdinal(string name) => string.Equals(name, _keyColumn, StringComparison.OrdinalIgnoreCase) ? 0 : -1;
+        public override object GetValue(int ordinal)
+        {
+            if (ordinal != 0)
+                throw new IndexOutOfRangeException(nameof(ordinal));
+
+            var value = NormalizeValue(_keys[_index], _keyType);
+            return value ?? DBNull.Value;
+        }
     }
 
     private sealed class SqlServerUpdatePlan
@@ -840,6 +1031,12 @@ internal static class SqlServerNativeBulk
     }
 
 
+    private static void AddColumnMappings(SqlBulkCopy bulk, string[] columnNames)
+    {
+        for (var i = 0; i < columnNames.Length; i++)
+            bulk.ColumnMappings.Add(columnNames[i], columnNames[i]);
+    }
+
     private static async ValueTask CreateTableTypeAsync(
         SqlConnection connection,
         string typeName,
@@ -1003,6 +1200,27 @@ internal static class SqlServerNativeBulk
                 or MissingMethodException
                 or InvalidCastException
                 or NotSupportedException;
+    }
+
+    private static int FindOrdinal(string[] columnNames, string name)
+    {
+        for (var i = 0; i < columnNames.Length; i++)
+        {
+            if (string.Equals(columnNames[i], name, StringComparison.OrdinalIgnoreCase))
+                return i;
+        }
+
+        return -1;
+    }
+
+    private static Type GetStorageType(Type type)
+    {
+        var actual = Nullable.GetUnderlyingType(type) ?? type;
+
+        if (actual.IsEnum || actual == typeof(DateOnly) || actual == typeof(TimeOnly))
+            return typeof(string);
+
+        return actual;
     }
 
     private static string ToSqlType(Type type)

@@ -169,7 +169,7 @@ internal static class BulkFallback
     /// <param name="keyColumn"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
-    public static async ValueTask<int> DeleteAsync<TKey>(
+    public static async ValueTask DeleteAsync<TKey>(
     DbConnection connection,
     string tableName,
     IReadOnlyCollection<TKey> keys,
@@ -177,7 +177,7 @@ internal static class BulkFallback
     CancellationToken cancellationToken = default)
     {
         if (keys.Count == 0)
-            return 0;
+            return;
 
        await  PostgreSqlNativeBulk.BulkDeleteAsync(
                     connection,
@@ -186,7 +186,7 @@ internal static class BulkFallback
                     keyColumn,
                     ForgeProviderBulkOptionsDefaults.Current,
                     cancellationToken);
-        return 1;
+        
     }
 
     /// <summary>

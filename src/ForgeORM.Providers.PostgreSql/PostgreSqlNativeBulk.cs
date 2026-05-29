@@ -108,10 +108,10 @@ internal static class PostgreSqlNativeBulk
         => BulkFallback.UpdateAsync(connection, tableName, rows, keyColumn, cancellationToken);
 
     private static ValueTask DeleteWithNativeStrategyAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, CancellationToken cancellationToken)
-        => DeleteRowsDirectAsync(connection, tableName, keys, keyColumn, "@", cancellationToken);
+        => BulkFallback.DeleteAsync(connection, tableName, keys, keyColumn, cancellationToken);
 
     private static ValueTask DeleteWithTempTableStrategyAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, CancellationToken cancellationToken)
-        => DeleteRowsDirectAsync(connection, tableName, keys, keyColumn, "@", cancellationToken);
+        => BulkFallback.DeleteAsync(connection, tableName, keys, keyColumn, cancellationToken);
 
     private static async ValueTask DeleteRowsDirectAsync<TKey>(DbConnection connection, string tableName, IReadOnlyCollection<TKey> keys, string keyColumn, string parameterPrefix, CancellationToken cancellationToken)
     {

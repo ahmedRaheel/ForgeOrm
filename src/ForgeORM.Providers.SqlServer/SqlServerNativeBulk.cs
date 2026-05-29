@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using System.Reflection;
+using ForgeORM.Abstractions;
 using ForgeORM.Core;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.SqlClient.Server;
@@ -18,22 +19,17 @@ internal static class SqlServerNativeBulk
     public static async ValueTask BulkInsertAsync<T>(
         DbConnection connection,
         string tableName,
-        IReadOnlyCollection<T> rows,
+        IReadOnlyCollection<T> rows, 
+        ForgeProviderBulkOptions options,
         CancellationToken cancellationToken = default)
     {
         if (rows is null || rows.Count == 0)
             return;
 
-        if (connection is not SqlConnection sqlConnection)
-        {
-            await BulkFallback.InsertAsync(connection, tableName, rows, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
         var list = rows as IReadOnlyList<T> ?? rows.ToArray();
 
-        if (sqlConnection.State != ConnectionState.Open)
-            await sqlConnection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         var plan = InsertPlanCache.GetOrAdd(
             (typeof(T), tableName),
@@ -42,15 +38,23 @@ internal static class SqlServerNativeBulk
         if (plan.Properties.Length == 0)
             return;
 
-        try
+        if (options.SqlServerStrategy == ForgeBulkOperationStrategy.SqlBulkCopy)
         {
-            await InsertWithSqlDataRecordTvpAsync(sqlConnection, plan, list, cancellationToken).ConfigureAwait(false);
+            await BulkFallback.InsertAsync(connection, tableName, rows, cancellationToken).ConfigureAwait(false);
             return;
         }
-        catch (Exception ex) when (SqlServerBulkFallbackPolicy.CanFallback(ex))
+        if (options.SqlServerStrategy == ForgeBulkOperationStrategy.SqlDataRecord) 
         {
-            await InsertWithDataTableFallbackAsync(sqlConnection, plan, list, cancellationToken).ConfigureAwait(false);
-        }
+            try
+            {
+                await InsertWithSqlDataRecordTvpAsync((SqlConnection)connection, plan, list, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+            catch (Exception ex) when (SqlServerBulkFallbackPolicy.CanFallback(ex))
+            {
+                await InsertWithDataTableFallbackAsync((SqlConnection)connection, plan, list, cancellationToken).ConfigureAwait(false);
+            }
+        }   
     }
 
     public static async ValueTask<int> BulkUpdateAsync<T>(

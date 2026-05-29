@@ -254,7 +254,7 @@ public partial class ForgeDb
     /// <typeparam name="T">The type used by the operation.</typeparam>
     /// <param name="rows">The rows value.</param>
     /// <returns>The result of the T operation.</returns>
-    public void BulkInsert<T>(IReadOnlyCollection<T> rows) => BulkInsert(_metadata.Resolve<T>().TableName, rows);
+    public void BulkInsert<T>(IReadOnlyCollection<T> rows, ForgeProviderBulkOptions? bulkOptions = null) => BulkInsert(_metadata.Resolve<T>().TableName, rows, bulkOptions);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -262,7 +262,7 @@ public partial class ForgeDb
     /// <param name="tableName">The tableName value.</param>
     /// <param name="rows">The rows value.</param>
     /// <returns>The result of the T operation.</returns>
-    public void BulkInsert<T>(string tableName, IReadOnlyCollection<T> rows) => BulkInsertAsync(tableName, rows).GetAwaiter().GetResult();
+    public void BulkInsert<T>(string tableName, IReadOnlyCollection<T> rows, ForgeProviderBulkOptions? bulkOptions = null) => BulkInsertAsync(tableName, rows, bulkOptions).GetAwaiter().GetResult();
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -270,7 +270,7 @@ public partial class ForgeDb
     /// <param name="rows">The rows value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public ValueTask BulkInsertAsync<T>(IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default) => BulkInsertAsync(_metadata.Resolve<T>().TableName, rows, cancellationToken);
+    public ValueTask BulkInsertAsync<T>(IReadOnlyCollection<T> rows, ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default) => BulkInsertAsync(_metadata.Resolve<T>().TableName, rows, bulkOptions, cancellationToken);
     /// <summary>
     /// Executes the T operation.
     /// </summary>
@@ -279,12 +279,13 @@ public partial class ForgeDb
     /// <param name="rows">The rows value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    public async ValueTask BulkInsertAsync<T>(string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default)
+    public async ValueTask BulkInsertAsync<T>(string tableName, IReadOnlyCollection<T> rows, ForgeProviderBulkOptions? bulkOptions = null, CancellationToken cancellationToken = default)
     {
         if (rows.Count == 0) return;
         await using var c = CreateConnection();
         await c.OpenAsync(cancellationToken);
-        await Provider.BulkInsertAsync(c, tableName, rows, cancellationToken);
+        var effectiveOptions = bulkOptions ?? ForgeProviderBulkOptionsDefaults.Current;
+        await Provider.BulkInsertAsync(c, tableName, rows, bulkOptions: effectiveOptions, cancellationToken);
     }
 
     /// <summary>

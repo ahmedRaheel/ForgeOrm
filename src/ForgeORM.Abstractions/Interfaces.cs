@@ -1585,7 +1585,7 @@ public interface IForgeDatabaseProvider
     /// <param name="rows">The rows value.</param>
     /// <param name="cancellationToken">The cancellationToken value.</param>
     /// <returns>The result of the T operation.</returns>
-    ValueTask BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, CancellationToken cancellationToken = default);
+    ValueTask BulkInsertAsync<T>(DbConnection connection, string tableName, IReadOnlyCollection<T> rows, ForgeProviderBulkOptions? bulkOptions = null,  CancellationToken cancellationToken = default);
     /// <summary>
     /// Defines the T operation.
     /// </summary>
